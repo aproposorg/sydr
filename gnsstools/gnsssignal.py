@@ -8,8 +8,9 @@ class GNSSSignal:
         # Initialise from config file
         config = configparser.ConfigParser()
         config.read(configfile)
-
+        
         self.signal_type = signal_type
+        self.name      = config.get     (signal_type, 'NAME')
         self.code_bit  = config.getfloat(signal_type, 'CODE_BIT')
         self.code_freq = config.getfloat(signal_type, 'CODE_FREQ')
 

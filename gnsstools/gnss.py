@@ -1,4 +1,5 @@
 import configparser
+from tqdm import tqdm
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.acquisition import Acquisition
 from gnsstools.rffile import RFFile
@@ -17,19 +18,17 @@ class GNSS:
         # Instanciate variables
         self.data_file = RFFile(self.configfile)
         self.signal = GNSSSignal(self.signalfile, self.signal_type)
-        self.acquisition = Acquisition(configfile)
 
         return
 
     def doAcquisition(self, prnlist):
         
-        print( "+-----+--------+----------+----------+")
-        print(f"| PRN | METRIC | DOPPLER  | CODE     |")
-        print( "+-----+--------+----------+----------+")
-        for prn in prnlist:
-            [acq_corr, acq_metric, coarse_freq, coarse_code] = self.acquisition.acquire(self.data_file, prn, self.signal)
-            print(f"| G{prn:02} | {acq_metric:>6.2f} | {coarse_freq:>8.2f} | {coarse_code:>8.2f} |")
-        print( "+-----+--------+----------+----------+")
+        self.acquisition_results = []
+        for prn in tqdm(prnlist, desc="Acquisition progress"):
+            acquisition = Acquisition(self.configfile, prn, self.signal)
+            acquisition.acquire(self.data_file)
+            self.acquisition_results.append(acquisition)
+            
 
         return
 

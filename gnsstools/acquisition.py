@@ -6,7 +6,7 @@ from gnsstools.rffile import RFFile
 
 class Acquisition:
     
-    def __init__(self, configfile):
+    def __init__(self, configfile, prn, signal:GNSSSignal):
         config = configparser.ConfigParser()
         config.read(configfile)
         
@@ -19,10 +19,13 @@ class Acquisition:
         self.doppler_steps      = config.getfloat('ACQUISITION', 'doppler_steps')
         self.coh_integration    = config.getint  ('ACQUISITION', 'coh_integration')
         self.noncoh_integration = config.getint  ('ACQUISITION', 'noncoh_integration')
+
+        self.prn    = prn
+        self.signal = signal
         
         return
 
-    def acquire(self, data_file:RFFile, prn, signal:GNSSSignal, method=None):
+    def acquire(self, data_file:RFFile, method=None):
         """
         Perform selected acquisition method.
         """
@@ -32,19 +35,19 @@ class Acquisition:
 
         # Select appropriate function
         if method == 'PCPS':
-            results = self.doPCPS(data_file, prn, signal)
+            results = self.doPCPS(data_file)
         else:
             raise ValueError(f"Acquisition method {method} is not defined.")
 
         return results
 
-    def doPCPS(self, data_file:RFFile, prn, signal:GNSSSignal):
+    def doPCPS(self, data_file:RFFile):
         ts = 1/self.samp_freq       # Sampling period
-        samples_per_code = round(self.samp_freq / (signal.code_freq / signal.code_bit))
-        samples_per_code_chip = round(self.samp_freq  / signal.code_freq)
+        samples_per_code = round(self.samp_freq / (self.signal.code_freq / self.signal.code_bit))
+        samples_per_code_chip = round(self.samp_freq  / self.signal.code_freq)
 
-        prn_code = signal.getCode(prn)
-        prn_code = signal.getUpsampledCode(self.samp_freq, prn_code)
+        prn_code = self.signal.getCode(self.prn)
+        prn_code = self.signal.getUpsampledCode(self.samp_freq, prn_code)
 
         # Get code FFT
         caCode_fft = np.conj(np.fft.fft(prn_code))
@@ -104,7 +107,7 @@ class Acquisition:
         peak_1 = np.amax(acq_corr)
         idx = np.where(acq_corr == peak_1)
         coarse_freq = freq_bins[int(idx[0])]
-        coarse_code = int(idx[1]) * signal.code_bit / self.samp_freq
+        coarse_code = int(idx[1]) * self.signal.code_bit / np.size(acq_corr, axis=1)
 
         ## Find second correlation peak
         exclude = list((int(idx[1] - samples_per_code_chip), int(idx[1] + samples_per_code_chip)))
@@ -118,6 +121,20 @@ class Acquisition:
         peak_2 = np.amax(acq_corr[idx[0], code_range])
         acq_metric = peak_1 / peak_2
         
-        return acq_corr, acq_metric, coarse_freq, coarse_code
+        # Save results
+        self.correlation_map = np.squeeze(acq_corr)
+        self.acq_metric      = acq_metric
+        self.coarse_freq     = coarse_freq       
+        self.coarse_code     = coarse_code
+
+        return 0
+    
+    def doSparseFFT(self, data_file:RFFile, prn, signal:GNSSSignal):
+
+        
+
+
+        return
+
 
     
