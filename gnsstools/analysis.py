@@ -72,7 +72,7 @@ class Analysis:
             fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
             fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", autosize=False, \
                 width=1000, height=1000)  
-            fig_temp.write_html(f"./{self.output_folder}/{out_filename}_G{acq.prn}.html")
+            fig_temp.write_html(f"./{self.output_folder}/Correlation/{out_filename}_G{acq.prn}.html")
         
         fig.write_html(f"./{self.output_folder}/{out_filename}.html")
         return

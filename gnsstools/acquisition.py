@@ -57,7 +57,7 @@ class Acquisition:
         data = data_file.readFile(time_to_read)
 
         # Data for carrier generation
-        phasePoints = np.array(range(len(data))) * 2 * np.pi * ts
+        phasePoints = np.array(range(self.coh_integration*samples_per_code)) * 2 * np.pi * ts
 
         # Search loop
         freq_bins = np.arange(-self.doppler_range, self.doppler_range, self.doppler_steps)
@@ -68,21 +68,17 @@ class Acquisition:
             #print(f"{freq} ...")
             freq = self.inter_freq - freq
 
-            # Generate local replica
-            carrier_sin = np.sin(freq * phasePoints)
-            carrier_cos = np.cos(freq * phasePoints)
-
-            # Remove the carrier
-            in_phase   = np.multiply(carrier_sin, data)
-            quadrature = np.multiply(carrier_cos, data)
-            iq_signal_total = in_phase + 1j*quadrature
+            # Generate carrier replica
+            signal_carrier = np.exp(-1j*freq*phasePoints)
 
             # Non-Coherent Integration 
             noncoh_sum = np.zeros((1, samples_per_code))
             for idx_noncoh in range(0, self.noncoh_integration):
+                # Select only require part of the dataset
+                iq_signal = data[idx_noncoh*self.coh_integration*samples_per_code:(idx_noncoh+1)*self.coh_integration*samples_per_code]
+                # Mix with carrier
+                iq_signal = np.multiply(signal_carrier, iq_signal)
                 
-                iq_signal = iq_signal_total[idx_noncoh*self.coh_integration*samples_per_code:(idx_noncoh+1)*self.coh_integration*samples_per_code]
-
                 # Coherent Integration
                 coh_sum = np.zeros((1, samples_per_code))
                 for idx_coh in range(0, self.coh_integration):
@@ -132,8 +128,6 @@ class Acquisition:
     def doSparseFFT(self, data_file:RFFile, prn, signal:GNSSSignal):
 
         
-
-
         return
 
 

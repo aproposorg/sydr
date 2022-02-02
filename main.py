@@ -13,4 +13,4 @@ analysis = Analysis()
 
 # Acquisition
 gnss.doAcquisition(prnlist)
-analysis.acquisition(gnss.acquisition_results, "acquisition_L1CA_2_1")
+analysis.acquisition(gnss.acquisition_results, "acquisition_L1CA")
