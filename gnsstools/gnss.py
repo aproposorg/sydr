@@ -24,21 +24,20 @@ class GNSS:
 
     def doAcquisition(self, prnlist):
         
-        self.acquisition_results = []
+        self.acquisition_results = {}
         for prn in tqdm(prnlist, desc="Acquisition progress"):
             acquisition = Acquisition(self.configfile, prn, self.signal)
             acquisition.acquire(self.data_file)
-            self.acquisition_results.append(acquisition)
-
+            self.acquisition_results[prn] = acquisition
         return
 
     def doTracking(self, prnlist, ms):
 
-        self.tracking_results= []
+        self.tracking_results= {}
         for prn in tqdm(prnlist, desc="Tracking progress"):
-            tracking = Tracking(self.configfile, self.acquisition_results[0])
+            tracking = Tracking(self.configfile, self.acquisition_results[prn])
             tracking.track(self.data_file, ms)
-            self.tracking_results.append(tracking)
+            self.tracking_results[prn] = tracking
 
         return
 

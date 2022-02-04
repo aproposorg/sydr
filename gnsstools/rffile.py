@@ -78,6 +78,7 @@ class RFFile:
         if self.is_complex:
             chunck = int(2 * nb_values)
             offset = int(np.dtype(self.data_type).itemsize * skip * 2)
+            #offset = np.dtype(self.data_type).itemsize * skip
         else:
             chunck = nb_values
             offset = int(np.dtype(self.data_type).itemsize * skip)
@@ -101,3 +102,13 @@ class RFFile:
             data           = data_real+ 1j * data_imaginary
 
         return data
+
+    def closeFile(self):
+        if self.file_id is not None:
+            self.file_id.close()
+            self.file_id = None
+        else:
+            raise Warning("File was already close.")
+        
+
+        return

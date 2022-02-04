@@ -30,6 +30,19 @@ class Tracking:
         self.signal      = self.acquisition.signal
         self.init_freq   = self.acquisition.coarseFreq
         self.init_code   = self.acquisition.coarseCode
+
+        self.codeFrequency    = []
+        self.carrierFrequency = []
+        self.codeError        = []
+        self.codeNCO          = []
+        self.carrierError     = []
+        self.carrierNCO       = []
+        self.iEarly  = []
+        self.qEarly  = []
+        self.iPrompt = []
+        self.qPrompt = []
+        self.iLate   = []
+        self.qLate   = []   
         
         # Initialise
         self.dllTau1, self.dllTau2 = self.getLoopCoefficients(self.dllNoiseBandwidth, \
@@ -71,7 +84,8 @@ class Tracking:
         Track signal based on acquisition results. Largely inspired by [Borre, 2017]
         and the Python implementation from perrysou (Github).
         """
-        
+        self.msProcessed = ms_to_process
+
         # Generate CA
         caCode = self.signal.getCode(self.prn) # Could be stored in acquisition
 
@@ -79,8 +93,6 @@ class Tracking:
         caCode = np.r_[caCode[-1], caCode, caCode[0]]
 
         # Initialize
-        codeFrequencyList    = []
-        carrierFrequencyList = []
         carrierFrequency = self.init_freq
         codeFrequency    = self.signal.code_freq
         remCarrierPhase  = 0.0 # Keep the remaining part of the carrier phase for next iteration
@@ -98,7 +110,9 @@ class Tracking:
             chunck = int(np.ceil((self.signal.code_bit - remCodePhase) / codePhaseStep))
             
             if code_counter == 0:
-                rawSignal = signal_file.readFileByValues(nb_values=chunck, skip=self.init_code+1, keep_open=True)
+                skip = self.init_code+1
+                #skip = 11628
+                rawSignal = signal_file.readFileByValues(nb_values=chunck, skip=skip, keep_open=True)
             else:
                 rawSignal = signal_file.readFileByValues(nb_values=chunck, keep_open=True)
 
@@ -139,11 +153,16 @@ class Tracking:
             # We use (chunck+1) and not (chunck) because we want one more to
             # estimate the remaining of the carrier phase
             time = np.arange(0, chunck+1) / signal_file.samp_freq
-            temp = carrierFrequency * 2.0 * np.pi * time + remCarrierPhase
+            #temp = carrierFrequency * 2.0 * np.pi * time + remCarrierPhase
+            temp = -(carrierFrequency * 2.0 * np.pi * time) + remCarrierPhase
 
             remCarrierPhase = temp[chunck] % (2 * np.pi)
-            iSignal = np.sin(temp[:chunck]) * rawSignal # In-phase
-            qSignal = np.cos(temp[:chunck]) * rawSignal # Quadraphase
+            
+            carrierSignal = np.exp(1j * temp[:chunck]) * rawSignal
+            iSignal = np.real(carrierSignal)
+            qSignal = np.imag(carrierSignal)
+            #iSignal = np.sin(temp[:chunck]) * rawSignal # In-phase
+            #qSignal = np.cos(temp[:chunck]) * rawSignal # Quadraphase
 
             # -----------------------------------------------------------------
             # Correlators update
@@ -184,7 +203,19 @@ class Tracking:
             # TODO
 
             # Save variables
-            codeFrequencyList.append(codeFrequency)
-            carrierFrequencyList.append(carrierFrequency)
+            self.codeFrequency.append(codeFrequency)
+            self.carrierFrequency.append(carrierFrequency)
+            self.codeError.append(codeError)
+            self.codeNCO.append(codeNCO)
+            self.carrierError.append(carrierError)
+            self.carrierNCO .append(carrierNCO)
+            self.iEarly.append(iEarly)
+            self.qEarly.append(qEarly)
+            self.iPrompt.append(iPrompt)
+            self.qPrompt.append(qPrompt)
+            self.iLate.append(iLate)
+            self.qLate.append(qLate)
+
+        signal_file.closeFile()
 
         return
