@@ -54,7 +54,7 @@ class Acquisition:
 
         # Load data
         time_to_read = self.coh_integration * self.noncoh_integration
-        data = data_file.readFile(time_to_read)
+        data = data_file.readFileByTime(time_to_read)
 
         # Data for carrier generation
         phasePoints = np.array(range(self.coh_integration*samples_per_code)) * 2 * np.pi * ts
@@ -102,8 +102,10 @@ class Acquisition:
         ## Find first correlation peak
         peak_1 = np.amax(acq_corr)
         idx = np.where(acq_corr == peak_1)
-        coarse_freq = freq_bins[int(idx[0])]
-        coarse_code = int(idx[1]) * self.signal.code_bit / np.size(acq_corr, axis=1)
+        coarse_freq      = self.inter_freq - freq_bins[int(idx[0])]
+        coarse_doppler   = - freq_bins[int(idx[0])]
+        coarse_code      = int(np.round(idx[1]))
+        coarse_code_norm = coarse_code * self.signal.code_bit / np.size(acq_corr, axis=1)
 
         ## Find second correlation peak
         exclude = list((int(idx[1] - samples_per_code_chip), int(idx[1] + samples_per_code_chip)))
@@ -118,16 +120,18 @@ class Acquisition:
         acq_metric = peak_1 / peak_2
         
         # Save results
-        self.correlation_map = np.squeeze(acq_corr)
-        self.acq_metric      = acq_metric
-        self.coarse_freq     = coarse_freq       
-        self.coarse_code     = coarse_code
+        self.correlationMap = np.squeeze(acq_corr)
+        self.acqMetric      = acq_metric
+        self.coarseFreq     = coarse_freq 
+        self.coarseDoppler  = coarse_doppler
+        self.coarseCode     = coarse_code
+        self.coarseCodeNorm = coarse_code_norm
 
         return 0
     
     def doSparseFFT(self, data_file:RFFile, prn, signal:GNSSSignal):
 
-        
+
         return
 
 

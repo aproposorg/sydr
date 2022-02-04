@@ -3,6 +3,7 @@ from tqdm import tqdm
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.acquisition import Acquisition
 from gnsstools.rffile import RFFile
+from gnsstools.tracking import Tracking
 
 class GNSS:
     def __init__(self, configfile):
@@ -28,7 +29,16 @@ class GNSS:
             acquisition = Acquisition(self.configfile, prn, self.signal)
             acquisition.acquire(self.data_file)
             self.acquisition_results.append(acquisition)
-            
+
+        return
+
+    def doTracking(self, prnlist, ms):
+
+        self.tracking_results= []
+        for prn in tqdm(prnlist, desc="Tracking progress"):
+            tracking = Tracking(self.configfile, self.acquisition_results[0])
+            tracking.track(self.data_file, ms)
+            self.tracking_results.append(tracking)
 
         return
 

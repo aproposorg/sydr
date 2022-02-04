@@ -16,7 +16,7 @@ class Analysis:
 
         return
 
-    def acquisition(self, acq_list, out_filename):
+    def acquisition(self, acq_list, out_filename, corr_maps_enabled=False):
         NB_COLS = 2
 
         # Make subplot grid
@@ -27,15 +27,19 @@ class Analysis:
         # Get subplots title and other stuff
         titles      = [" ", "Acquisition metric"]
         names       = []
-        acq_metric  = []
-        coarse_freq = []
-        coarse_code = []
+        acqMetric  = []
+        coarseFreq = []
+        coarseDoppler = []
+        coarseCode = []
+        coarseCodeNorm = []
         for acq in acq_list:
             titles.append(f"G{acq.prn} ({acq.signal.name})")
             names.append(f"G{acq.prn} ({acq.signal.name})")
-            acq_metric.append(f"{acq.acq_metric:>6.2f}")
-            coarse_freq.append(f"{acq.coarse_freq:>8.2f}")    
-            coarse_code.append(f"{acq.coarse_code:>8.2f}")
+            acqMetric.append(f"{acq.acqMetric:>6.2f}")
+            coarseFreq.append(f"{acq.coarseFreq:>8.2f}")    
+            coarseDoppler.append(f"{acq.coarseDoppler:>8.2f}")   
+            coarseCode.append(f"{acq.coarseCode:>8.2f}")
+            coarseCodeNorm.append(f"{acq.coarseCodeNorm:>8.2f}")
         
         # Make de subplot
         fig = make_subplots(2, 1,\
@@ -48,33 +52,35 @@ class Analysis:
         # Results table
         fig.add_trace(go.Table(
             header=dict(
-                    values=["PRN", "Metric", "Doppler", "Code phase"],
+                    values=["PRN", "Metric", "Frequency [Hz]", "Doppler [Hz]", "Code phase", "Code phase (normalised)"],
                     font=dict(size=12),
                     align="left"
             ),
             cells=dict(
-                values=[names, acq_metric, coarse_freq, coarse_code],
+                values=[names, acqMetric, coarseFreq, coarseDoppler, coarseCode, coarseCodeNorm],
                 align = "right")
             ),
             row=1, col=1)
         
         # Results bar chart
-        fig.add_trace(go.Bar(x=names, y=[float(i) for i in acq_metric]), row=2, col=1)
+        fig.add_trace(go.Bar(x=names, y=[float(i) for i in acqMetric]), row=2, col=1)
         
-        # Loop for correlation results
-        i = 0
-        for acq in acq_list:
-            # Plotting
-            x = np.linspace(0, acq.signal.code_bit, np.size(acq.correlation_map, axis=1))
-            y = np.arange(-acq.doppler_range, acq.doppler_range, acq.doppler_steps)
-            z = acq.correlation_map
+        if corr_maps_enabled:
+            # Loop for correlation results
+            i = 0
+            for acq in acq_list:
+                # Plotting
+                x = np.linspace(0, acq.signal.code_bit, np.size(acq.correlationMap, axis=1))
+                y = np.arange(-acq.doppler_range, acq.doppler_range, acq.doppler_steps)
+                z = acq.correlationMap
 
-            fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
-            fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", autosize=False, \
-                width=1000, height=1000)  
-            fig_temp.write_html(f"./{self.output_folder}/Correlation/{out_filename}_G{acq.prn}.html")
+                fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
+                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", autosize=False, \
+                    width=1000, height=1000)  
+                fig_temp.write_html(f"./{self.output_folder}/Correlation/{out_filename}_G{acq.prn}.html")
+            
+            fig.write_html(f"./{self.output_folder}/{out_filename}.html")
         
-        fig.write_html(f"./{self.output_folder}/{out_filename}.html")
         return
 
 
