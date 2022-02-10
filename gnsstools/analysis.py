@@ -90,8 +90,7 @@ class Analysis:
                 z = acq.correlationMap
 
                 fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
-                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", autosize=False, \
-                    width=1000, height=1000)  
+                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})")
                 fig_temp.write_html(f"./{self.output_folder}/Correlation/acquisition_G{acq.prn}.html")
             
         
@@ -188,7 +187,7 @@ class Analysis:
             fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-            fig.update_layout(title=f"Correlation G{track.prn} ({track.signal.name})") 
+            fig.update_layout(title=f"Tracking G{track.prn} ({track.signal.name})") 
 
             fig.write_html(f"./{self.output_folder}/tracking_{track.prn}.html")
         

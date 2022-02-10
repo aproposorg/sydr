@@ -154,13 +154,13 @@ class Tracking:
             # estimate the remaining of the carrier phase
             time = np.arange(0, chunck+1) / signal_file.samp_freq
             #temp = carrierFrequency * 2.0 * np.pi * time + remCarrierPhase
-            temp = -(carrierFrequency * 2.0 * np.pi * time) + remCarrierPhase
+            temp = (carrierFrequency * 2.0 * np.pi * time) + remCarrierPhase
 
             remCarrierPhase = temp[chunck] % (2 * np.pi)
             
             carrierSignal = np.exp(1j * temp[:chunck]) * rawSignal
-            iSignal = np.real(carrierSignal)
-            qSignal = np.imag(carrierSignal)
+            iSignal = np.imag(carrierSignal)
+            qSignal = np.real(carrierSignal)
             #iSignal = np.sin(temp[:chunck]) * rawSignal # In-phase
             #qSignal = np.cos(temp[:chunck]) * rawSignal # Quadraphase
 
@@ -215,6 +215,9 @@ class Tracking:
             self.qPrompt.append(qPrompt)
             self.iLate.append(iLate)
             self.qLate.append(qLate)
+
+        # TODO Should pre-allocate all the arrays and put this in numpy arrays right away
+        self.iPrompt = np.array(self.iPrompt)
 
         signal_file.closeFile()
 

@@ -14,22 +14,26 @@ def downsampler(filepath, output_path, input_dtype, output_dtype, bit_shift, fac
         while True:
             raw = np.fromfile(fin, input_dtype, count=chunck)
 
-            # Downconvert type
-            #data = np.array(list(map(lambda x: (x >> bit_shift) & 0xf, list(raw))))
-            data = np.array(list(map(lambda x: (x >> bit_shift), list(raw)))).astype(output_dtype)
-
             # Downsample
             if is_complex:        
-                data_real      = data[0::2]
+                data_real      = raw[0::2]
                 data_real      = data_real[::factor_ds]
-                data_imaginary = data[1::2]
+                data_imaginary = raw[1::2]
                 data_imaginary = data_imaginary[::factor_ds]
-                data_ds = np.empty((data_real.size + data_imaginary.size), dtype=output_dtype)
-                data_ds[0::2]  = data_real
-                data_ds[1::2]  = data_imaginary
+                
+                # Downconvert
+                data_real = np.array(list(map(lambda x: (x >> bit_shift), list(data_real)))).astype(output_dtype)
+                data_imaginary = np.array(list(map(lambda x: (x >> bit_shift), list(data_imaginary)))).astype(output_dtype)
+                
+                data_out = np.empty((data_real.size + data_imaginary.size), dtype=output_dtype)
+                data_out[0::2]  = data_real
+                data_out[1::2]  = data_imaginary
             else:
-                data = data[::factor_ds]
-            data_ds.tofile(out_file)
+                data_ds = raw[::factor_ds]
+                data_out = np.array(list(map(lambda x: (x >> bit_shift), list(data_ds)))).astype(output_dtype)
+            
+            # Writting to file
+            data_out.tofile(out_file)
 
             total_chunck += chunck
             sys.stdout.write("\r%d%%" % (total_chunck*np.dtype(input_dtype).itemsize/total_size*100))
@@ -70,7 +74,6 @@ if __name__ == '__main__':
     # downsampler(filepath, './_results/Novatel_20211130_resampled_10MHz_2bit_IQ_gain25.bin',\
     #     input_dtype, output_dtype, bit_shift=14, factor_ds=4, is_complex=True)
 
-    # # 40 -> 10MHz, 16 -> 1 bits
-    # print("\nConverting file to 10MHz, 2 bits")
-    # downsampler(filepath, './_results/Novatel_20211130_resampled_10MHz_1bit_IQ_gain25.bin',\
-    #     input_dtype, output_dtype, bit_shift=15, factor_ds=4, is_complex=True)
+    print("\nConverting file to 5MHz, 2 bits")
+    downsampler(filepath, './_results/Novatel_20211130_resampled_5MHz_4bit_IQ_gain25.bin',\
+        input_dtype, output_dtype, bit_shift=12, factor_ds=8, is_complex=True)

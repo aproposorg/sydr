@@ -1,5 +1,6 @@
 import configparser
 from tqdm import tqdm
+from gnsstools.ephemeris import Ephemeris
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.acquisition import Acquisition
 from gnsstools.rffile import RFFile
@@ -39,5 +40,15 @@ class GNSS:
             tracking.track(self.data_file, ms)
             self.tracking_results[prn] = tracking
 
+        return
+
+    def doDecoding(self, prnlist):
+        
+        self.decoding_results = {}
+        for prn in tqdm(prnlist, desc="Decoding progress"):
+            ephemeris = Ephemeris(self.tracking_results[prn])
+            ephemeris.fromRawNavigationMessage()
+            self.decoding_results[prn] = ephemeris
+        
         return
 

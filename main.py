@@ -5,17 +5,20 @@ import gnsstools.ca as ca
 from gnsstools.rffile import RFFile
 
 
-# ## Main program
+# Main program
 configfile = './config/default_config.ini'
-prnlist = [2,3,4,6,9,11,29,31]
+prnlist = [9]
 
 gnss = GNSS(configfile)
 analysis = Analysis()
 
-# # Acquisition
+# Acquisition
 gnss.doAcquisition(prnlist)
-analysis.acquisition(gnss.acquisition_results, corrMapsEnabled=False)
+analysis.acquisition(gnss.acquisition_results, corrMapsEnabled=True)
 
-## Tracking
-gnss.doTracking(prnlist, 60000)
+# Tracking
+gnss.doTracking(prnlist, 36000)
 analysis.tracking(gnss.tracking_results)
+
+# Data decoding
+gnss.doDecoding(prnlist)
