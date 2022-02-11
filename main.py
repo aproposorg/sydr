@@ -1,9 +1,6 @@
-import numpy as np
+
 from gnsstools.gnss import GNSS
 from gnsstools.analysis import Analysis
-import gnsstools.ca as ca
-from gnsstools.rffile import RFFile
-
 
 # Main program
 configfile = './config/default_config.ini'
@@ -14,7 +11,7 @@ analysis = Analysis()
 
 # Acquisition
 gnss.doAcquisition(prnlist)
-analysis.acquisition(gnss.acquisition_results, corrMapsEnabled=True)
+analysis.acquisition(gnss.acquisition_results, corrMapsEnabled=False)
 
 # Tracking
 gnss.doTracking(prnlist, 36000)
