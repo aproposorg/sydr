@@ -11,6 +11,8 @@ class Tracking:
     def __init__(self, configfile, acquisition:Acquisition):
         config = configparser.ConfigParser()
         config.read(configfile)
+
+        self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
         
         self.pdiCode    = config.getfloat('TRACKING', 'pdi_code')
         self.pdiCarrier = config.getfloat('TRACKING', 'pdi_carrier')
@@ -31,6 +33,7 @@ class Tracking:
         self.init_freq   = self.acquisition.coarseFreq
         self.init_code   = self.acquisition.coarseCode
 
+        self.absoluteSample   = []
         self.codeFrequency    = []
         self.carrierFrequency = []
         self.codeError        = []
@@ -79,12 +82,11 @@ class Tracking:
 
         return tau1, tau2
 
-    def track(self, signal_file:RFFile, ms_to_process):
+    def track(self, signal_file:RFFile):
         """
         Track signal based on acquisition results. Largely inspired by [Borre, 2017]
         and the Python implementation from perrysou (Github).
         """
-        self.msProcessed = ms_to_process
 
         # Generate CA
         caCode = self.signal.getCode(self.prn) # Could be stored in acquisition
@@ -103,15 +105,14 @@ class Tracking:
         oldCarrierError  = 0.0
 
         # Start tracking
-        for code_counter in range(ms_to_process):
+        for code_counter in range(self.msToProcess):
             # -----------------------------------------------------------------
             # Read signal from file
             codePhaseStep = codeFrequency / signal_file.samp_freq
             chunck = int(np.ceil((self.signal.code_bit - remCodePhase) / codePhaseStep))
             
             if code_counter == 0:
-                skip = self.init_code+1
-                #skip = 11628
+                skip = self.init_code + 1
                 rawSignal = signal_file.readFileByValues(nb_values=chunck, skip=skip, keep_open=True)
             else:
                 rawSignal = signal_file.readFileByValues(nb_values=chunck, keep_open=True)
@@ -203,6 +204,7 @@ class Tracking:
             # TODO
 
             # Save variables
+            self.absoluteSample.append(signal_file.getCurrentSampleIndex())
             self.codeFrequency.append(codeFrequency)
             self.carrierFrequency.append(carrierFrequency)
             self.codeError.append(codeError)

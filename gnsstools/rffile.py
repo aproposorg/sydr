@@ -112,3 +112,13 @@ class RFFile:
         
 
         return
+
+    def getCurrentSampleIndex(self):
+        if not self.file_id is None:
+            if self.is_complex:
+                return int(self.file_id.tell() / 2)
+            else:
+                return int(self.file_id.tell())
+        else:
+            raise Warning("Signal file not open, cannot return current cursor position.")
+            return -1

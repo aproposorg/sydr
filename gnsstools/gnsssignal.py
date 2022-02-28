@@ -29,7 +29,7 @@ class GNSSSignal:
         tc = 1/self.code_freq # C/A code period
         
         # Number of points per code 
-        samples_per_code = round(samp_freq / (self.code_freq / self.code_bit))
+        samples_per_code = self.getSamplesPerCode(samp_freq)
         
         # Index with the sampling frequencies
         idx = np.trunc(ts * np.array(range(samples_per_code)) / tc).astype(int)
@@ -38,3 +38,6 @@ class GNSSSignal:
         code_upsampled = code[idx]
 
         return code_upsampled
+
+    def getSamplesPerCode(self, samplingFrequency):
+        return round(samplingFrequency / (self.code_freq / self.code_bit))

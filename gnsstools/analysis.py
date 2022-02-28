@@ -1,16 +1,9 @@
-from itertools import accumulate
-from blinker import signal
-from matplotlib.pyplot import title
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly
 import numpy as np
-# import matplotlib.pyplot as plt
-# from mpl_toolkits.mplot3d import Axes3D 
-# from matplotlib import cm
-import math
-from gnsstools.acquisition import Acquisition
-from gnsstools.tracking import Tracking
+from gnsstools.navigation import Navigation
+import pymap3d as pm
 
 class Analysis:
     def __init__(self):
@@ -19,15 +12,15 @@ class Analysis:
 
         return
 
-    def acquisition(self, acquisitionList, corrMapsEnabled=False):
+    def acquisition(self, satelliteDict, corrMapsEnabled=False):
         """
         Parse and analyse result from the acquisition process. Graphs are created
         using Plotly and saved to the output folder. 
 
         Inputs:
         -------
-        acquisitionList : List(Acquisition)
-            List of Acquisition object.
+        satelliteDict : Dict()
+            Dictionnary of results.
         corrMapsEnabled : Boolean
             Enable plotting and saving of correlation maps for each satellites.
 
@@ -46,7 +39,8 @@ class Analysis:
         coarseDoppler = []
         coarseCode = []
         coarseCodeNorm = []
-        for prn, acq in acquisitionList.items():
+        for prn, results in satelliteDict.items():
+            acq = results.getAcquisition()
             titles.append(f"G{acq.prn} ({acq.signal.name})")
             names.append(f"G{acq.prn} ({acq.signal.name})")
             acqMetric.append(f"{acq.acqMetric:>6.2f}")
@@ -83,8 +77,8 @@ class Analysis:
         if corrMapsEnabled:
             # Loop for correlation results
             i = 0
-            for prn, acq in acquisitionList.items():
-                # Plotting
+            for prn, results in satelliteDict.items():
+                acq = results.getAcquisition()
                 x = np.linspace(0, acq.signal.code_bit, np.size(acq.correlationMap, axis=1))
                 y = np.arange(-acq.doppler_range, acq.doppler_range, acq.doppler_steps)
                 z = acq.correlationMap
@@ -97,7 +91,7 @@ class Analysis:
         
         return
 
-    def tracking(self, trackingList):
+    def tracking(self, satelliteDict):
         # Make subplot grid
         specs = [[{'type': 'xy'}, None],
                  [{'type': 'xy'}, {'type': 'xy'}], 
@@ -111,7 +105,8 @@ class Analysis:
                   "In-phase (I) Prompt", 
                   "Quadraphase (Q) Prompt"]
         
-        for prn, track in trackingList.items():
+        for prn, results in satelliteDict.items():
+            track = results.getTracking()
             fig = make_subplots(5, 2,\
                 start_cell="top-left",
                 specs=specs, 
@@ -119,7 +114,7 @@ class Analysis:
                 vertical_spacing=0.1, 
                 horizontal_spacing = 0.1)
 
-            time = np.arange(0, track.msProcessed/1e3, 1e-3)
+            time = np.arange(0, len(track.iPrompt)/1e3, 1e-3)
 
             colors = plotly.colors.DEFAULT_PLOTLY_COLORS
             
@@ -188,12 +183,106 @@ class Analysis:
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
 
             fig.update_layout(title=f"Tracking G{track.prn} ({track.signal.name})") 
-
             fig.write_html(f"./{self.output_folder}/tracking_{track.prn}.html")
         
 
         return
 
+    def navigation(self, navigationResults:Navigation):
 
-if __name__ == '__main__':
-    print("hello")
+        specs = [[{'type': 'mapbox'}, {'type': 'xy'}],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None]]
+
+        titles = ["Map", "North/East",
+                  "North [m]",
+                  "East [m]",
+                  "Up [m]",
+                  "Recevier Clock error [m]"]
+        
+        recpos = np.array(navigationResults.receiverPosition)
+        recclk = np.array(navigationResults.receiverClockError)
+        refpos = np.array(navigationResults.referenceReceiverPosition)
+        
+        # Convert to ENU
+        enu = []
+        llh = []
+        for coord in recpos:
+            enu.append(pm.ecef2enu(coord[0], coord[1], coord[2], refpos[0], refpos[1], refpos[2]))
+            llh.append(pm.ecef2geodetic(coord[0], coord[1], coord[2], ell=None, deg=True))
+        enu = np.array(enu)
+        llh = np.array(llh)
+
+        time = np.linspace(0, navigationResults.msToProcess/1e3, len(recpos))
+
+        fig = make_subplots(5, 2,\
+                start_cell="top-left",
+                specs=specs, 
+                subplot_titles=titles,
+                vertical_spacing=0.1, 
+                horizontal_spacing = 0.1)
+
+        # Map box
+        figpos = (1,1)
+        fig.add_trace(go.Scattermapbox(lat=llh[:,0], lon=llh[:,1], mode='markers'), \
+            row=figpos[0], col=figpos[1])
+        
+        
+        fig.update_layout(
+            margin ={'l':0,'t':0,'b':0,'r':0},
+            mapbox = {
+                'center': {'lon': refpos[1], 'lat': refpos[0]},
+                'style': "open-street-map",
+                'zoom': 13})
+
+        # North/East view
+        figpos = (1,2)
+        fig.add_trace(go.Scatter(x=enu[:,0], y=enu[:,1], mode="markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="East [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="North [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray', scaleanchor="x", scaleratio=1)
+
+        # East
+        figpos = (2,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,0], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="East [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        # North
+        figpos = (3,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,1], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="North [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        # Up
+        figpos = (4,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,2], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Up [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        # Receiver time error
+        figpos = (5,1)
+        fig.add_trace(go.Scatter(x=time, y=recclk, mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Up [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        fig.update_layout(title=f"Navigation solution") 
+        fig.write_html(f"./{self.output_folder}/navigation.html")
+
+        return

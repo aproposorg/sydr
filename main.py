@@ -4,18 +4,24 @@ from gnsstools.analysis import Analysis
 
 # Main program
 configfile = './config/default_config.ini'
-prnlist = [9]
+prnlist = [2,3,4,6,9,11]
+#prnlist = [9, 15, 18, 21, 22]
 
-gnss = GNSS(configfile)
-analysis = Analysis()
+gnss = GNSS(configfile, prnlist)
+analysis = Analysis() 
 
 # Acquisition
-gnss.doAcquisition(prnlist)
-analysis.acquisition(gnss.acquisition_results, corrMapsEnabled=False)
+gnss.doAcquisition()
+analysis.acquisition(gnss.satelliteDict, corrMapsEnabled=False)
 
 # Tracking
-gnss.doTracking(prnlist, 36000)
-analysis.tracking(gnss.tracking_results)
+#gnss.doTracking(writeToFile="./_results/satellites_results.pkl")
+gnss.doTracking(loadFromFile="./_results/satellites_results.pkl")
+#analysis.tracking(gnss.satelliteDict)
 
 # Data decoding
-gnss.doDecoding(prnlist)
+gnss.doDecoding()
+
+# Navigation
+gnss.doNavigation()
+analysis.navigation(gnss.navigation)

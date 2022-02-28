@@ -74,6 +74,6 @@ if __name__ == '__main__':
     # downsampler(filepath, './_results/Novatel_20211130_resampled_10MHz_2bit_IQ_gain25.bin',\
     #     input_dtype, output_dtype, bit_shift=14, factor_ds=4, is_complex=True)
 
-    print("\nConverting file to 5MHz, 2 bits")
-    downsampler(filepath, './_results/Novatel_20211130_resampled_5MHz_4bit_IQ_gain25.bin',\
-        input_dtype, output_dtype, bit_shift=12, factor_ds=8, is_complex=True)
+    print("\nConverting file to 40MHz, 8 bits")
+    downsampler(filepath, './_results/Novatel_20211130_resampled_40MHz_8bit_IQ_gain25.bin',\
+        input_dtype, output_dtype, bit_shift=8, factor_ds=1, is_complex=True)
