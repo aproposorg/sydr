@@ -11,8 +11,8 @@ class Acquisition:
         config.read(configfile)
         
         # Read contents
-        self.samp_freq  = config.getfloat('DEFAULT', 'samp_freq')
-        self.inter_freq = config.getfloat('DEFAULT', 'inter_freq')
+        self.samp_freq  = config.getfloat('RF_FILE', 'samp_freq')
+        self.inter_freq = config.getfloat('RF_FILE', 'inter_freq')
 
         self.method             = config.get     ('ACQUISITION', 'method')
         self.doppler_range      = config.getfloat('ACQUISITION', 'doppler_range')

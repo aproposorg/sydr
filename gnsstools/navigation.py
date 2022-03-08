@@ -12,9 +12,9 @@ class Navigation:
         config.read(configfile)
     	
         self.configfile = configfile
-        self.samplingFrequency    = config.getfloat('DEFAULT', 'samp_freq')
         self.msToProcess          = config.getint  ('DEFAULT', 'ms_to_process')
         self.measurementFrequency = config.getint  ('DEFAULT', 'measurement_frequency')
+        self.samplingFrequency    = config.getfloat('RF_FILE', 'samp_freq')
         
         self.referenceReceiverPosition = np.array([
             config.getfloat('DEFAULT', 'receiver_position_lat'), \
@@ -49,6 +49,8 @@ class Navigation:
             satellitesPositions = []
             satellitesClocksCorrections = []
             for prn, satellite in satelliteDict.items():
+                if not satellite.decodingEnabled:
+                    continue
                 # Finding travel time
                 samplesPerCode = satellite.tracking.signal.getSamplesPerCode(self.samplingFrequency)
                 msOfSignal = int(satellite.decoding.firstSubFrame + timestep)
@@ -93,13 +95,18 @@ class Navigation:
         x = np.zeros(4)
         #x = np.array([2794767.59, 1236088.19, 5579632.92, 0])
 
-        for i in range(10):
+        for i in range(7):
             # Make matrices
             for idx in range(nbMeasurements):
-                p = np.sqrt((x[0] - satpos[idx, 0])**2 + (x[1] - satpos[idx, 1])**2 + (x[2] - satpos[idx, 2])**2)
-                travelTime = p / constants.SPEED_OF_LIGHT
-                _satpos = self.correctEarthRotation(travelTime, np.transpose(satpos[idx, :]))
+                if i == 0:
+                    _satpos = satpos[idx, :]
+                else:
+                    p = np.sqrt((x[0] - satpos[idx, 0])**2 + (x[1] - satpos[idx, 1])**2 + (x[2] - satpos[idx, 2])**2)
+                    travelTime = p / constants.SPEED_OF_LIGHT
+                    _satpos = self.correctEarthRotation(travelTime, np.transpose(satpos[idx, :]))
                 
+                p = np.sqrt((x[0] - satpos[idx, 0])**2 + (x[1] - satpos[idx, 1])**2 + (x[2] - satpos[idx, 2])**2)
+                #p = np.sqrt((x[0] - _satpos[0])**2 + (x[1] - _satpos[1])**2 + (x[2] - _satpos[2])**2)
                 A[idx, 0] = -(_satpos[0] - x[0]) / p
                 A[idx, 1] = -(_satpos[1] - x[1]) / p
                 A[idx, 2] = -(_satpos[2] - x[2]) / p

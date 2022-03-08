@@ -1,3 +1,4 @@
+from xmlrpc.client import Boolean
 import numpy as np
 
 from gnsstools.acquisition import Acquisition
@@ -44,9 +45,9 @@ class Satellite:
 
     # -------------------------------------------------------------------------
 
-    def setDecoding(self, decoding:Decoding):
+    def setDecoding(self, decoding:Decoding, isEnabled:Boolean):
         self.decoding = decoding
-        self.decodingEnabled = True
+        self.decodingEnabled = isEnabled
         return
     
     # =========================================================================

@@ -1,6 +1,5 @@
 import configparser
 import numpy as np
-import matplotlib.pyplot as plt
 
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rffile import RFFile

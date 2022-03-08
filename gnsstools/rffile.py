@@ -7,12 +7,12 @@ class RFFile:
         config = configparser.ConfigParser()
         config.read(configfile)
 
-        self.filepath  = config.get       ('DEFAULT', 'filepath')
-        self.samp_freq = config.getfloat  ('DEFAULT', 'samp_freq')
-        self.is_complex = config.getboolean('DEFAULT', 'iscomplex')
+        self.filepath  = config.get       ('RF_FILE', 'filepath')
+        self.samp_freq = config.getfloat  ('RF_FILE', 'samp_freq')
+        self.is_complex = config.getboolean('RF_FILE', 'iscomplex')
 
         # Find data type
-        data_size = config.getint  ('DEFAULT', 'data_size')
+        data_size = config.getint  ('RF_FILE', 'data_size')
         if data_size   == 8:
             self.data_type = np.int8
         elif data_size == 16:
