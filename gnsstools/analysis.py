@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import plotly
 import numpy as np
 from gnsstools.navigation import Navigation
+import gnsstools.constants as constants
 import pymap3d as pm
 
 class Analysis:
@@ -72,6 +73,7 @@ class Analysis:
         
         # Results bar chart
         fig.add_trace(go.Bar(x=names, y=[float(i) for i in acqMetric]), row=2, col=1)
+        fig.update_layout(title=f"Acquisition", showlegend=False)
         fig.write_html(f"./{self.output_folder}/acquisition.html")
         
         if corrMapsEnabled:
@@ -84,7 +86,7 @@ class Analysis:
                 z = acq.correlationMap
 
                 fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
-                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})")
+                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", showlegend=False)
                 fig_temp.write_html(f"./{self.output_folder}/Correlation/acquisition_G{acq.prn}.html")
             
         
@@ -182,7 +184,7 @@ class Analysis:
             fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-            fig.update_layout(title=f"Tracking G{track.prn} ({track.signal.name})") 
+            fig.update_layout(title=f"Tracking G{track.prn} ({track.signal.name})", showlegend=False) 
             fig.write_html(f"./{self.output_folder}/tracking_{track.prn}.html")
         
 
@@ -190,7 +192,8 @@ class Analysis:
 
     def navigation(self, navigationResults:Navigation):
 
-        specs = [[{'type': 'mapbox'}, {'type': 'xy'}],
+        specs = [[{'type': 'mapbox',"rowspan": 2}, {'type': 'xy',"rowspan": 2}],
+                 [None, None],
                  [{'type': 'xy',"colspan": 2}, None],
                  [{'type': 'xy',"colspan": 2}, None],
                  [{'type': 'xy',"colspan": 2}, None],
@@ -217,7 +220,7 @@ class Analysis:
 
         time = np.linspace(0, navigationResults.msToProcess/1e3, len(recpos))
 
-        fig = make_subplots(5, 2,\
+        fig = make_subplots(6, 2,\
                 start_cell="top-left",
                 specs=specs, 
                 subplot_titles=titles,
@@ -247,7 +250,7 @@ class Analysis:
             showgrid=True, gridwidth=1, gridcolor='LightGray', scaleanchor="x", scaleratio=1)
 
         # East
-        figpos = (2,1)
+        figpos = (3,1)
         fig.add_trace(go.Scatter(x=time, y=enu[:,0], mode="lines+markers",
                                 line=dict(width=2)), row=figpos[0], col=figpos[1])
         fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
@@ -256,7 +259,7 @@ class Analysis:
             showgrid=True, gridwidth=1, gridcolor='LightGray')
         
         # North
-        figpos = (3,1)
+        figpos = (4,1)
         fig.add_trace(go.Scatter(x=time, y=enu[:,1], mode="lines+markers",
                                 line=dict(width=2)), row=figpos[0], col=figpos[1])
         fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
@@ -265,7 +268,7 @@ class Analysis:
             showgrid=True, gridwidth=1, gridcolor='LightGray')
         
         # Up
-        figpos = (4,1)
+        figpos = (5,1)
         fig.add_trace(go.Scatter(x=time, y=enu[:,2], mode="lines+markers",
                                 line=dict(width=2)), row=figpos[0], col=figpos[1])
         fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
@@ -274,15 +277,106 @@ class Analysis:
             showgrid=True, gridwidth=1, gridcolor='LightGray')
 
         # Receiver time error
-        figpos = (5,1)
-        fig.add_trace(go.Scatter(x=time, y=recclk, mode="lines+markers",
+        figpos = (6,1)
+        fig.add_trace(go.Scatter(x=time, y=recclk/constants.SPEED_OF_LIGHT, mode="lines+markers",
                                 line=dict(width=2)), row=figpos[0], col=figpos[1])
         fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
             showgrid=True, gridwidth=1, gridcolor='LightGray')
-        fig.update_yaxes(title_text="Up [m]", row=figpos[0], col=figpos[1], \
+        fig.update_yaxes(title_text="Error [s]", row=figpos[0], col=figpos[1], \
             showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-        fig.update_layout(title=f"Navigation solution") 
+        fig.update_layout(title=f"Navigation solution", margin=dict(l=50,r=50,b=100,t=100,pad=4),showlegend=False) 
         fig.write_html(f"./{self.output_folder}/navigation.html")
 
+        return
+
+    def navComputations(self, navigationResults:Navigation):
+
+        return
+
+    def measurements(self, satelliteDict):
+        specs = [[{'type': 'table', "colspan": 2}, None],
+                 [{'type': 'xy'}, {'type': 'xy'}], 
+                 [{'type': 'xy'}, {'type': 'xy'}]]
+
+        titles = ["Table of measurements", 
+                  "Pseudorange", "Pseudorange noise",
+                  "Doppler", "Doppler noise"]
+        
+        for prn, results in satelliteDict.items():
+            
+            n = len(results.pseudoranges)
+            time = np.array(results.measurementsTOW) - results.measurementsTOW[0]
+
+            fig = make_subplots(3, 2,\
+                start_cell="top-left",
+                specs=specs, 
+                subplot_titles=titles,
+                vertical_spacing=0.1, 
+                horizontal_spacing = 0.1)
+
+            colors = plotly.colors.DEFAULT_PLOTLY_COLORS
+            
+            # Measurement table
+            pos = (1,1)
+            fig.add_trace(go.Table(
+            header=dict(
+                    values=["Time [s]", "TOW [s]", "Pseudorange [m]", "Doppler [Hz]", "Carrier phase [Cycle]", "C/N0"],
+                    font=dict(size=12),
+                    align="left"
+            ),
+            cells=dict(
+                values=[time, results.measurementsTOW, results.pseudoranges, results.doppler, np.zeros(n), np.zeros(n)],
+                align = "right", format=(".1f", ".1f", "8.3f", "8.3f", "8.3f", "8.3f"))
+            ),
+            row=pos[0], col=pos[1])
+
+            # Pseudorange
+            pos = (2,1)
+            fig.add_trace(go.Scatter(x=time, y=results.pseudoranges,
+                                     line=dict(width=2, color=colors[0])),
+                            row=pos[0], col=pos[1])
+            fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="none")
+            fig.update_yaxes(title_text="Range [m]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="e")
+
+            # Pseudorange error
+            pos = (2,2)
+            diff = np.array([results.pseudoranges[i] - results.pseudoranges[i-1] for i in range(1,n)])
+            error = np.array([diff[i] - diff[i-1] for i in range(1,len(diff))])
+            fig.add_trace(go.Scatter(x=time, y=error, 
+                                     line=dict(width=2, color=colors[0])),
+                            row=pos[0], col=pos[1])
+            fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="none")
+            fig.update_yaxes(title_text="Error [m]", range=(-50, 50), row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+            # Doppler 
+            pos = (3,1)
+            fig.add_trace(go.Scatter(x=time, y=results.doppler, 
+                                     line=dict(width=2, color=colors[1])),
+                            row=pos[0], col=pos[1])
+            fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="none")
+            fig.update_yaxes(title_text="Frequency shift [Hz]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="e")
+
+            # Doppler error
+            pos = (3,2)
+            #diff = np.array([results.doppler[i] - results.doppler[i-1] for i in range(1,len(results.coarsePseudoranges))])
+            error = np.array([results.doppler[i] - results.doppler[i-1] for i in range(1,len(results.doppler))])
+            fig.add_trace(go.Scatter(x=time, y=error,
+                                     line=dict(width=2, color=colors[1])),
+                            row=pos[0], col=pos[1])
+            fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray', exponentformat="none")
+            fig.update_yaxes(title_text="Error [Hz]", range=(-10, 10), row=pos[0], col=pos[1], \
+                showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+            fig.update_layout(title=f"Measurements G{results.tracking.prn} ({results.tracking.signal.name})", showlegend=False) 
+            fig.write_html(f"./{self.output_folder}/measurements_{results.tracking.prn}.html")
+            
+            
         return

@@ -29,3 +29,11 @@ class Ephemeris:
         self.omegaDot   = np.NaN
         self.iDot       = np.NaN
         self.IODE_sf3   = np.NaN
+        self.alpha0     = np.NaN
+        # self.alpha1     = np.NaN
+        # self.alpha2     = np.NaN
+        # self.alpha3     = np.NaN
+        # self.beta0      = np.NaN
+        # self.beta1      = np.NaN
+        # self.beta2      = np.NaN
+        # self.beta3      = np.NaN

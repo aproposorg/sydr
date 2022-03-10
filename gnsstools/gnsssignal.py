@@ -10,9 +10,14 @@ class GNSSSignal:
         config.read(configfile)
         
         self.signal_type = signal_type
-        self.name      = config.get     (signal_type, 'NAME')
+        self.name = config.get     (signal_type, 'NAME')
+        
+        self.carrierFreq = config.getfloat(signal_type, 'CARRIER_FREQ')
+        
         self.code_bit  = config.getfloat(signal_type, 'CODE_BIT')
         self.code_freq = config.getfloat(signal_type, 'CODE_FREQ')
+
+        self.code_ms   = int(self.code_freq / self.code_bit / 1e3)
 
         return
 

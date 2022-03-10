@@ -1,7 +1,8 @@
 import numpy as np
 from gnsstools.ephemeris import Ephemeris
-
+import gnsstools.constants as constants
 from gnsstools.tracking import Tracking
+import gnsscal
 
 class Decoding:
 
@@ -81,12 +82,12 @@ class Decoding:
             ## Identify the subframe
             if subframeID == 1:
                 # It contains WN, SV clock corrections, health and accuracy
-                self.ephemeris.weekNumber = self.bin2dec(subframe[60:70]) + 1024
+                self.ephemeris.weekNumber = self.bin2dec(subframe[60:70]) + constants.GPS_WEEK_ROLLOVER * 1024
                 self.ephemeris.accuracy   = self.bin2dec(subframe[72:76])
                 self.ephemeris.health     = self.bin2dec(subframe[76:82])
-                self.ephemeris.IODC       = self.bin2dec(subframe[82:84] + subframe[196:204])
+                self.ephemeris.IODC       = self.bin2dec(subframe[82:84] + subframe[211:218])
                 self.ephemeris.t_oc       = self.bin2dec(subframe[218:234]) * 2 ** 4
-                self.ephemeris.T_GD       = self.twosComp2dec(subframe[195:204]) * 2 ** (- 31)
+                self.ephemeris.T_GD       = self.twosComp2dec(subframe[196:204]) * 2 ** (- 31)
                 self.ephemeris.a_f2       = self.twosComp2dec(subframe[240:248]) * 2 ** (- 55)
                 self.ephemeris.a_f1       = self.twosComp2dec(subframe[248:264]) * 2 ** (- 43)
                 self.ephemeris.a_f0       = self.twosComp2dec(subframe[270:292]) * 2 ** (- 31)
@@ -118,6 +119,14 @@ class Decoding:
                 # SV health (PRN: 25-32).
                 # Not decoded at the moment.
                 # TODO
+                # self.ephemeris.alpha0 = self.twosComp2dec(subframe[60:76]) * 2 ** (-30)
+                # self.ephemeris.alpha1 = self.twosComp2dec(subframe[60:76]) * 2 ** (-27) / constants.PI
+                # self.ephemeris.alpha2 = self.twosComp2dec(subframe[60:76]) * 2 ** (-24) / constants.PI**2
+                # self.ephemeris.alpha3 = self.twosComp2dec(subframe[60:76]) * 2 ** (-24) / constants.PI**3
+                # self.ephemeris.beta0  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 11)
+                # self.ephemeris.beta1  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 14) / constants.PI
+                # self.ephemeris.beta2  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 16) / constants.PI**2
+                # self.ephemeris.beta3  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 16) / constants.PI**3
                 pass
             elif 5 == subframeID:
                 # SV almanac and health (PRN: 1-24).
@@ -133,6 +142,10 @@ class Decoding:
         # Also the TOW written in the message is referred to very begining of the 
         # subframe, meaning the first bit of the preambule.
         self.TOW = self.bin2dec(subframe[30:47]) * 6 - 30
+
+        if self.TOW and self.ephemeris.weekNumber:
+            self.doy = gnsscal.gpswd2yrdoy(self.ephemeris.weekNumber, \
+                                           int(self.TOW / constants.SECONDS_PER_DAY))
 
         return
     

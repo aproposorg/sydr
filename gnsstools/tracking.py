@@ -1,3 +1,4 @@
+from asyncio import constants
 import configparser
 import numpy as np
 
@@ -39,12 +40,13 @@ class Tracking:
         self.codeNCO          = []
         self.carrierError     = []
         self.carrierNCO       = []
+        self.codePhase        = []   
         self.iEarly  = []
         self.qEarly  = []
         self.iPrompt = []
         self.qPrompt = []
         self.iLate   = []
-        self.qLate   = []   
+        self.qLate   = []
         
         # Initialise
         self.dllTau1, self.dllTau2 = self.getLoopCoefficients(self.dllNoiseBandwidth, \
@@ -146,7 +148,7 @@ class Tracking:
             promptCode = caCode[np.ceil(idx).astype(int)]
 
             # Update the remain code phase variable
-            remCodePhase = idx[chunck-1] + codePhaseStep - 1023.0
+            remCodePhase = idx[chunck-1] + codePhaseStep - self.signal.code_bit
 
             # -----------------------------------------------------------------
             # Generate carrier replica and mix to remove frequency shift
@@ -216,6 +218,7 @@ class Tracking:
             self.qPrompt.append(qPrompt)
             self.iLate.append(iLate)
             self.qLate.append(qLate)
+            self.codePhase.append(remCodePhase)
 
         # TODO Should pre-allocate all the arrays and put this in numpy arrays right away
         self.iPrompt = np.array(self.iPrompt)

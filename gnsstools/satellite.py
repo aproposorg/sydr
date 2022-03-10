@@ -12,11 +12,12 @@ class Satellite:
     def __init__(self):
         self.acquisitionEnabled = False
         self.trackingEnabled    = False
-        self.ephemerisEnabled   = False
         self.decodingEnabled    = False
 
         self.pseudoranges = []
         self.coarsePseudoranges = []
+        self.doppler = []
+        self.measurementsTOW  = []
 
         return
 
@@ -34,13 +35,6 @@ class Satellite:
     def setTracking(self, tracking:Tracking):
         self.tracking = tracking
         self.trackingEnabled = True
-        return
-    
-    # -------------------------------------------------------------------------
-
-    def setEphemeris(self, ephemeris:Ephemeris):
-        self.ephemeris = ephemeris
-        self.ephemerisEnabled = True
         return
 
     # -------------------------------------------------------------------------
@@ -87,7 +81,7 @@ class Satellite:
         dt = self.timeCheck(time - eph.t_oc)
 
         # Find the satellite clock correction and apply
-        satClkCorr = (eph.a_f2 * dt + eph.a_f1) * dt + eph.a_f0 - eph.T_GD
+        satClkCorr = (eph.a_f2 * dt + eph.a_f1) * dt + eph.a_f0
         time -= satClkCorr
 
         # Orbit computations
@@ -125,11 +119,14 @@ class Satellite:
         satellitePosition[1] = np.cos(u)*r*np.sin(Omega) + np.sin(u)*r*np.cos(i)*np.cos(Omega)
         satellitePosition[2] = np.sin(u)*r*np.sin(i)
 
-        satelliteClockCorrection = (eph.a_f2*dt + eph.a_f1)*dt + eph.a_f0 - eph.T_GD + dtr
+        satelliteClockCorrection = (eph.a_f2*dt + eph.a_f1)*dt + eph.a_f0 + dtr
 
         # TODO Satellite velocity
 
         return satellitePosition, satelliteClockCorrection
+
+    def getTGD(self):
+        return self.decoding.ephemeris.T_GD
     
     @staticmethod
     def timeCheck(time):
