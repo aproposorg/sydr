@@ -1,35 +1,43 @@
 import configparser
+from enum import Enum
 import numpy as np
 
 import gnsstools.ca as ca
 
+class SignalType(Enum):
+    GPS_L1_CA = 0
+
 class GNSSSignal:
-    def __init__(self, configfile, signal_type):
-        # Initialise from config file
+    def __init__(self, configfile, signalType:SignalType):
+
         config = configparser.ConfigParser()
         config.read(configfile)
         
-        self.signal_type = signal_type
-        self.name = config.get     (signal_type, 'NAME')
-        
-        self.carrierFreq = config.getfloat(signal_type, 'CARRIER_FREQ')
-        
-        self.code_bit  = config.getfloat(signal_type, 'CODE_BIT')
-        self.code_freq = config.getfloat(signal_type, 'CODE_FREQ')
+        self.signalType    = signalType
+        self.name          = config.get     ("DEFAULT", 'NAME')
+        self.carrierFreq   = config.getfloat("DEFAULT", 'CARRIER_FREQ')
+        self.codeBits      = config.getfloat("DEFAULT", 'CODE_BIT')
+        self.codeFrequency = config.getfloat("DEFAULT", 'CODE_FREQ')
 
         self.code_ms   = int(self.code_freq / self.code_bit / 1e3)
 
+        self.configFile = configfile
+
         return
 
-    def getCode(self, prn):
-        if self.signal_type == 'GPS_L1_CA':
-            prn_code = ca.code(prn, 0, 0, 1, self.code_bit)
+    def getCode(self, prn, samplingFrequency=None):
+        if self.signal_type == SignalType.GPS_L1_CA:
+            code = ca.code(prn, 0, 0, 1, self.code_bit)
         else:
-            raise ValueError(f"Signal type {self.signal_type} does not exist.")    
+            raise ValueError(f"Signal type {self.signal_type} does not exist.")
 
-        return prn_code
+        # Raise to samping frequency
+        if samplingFrequency:
+            code = self.getUpsampledCode(code, samplingFrequency)
 
-    def getUpsampledCode(self, samp_freq, code):
+        return code
+
+    def getUpsampledCode(self, code, samp_freq):
         ts = 1/samp_freq             # Sampling period
         tc = 1/self.code_freq # C/A code period
         

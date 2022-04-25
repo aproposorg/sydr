@@ -203,7 +203,7 @@ class Analysis:
                   "North [m]",
                   "East [m]",
                   "Up [m]",
-                  "Recevier Clock error [m]"]
+                  "Recevier clock bias [s]"]
         
         recpos = np.array(navigationResults.receiverPosition)
         recclk = np.array(navigationResults.receiverClockError)
@@ -238,7 +238,7 @@ class Analysis:
             mapbox = {
                 'center': {'lon': refpos[1], 'lat': refpos[0]},
                 'style': "open-street-map",
-                'zoom': 13})
+                'zoom': 15})
 
         # North/East view
         figpos = (1,2)
@@ -276,13 +276,13 @@ class Analysis:
         fig.update_yaxes(title_text="Up [m]", row=figpos[0], col=figpos[1], \
             showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-        # Receiver time error
+        # Receiver clock bias
         figpos = (6,1)
         fig.add_trace(go.Scatter(x=time, y=recclk/constants.SPEED_OF_LIGHT, mode="lines+markers",
                                 line=dict(width=2)), row=figpos[0], col=figpos[1])
         fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
             showgrid=True, gridwidth=1, gridcolor='LightGray')
-        fig.update_yaxes(title_text="Error [s]", row=figpos[0], col=figpos[1], \
+        fig.update_yaxes(title_text="Bias [s]", row=figpos[0], col=figpos[1], \
             showgrid=True, gridwidth=1, gridcolor='LightGray')
 
         fig.update_layout(title=f"Navigation solution", margin=dict(l=50,r=50,b=100,t=100,pad=4),showlegend=False) 

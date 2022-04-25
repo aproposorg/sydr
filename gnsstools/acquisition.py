@@ -1,8 +1,12 @@
+from abc import ABC, abstractmethod, abstractproperty
 import configparser
+from typing import overload
+from unittest import result
 import numpy as np
 
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rffile import RFFile
+from gnsstools.rfsignal import RFSignal
 
 class Acquisition:
     
@@ -135,4 +139,202 @@ class Acquisition:
         return
 
 
+class AcquisitionAbstract(ABC):
+
+    def __init__(self, rfConfig):
+        
+        # RF parameters
+        self.rfConfig           = rfConfig
+        self.samplingFrequency  = self.rfConfig.samplingFrequency
+        self.samplingPeriod     = 1 / self.rfConfig.samplingFrequency
+
+        # Results
+        self.estimatedDoppler     = np.nan
+        self.estimatedCode        = np.nan
+        self.acquisitionMetric    = np.nan
+        self.estimatedFrequency   = np.nan
+
+        self.isAcquired = False
+
+        return
+
+    # -------------------------------------------------------------------------
+    # ABSTRACT PROPERTIES
     
+    # -------------------------------------------------------------------------
+    # ACSTRACT METHODS
+
+    @abstractmethod
+    def acquire(self):
+        """
+        Public method to be called to perform the acquisition.
+        """
+        pass
+
+    def setSignal(self, signalConfig:GNSSSignal, svid):
+        """
+        Define parameters to acquire the wanted signal.
+        """
+        self.signalConfig       = signalConfig
+        self.samplesPerCode     = round(self.samplingFrequency / (signalConfig.code_freq / signalConfig.code_bit))
+        self.samplesPerCodeChip = round(signalConfig.samp_freq  / signalConfig.signal.code_freq)
+
+        return
+
+    def setSatellite(self, svid):
+        self.svid = svid
+        self.code = self.signalConfig.getCode(svid, self.samplingFrequency)   
+
+        return
+
+    def getEstimation(self):
+        return self.estimatedFrequency, self.estimatedCode
+
+    # -------------------------------------------------------------------------
+    # SEARCH METHODS
+
+    # -------------------------------------------------------------------------
+    # ACQUISITION METRICS METHODS
+
+    def twoCorrelationPeakComparison(self, correlationMap):
+        """ 
+        Perform analysis on correlation map, finding the the highest peak and 
+        comparing its correlation value to the one from the second highest 
+        peak.
+
+        Args:
+            correlationMap (numpy.array): 2D-array from correlation method.
+        
+        Returns:
+            estimatedDoppler (float): Estimated Doppler for the signal.
+            estimatedCode (float): Estimated code phase for the signal.
+            acquisitionMetric (float): Ratio between the highest and second highest peaks.
+        
+        Raises:
+            None
+
+        """
+        
+        # Find first correlation peak
+        peak_1 = np.amax(correlationMap)
+        idx = np.where(correlationMap == peak_1)
+        estimatedDoppler   = - self.frequencyBins[int(idx[0])]
+        estimatedCode      = int(np.round(idx[1]))
+
+        # Find second correlation peak
+        exclude = list((int(idx[1] - self.samplesPerCodeChip), int(idx[1] + self.samplesPerCodeChip)))
+
+        if exclude[0] < 1:
+            code_range = list(range(exclude[1], self.samplesPerCode - 1))
+        elif exclude[1] >= self.samplesPerCode:
+            code_range = list(range(0, exclude[0]))
+        else:
+            code_range = list(range(0, exclude[0])) + list(range(exclude[1], self.samplesPerCode - 1))
+        peak_2 = np.amax(correlationMap[idx[0], code_range])
+        
+        acquisitionMetric = peak_1 / peak_2
+
+        return estimatedDoppler, estimatedCode, acquisitionMetric
+
+# =============================================================================
+class Acquisition_PCPS(AcquisitionAbstract):
+
+    def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
+        super().__init__(rfConfig)
+        self.setSignal(signalConfig)
+
+        # Load parameters
+        config = configparser.ConfigParser()
+        config.read(signalConfig.configFile)
+
+        self.name               = 'PCPS'
+        self.doppler_range      = config.getfloat('ACQUISITION', 'doppler_range')
+        self.doppler_steps      = config.getfloat('ACQUISITION', 'doppler_steps')
+        self.coh_integration    = config.getint  ('ACQUISITION', 'coh_integration')
+        self.noncoh_integration = config.getint  ('ACQUISITION', 'noncoh_integration')
+        self.metric_Threshold   = config.getfloat('ACQUISITION', 'metric_Threshold')
+
+        self.frequencyBins = np.arange(-self.signalConfig.doppler_range, \
+                                        self.signalConfig.doppler_range, \
+                                        self.signalConfig.doppler_steps)
+        
+        return
+    
+    def setSatellite(self, svid):
+        super().setSatellite(svid)
+        self.codeFFT = np.conj(np.fft.fft(self.code))
+        return
+
+    def run(self, rfData):
+
+        # Perform PCPS loop
+        correlationMap = self.PCPS(rfData)
+
+        # Analyse results
+        results = self.twoCorrelationPeakComparison(correlationMap)
+
+        self.estimatedDoppler     = results[0]
+        self.estimatedCode        = results[1]
+        self.acquisitionMetric    = results[2]
+        self.estimatedFrequency   = self.inter_freq - self.coarseDoppler
+
+        if self.acquisitionMetric > self.signalConfig.acquisitionThreshold:
+            self.isAcquired = True
+
+        return
+
+    def PCPS(self, rfData):
+        """
+        Implementation of the Parallel Code Phase Search (PCPS) method 
+        [Borre, 2007]. This method perform the correlation of the code in the 
+        frequency domain using FFTs. It produces a 2D correlation map over
+        the frequency and code dimensions.
+
+        Args:
+            data (numpy.array): Data sample to be used.
+
+        Returns:
+            correlationMap (numpy.array): 2D correlation results.
+
+        Raises:
+            None
+        """
+        phasePoints = np.array(range(self.coh_integration * self.samplesPerCode)) * 2 * np.pi * self.samplingPeriod
+        # Search loop
+        correlationMap = np.zeros((len(self.frequencyBins), self.samplesPerCode))
+        noncoh_sum  = np.zeros((1, self.samplesPerCode))
+        idx = 0
+        for freq in self.frequencyBins:
+            freq = self.inter_freq - freq
+
+            # Generate carrier replica
+            signal_carrier = np.exp(-1j * freq * phasePoints)
+
+            # Non-Coherent Integration 
+            noncoh_sum = np.zeros((1, self.samplesPerCode))
+            for idx_noncoh in range(0, self.noncoh_integration):
+                # Select only require part of the dataset
+                iq_signal = rfData[idx_noncoh*self.coh_integration*self.samplesPerCode:(idx_noncoh+1)*self.coh_integration*self.samplesPerCode]
+                # Mix with carrier
+                iq_signal = np.multiply(signal_carrier, iq_signal)
+                
+                # Coherent Integration
+                coh_sum = np.zeros((1, self.samplesPerCode))
+                for idx_coh in range(0, self.coh_integration):
+                    # Perform FFT
+                    iq_fft = np.fft.fft(iq_signal[idx_coh*self.samplesPerCode:(idx_coh+1)*self.samplesPerCode])
+
+                    # Correlation with C/A code
+                    iq_conv = np.multiply(iq_fft, self.codeFFT)
+
+                    # Inverse FFT (go back to time domain)
+                    coh_sum = coh_sum + np.fft.ifft(iq_conv)
+
+                # Absolute values
+                noncoh_sum = noncoh_sum + abs(coh_sum)
+            
+            correlationMap[idx, :] = abs(noncoh_sum)
+            idx += 1
+        correlationMap = np.squeeze(correlationMap)
+
+        return correlationMap
