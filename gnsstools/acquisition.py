@@ -15,8 +15,8 @@ class Acquisition:
         config.read(configfile)
         
         # Read contents
-        self.samp_freq  = config.getfloat('RF_FILE', 'samp_freq')
-        self.inter_freq = config.getfloat('RF_FILE', 'inter_freq')
+        self.samp_freq  = config.getfloat('RF_FILE', 'sampling_frequency')
+        self.inter_freq = config.getfloat('RF_FILE', 'intermediate_frequency')
 
         self.method             = config.get     ('ACQUISITION', 'method')
         self.doppler_range      = config.getfloat('ACQUISITION', 'doppler_range')
@@ -47,8 +47,8 @@ class Acquisition:
 
     def doPCPS(self, data_file:RFFile):
         ts = 1/self.samp_freq       # Sampling period
-        samples_per_code = round(self.samp_freq / (self.signal.code_freq / self.signal.code_bit))
-        samples_per_code_chip = round(self.samp_freq  / self.signal.code_freq)
+        samples_per_code = round(self.samp_freq / (self.signal.codeFrequency / self.signal.codeBits))
+        samples_per_code_chip = round(self.samp_freq  / self.signal.codeFrequency)
 
         prn_code = self.signal.getCode(self.prn)
         prn_code = self.signal.getUpsampledCode(self.samp_freq, prn_code)
@@ -165,19 +165,19 @@ class AcquisitionAbstract(ABC):
     # ACSTRACT METHODS
 
     @abstractmethod
-    def acquire(self):
+    def run(self):
         """
         Public method to be called to perform the acquisition.
         """
         pass
 
-    def setSignal(self, signalConfig:GNSSSignal, svid):
+    def setSignal(self, signalConfig:GNSSSignal, rfConfig:RFFile):
         """
         Define parameters to acquire the wanted signal.
         """
         self.signalConfig       = signalConfig
-        self.samplesPerCode     = round(self.samplingFrequency / (signalConfig.code_freq / signalConfig.code_bit))
-        self.samplesPerCodeChip = round(signalConfig.samp_freq  / signalConfig.signal.code_freq)
+        self.samplesPerCode     = round(self.samplingFrequency / (signalConfig.codeFrequency / signalConfig.codeBits))
+        self.samplesPerCodeChip = round(rfConfig.samplingFrequency / signalConfig.codeFrequency)
 
         return
 
@@ -218,7 +218,7 @@ class AcquisitionAbstract(ABC):
         # Find first correlation peak
         peak_1 = np.amax(correlationMap)
         idx = np.where(correlationMap == peak_1)
-        estimatedDoppler   = - self.frequencyBins[int(idx[0])]
+        estimatedDoppler   = -self.frequencyBins[int(idx[0])]
         estimatedCode      = int(np.round(idx[1]))
 
         # Find second correlation peak
@@ -241,22 +241,22 @@ class Acquisition_PCPS(AcquisitionAbstract):
 
     def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
         super().__init__(rfConfig)
-        self.setSignal(signalConfig)
+        self.setSignal(signalConfig, rfConfig)
 
         # Load parameters
         config = configparser.ConfigParser()
         config.read(signalConfig.configFile)
 
         self.name               = 'PCPS'
-        self.doppler_range      = config.getfloat('ACQUISITION', 'doppler_range')
-        self.doppler_steps      = config.getfloat('ACQUISITION', 'doppler_steps')
-        self.coh_integration    = config.getint  ('ACQUISITION', 'coh_integration')
-        self.noncoh_integration = config.getint  ('ACQUISITION', 'noncoh_integration')
-        self.metric_Threshold   = config.getfloat('ACQUISITION', 'metric_Threshold')
+        self.dopplerRange      = config.getfloat('ACQUISITION', 'doppler_range')
+        self.dopplerSteps      = config.getfloat('ACQUISITION', 'doppler_steps')
+        self.cohIntegration    = config.getint  ('ACQUISITION', 'coh_integration')
+        self.nonCohIntegration = config.getint  ('ACQUISITION', 'noncoh_integration')
+        self.metricThreshold   = config.getfloat('ACQUISITION','metric_threshold')
 
-        self.frequencyBins = np.arange(-self.signalConfig.doppler_range, \
-                                        self.signalConfig.doppler_range, \
-                                        self.signalConfig.doppler_steps)
+        self.frequencyBins = np.arange(-self.dopplerRange, \
+                                        self.dopplerRange, \
+                                        self.dopplerSteps)
         
         return
     
@@ -276,9 +276,9 @@ class Acquisition_PCPS(AcquisitionAbstract):
         self.estimatedDoppler     = results[0]
         self.estimatedCode        = results[1]
         self.acquisitionMetric    = results[2]
-        self.estimatedFrequency   = self.inter_freq - self.coarseDoppler
+        self.estimatedFrequency   = self.rfConfig.interFrequency + self.estimatedDoppler 
 
-        if self.acquisitionMetric > self.signalConfig.acquisitionThreshold:
+        if self.acquisitionMetric > self.metricThreshold:
             self.isAcquired = True
 
         return
@@ -299,28 +299,28 @@ class Acquisition_PCPS(AcquisitionAbstract):
         Raises:
             None
         """
-        phasePoints = np.array(range(self.coh_integration * self.samplesPerCode)) * 2 * np.pi * self.samplingPeriod
+        phasePoints = np.array(range(self.cohIntegration * self.samplesPerCode)) * 2 * np.pi * self.samplingPeriod
         # Search loop
         correlationMap = np.zeros((len(self.frequencyBins), self.samplesPerCode))
         noncoh_sum  = np.zeros((1, self.samplesPerCode))
         idx = 0
         for freq in self.frequencyBins:
-            freq = self.inter_freq - freq
+            freq = self.rfConfig.interFrequency - freq
 
             # Generate carrier replica
             signal_carrier = np.exp(-1j * freq * phasePoints)
 
             # Non-Coherent Integration 
             noncoh_sum = np.zeros((1, self.samplesPerCode))
-            for idx_noncoh in range(0, self.noncoh_integration):
+            for idx_noncoh in range(0, self.nonCohIntegration):
                 # Select only require part of the dataset
-                iq_signal = rfData[idx_noncoh*self.coh_integration*self.samplesPerCode:(idx_noncoh+1)*self.coh_integration*self.samplesPerCode]
+                iq_signal = rfData[idx_noncoh*self.cohIntegration*self.samplesPerCode:(idx_noncoh+1)*self.cohIntegration*self.samplesPerCode]
                 # Mix with carrier
                 iq_signal = np.multiply(signal_carrier, iq_signal)
                 
                 # Coherent Integration
                 coh_sum = np.zeros((1, self.samplesPerCode))
-                for idx_coh in range(0, self.coh_integration):
+                for idx_coh in range(0, self.cohIntegration):
                     # Perform FFT
                     iq_fft = np.fft.fft(iq_signal[idx_coh*self.samplesPerCode:(idx_coh+1)*self.samplesPerCode])
 

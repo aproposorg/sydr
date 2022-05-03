@@ -1,30 +1,18 @@
 
-from glob import glob
-import threading
-from gnsstools.channel import Channel
+from gnsstools.gnsssignal import GNSSSignal, SignalType
+from gnsstools.receiver import Receiver
+from gnsstools.rffile import RFFile
 
-NUMBER_MS = 100
+# Files 
+receiverConfigFile = './config/receiver.ini'
+rfConfigFile       = './config/rf.ini'
 
-# Number of channel
-NB_CHANNELS = 2
+rffile = RFFile(rfConfigFile)
 
-# Initialise channels
-channels = []
-for i in range(NB_CHANNELS):
-    channels.append(Channel(i))
+signalConfig = {}
+signalConfig[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini', SignalType.GPS_L1_CA)
 
-threads = []
-for i in range(10):
-    rfData = i
-    
-    # Create threads
-    threads.clear()
-    for idxChannel in range(NB_CHANNELS):
-        threads.append(threading.Thread(target=channels[idxChannel].run, args=(rfData, NUMBER_MS)))
-    # Start threads
-    for thread in threads:
-        thread.start()
-    # Wait for threads
-    for thread in threads:
-        thread.join()
+receiver = Receiver(receiverConfigFile, signalConfig[SignalType.GPS_L1_CA])
+
+receiver.run(rffile, [2,3,4,6,9,29,31])
 

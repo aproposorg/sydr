@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from asyncio import constants
 import configparser
 import numpy as np
-from gnsstools.gnss import GNSS
 
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rffile import RFFile
@@ -237,16 +236,19 @@ class TrackingAbstract(ABC):
     def __init__(self, rfConfig:RFSignal):
         self.rfConfig  = rfConfig
 
-        self.remCodePhase  = 0.0
-        self.codeFrequency = np.nan
-        self.codePhaseStep = np.nan
-        self.codeNCO       = np.nan
+        self.remCodePhase    = 0.0
+        self.remCarrierPhase = 0.0
+        
+        self.codeFrequency = 0.0
+        self.codePhaseStep = 0.0
+        self.codeNCO       = 0.0
 
-        self.carrierFrequency = np.nan
-        self.codeFrequency    = np.nan
+        self.carrierFrequency = 0.0
+        self.codeFrequency    = 0.0
+        self.codeError        = 0.0
 
-        self.frequencyError = np.nan
-        self.frequencyNCO   = np.nan
+        self.frequencyError = 0.0
+        self.frequencyNCO   = 0.0
         
         self.code = []
         self.chunck = -1
@@ -293,33 +295,32 @@ class TrackingAbstract(ABC):
 
     def setSatellite(self, svid):
         self.svid = svid
-        self.code = self.signalConfig.getCode(svid, self.samplingFrequency)
+        self.code = self.signalConfig.getCode(svid, self.rfConfig.samplingFrequency)
         
         return 
 
 class Tracking_EPL(TrackingAbstract):
 
-    def __init__(self, signalConfig:GNSSSignal, rfConfig:RFSignal):
-        super().__init__(signalConfig, rfConfig)
+    def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
+        super().__init__(rfConfig)
         self.signalConfig = signalConfig
-        
-        # Load parameters
+
         config = configparser.ConfigParser()
-        config.read(signalConfig.configFile)
-        
+        config.read(self.signalConfig.configFile)
+
         self.pdiCode    = config.getfloat('TRACKING', 'pdi_code')
         self.pdiCarrier = config.getfloat('TRACKING', 'pdi_carrier')
 
         self.correlatorSpacing = config.getfloat('TRACKING', 'correlator_spacing')
 
-        self.dllDumpingRatio      = config.getfloat('TRACKING', 'dll_dumping_ratio')
-        self.dllNoiseBandwidth    = config.getfloat('TRACKING', 'dll_noise_bandwidth')
-        self.dllLoopGain          = config.getfloat('TRACKING', 'dll_loop_gain')
+        self.dllDumpingRatio   = config.getfloat('TRACKING', 'dll_dumping_ratio')
+        self.dllNoiseBandwidth = config.getfloat('TRACKING', 'dll_noise_bandwidth')
+        self.dllLoopGain       = config.getfloat('TRACKING', 'dll_loop_gain')
 
-        self.pllDumpingRatio      = config.getfloat('TRACKING', 'pll_dumping_ratio')
-        self.pllNoiseBandwidth    = config.getfloat('TRACKING', 'pll_noise_bandwidth')
-        self.pllLoopGain          = config.getfloat('TRACKING', 'pll_loop_gain')
-
+        self.pllDumpingRatio   = config.getfloat('TRACKING', 'pll_dumping_ratio')
+        self.pllNoiseBandwidth = config.getfloat('TRACKING', 'pll_noise_bandwidth')
+        self.pllLoopGain       = config.getfloat('TRACKING', 'pll_loop_gain')
+        
         self.dllTau1, self.dllTau2 = self.getLoopCoefficients(self.dllNoiseBandwidth, \
             self.dllDumpingRatio, self.dllLoopGain)
         self.pllTau1, self.pllTau2 = self.getLoopCoefficients(self.pllNoiseBandwidth, \
@@ -332,46 +333,36 @@ class Tracking_EPL(TrackingAbstract):
     def run(self, rfData):
 
         # Updates parameters
-        self.codePhaseStep = self.signalConfig.codeFrequency - self.codeNCO / self.rfConfig.samplingFrequency
-        chunck = int(np.ceil((self.signal.code_bit - self.remCodePhase) / self.codePhaseStep))
+        self.codePhaseStep = self.signalConfig.codeFrequency / self.rfConfig.samplingFrequency
 
         # Generate replica and mix signal
-        carrierSignal = np.exp(1j * temp[:chunck]) * rfData
-        iSignal = np.real(carrierSignal)
-        qSignal = np.imag(carrierSignal)
+        self.chunck = int(np.ceil((self.signalConfig.codeBits - self.remCodePhase) / self.codePhaseStep))
+        time = np.arange(0, self.chunck+1) / self.rfConfig.samplingFrequency
+        temp = -(self.carrierFrequency * 2.0 * np.pi * time) + self.remCarrierPhase
+
+        self.remCarrierPhase = temp[self.chunck] % (2 * np.pi)
+        
+        carrierSignal = np.exp(1j * temp[:self.chunck]) * rfData
+        self.iSignal = np.real(carrierSignal)
+        self.qSignal = np.imag(carrierSignal)
 
         # Build correlators (Early-Prompt-Late)
-        iEarly , qEarly  = self.getCorrelator(self.correlatorsSpacing[0])
-        iPrompt, qPrompt = self.getCorrelator(self.correlatorsSpacing[1])
-        iLate  , qLate   = self.getCorrelator(self.correlatorsSpacing[2])
+        iEarly , qEarly  = self.getCorrelator(self.correlatorSpacing[0])
+        self.iPrompt, self.qPrompt = self.getCorrelator(self.correlatorSpacing[1])
+        iLate  , qLate   = self.getCorrelator(self.correlatorSpacing[2])
         
         # Delay Lock Loop (DLL)
         self.delayLockLoop(iEarly, qEarly, iLate, qLate)
         
         # Phase Lock Loop (PLL)
-        self.phaseLockLoop(iPrompt, qPrompt)
+        self.phaseLockLoop(self.iPrompt, self.qPrompt)
 
         # Get remaining phase
-        idx = np.linspace(self.remCodePhase, chunck * self.codePhaseStep + self.remCodePhase, \
-                          chunck, endpoint=False)
-        self.remCodePhase = idx[chunck-1] + self.codePhaseStep - self.signal.code_bit
+        idx = np.linspace(self.remCodePhase, self.chunck * self.codePhaseStep + self.remCodePhase, \
+                          self.chunck, endpoint=False)
+        self.remCodePhase = idx[self.chunck-1] + self.codePhaseStep - self.signalConfig.codeBits
 
         return
-
-    def generateReplica(self):
-        # -----------------------------------------------------------------
-        # Generate carrier replica and mix to remove frequency shift
-        # We use (chunck+1) and not (chunck) because we want one more to
-        # estimate the remaining of the carrier phase
-        chunck = int(np.ceil((self.signalConfig.codeBits - self.remCodePhase) / self.codePhaseStep))
-        time = np.arange(0, chunck+1) / self.rfConfig.samplingFrequency
-        temp = -(self.carrierFrequency * 2.0 * np.pi * time) + remCarrierPhase
-
-        remCarrierPhase = temp[chunck] % (2 * np.pi)
-        
-        carrierSignal = np.exp(1j * temp[:chunck]) * rawSignal
-        iSignal = np.real(carrierSignal)
-        qSignal = np.imag(carrierSignal)
     
     def delayLockLoop(self, iEarly, qEarly, iLate, qLate):
 
@@ -379,8 +370,8 @@ class Tracking_EPL(TrackingAbstract):
                     (np.sqrt(iEarly**2 + qEarly**2) + np.sqrt(iLate**2 + qLate**2))
             
         # Update NCO code
-        self.codeNCO += self.config.dllTau2 / self.config.dllTau1 * (newCodeError - self.codeError)
-        self.codeNCO += self.config.pdiCode / self.config.dllTau1 * newCodeError
+        self.codeNCO += self.dllTau2 / self.dllTau1 * (newCodeError - self.codeError)
+        self.codeNCO += self.pdiCode / self.dllTau1 * newCodeError
         
         self.codeError = newCodeError
 
