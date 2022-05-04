@@ -5,6 +5,7 @@ from gnsstools.utils import ChannelState
 from gnsstools.acquisition import Acquisition_PCPS, AcquisitionAbstract
 from gnsstools.tracking import Tracking_EPL, TrackingAbstract
 import numpy as np
+import copy
 
 class ChannelAbstract(ABC):
 
@@ -33,8 +34,7 @@ class ChannelAbstract(ABC):
         self.isBufferFull = False
 
         # save
-        self.iPrompt = []
-        self.qPrompt = []
+        self.trackingResults = []
 
         return
 
@@ -57,17 +57,20 @@ class ChannelAbstract(ABC):
 
             if self.acquisition.isAcquired:
                 frequency, code = self.acquisition.getEstimation()
-                self.tracking.setInitialValues(frequency, code)
+                self.tracking.setInitialValues(frequency)
+                self.currentSample = code + 1
                 self.switchState(ChannelState.TRACKING)
         
         # TRACKING
         # Fine alignement of the signal replica  
         if self.state == ChannelState.TRACKING:
-            frequency, code = self.acquisition.getEstimation()
-            self.tracking.run(self.buffer[-(self.dataRequiredTracking+code):-code])
-            
-            self.iPrompt.append(self.tracking.iPrompt)
-            self.qPrompt.append(self.tracking.qPrompt)
+            samplesRequired = self.tracking.getSamplesRequired()
+            while self.currentSample <= (self.bufferMaxSize - samplesRequired):
+                self.tracking.run(self.buffer[self.currentSample:self.currentSample + samplesRequired])
+                self.currentSample += self.tracking.samplesRequired
+                samplesRequired = self.tracking.getSamplesRequired()
+                
+                self.trackingResults.append(copy.copy(self.tracking))
 
         # # DECODING
         # if self.tracking.preambuleFound:
@@ -110,6 +113,8 @@ class ChannelAbstract(ABC):
             self.bufferSize += shift
             if self.bufferSize >= self.bufferMaxSize:
                 self.isBufferFull = True
+        else:
+            self.currentSample -= shift
 
         return
 

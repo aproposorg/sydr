@@ -2,6 +2,8 @@
 import numpy as np
 import configparser
 
+import matplotlib.pyplot as plt
+
 
 from gnsstools.channel import Channel
 from gnsstools.rffile import RFFile
@@ -55,7 +57,7 @@ class Receiver():
                     chan.setSatellite(satelliteList.pop(0))
                 chan.run(rfData)
 
-            if msProcessed == 1000:
+            if msProcessed == 30000:
                 print("here")
             
             msProcessed += 1
