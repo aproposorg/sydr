@@ -1,13 +1,13 @@
 
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.receiver import Receiver
-from gnsstools.rffile import RFFile
+from gnsstools.rfsignal import RFSignal
 
 # Files 
 receiverConfigFile = './config/receiver.ini'
 rfConfigFile       = './config/rf.ini'
 
-rffile = RFFile(rfConfigFile)
+rffile = RFSignal(rfConfigFile)
 
 signalConfig = {}
 signalConfig[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini', SignalType.GPS_L1_CA)

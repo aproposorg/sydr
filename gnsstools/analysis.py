@@ -13,7 +13,7 @@ class Analysis:
 
         return
 
-    def acquisition(self, satelliteDict, corrMapsEnabled=False):
+    def acquisition(self, channels):
         """
         Parse and analyse result from the acquisition process. Graphs are created
         using Plotly and saved to the output folder. 
@@ -88,9 +88,7 @@ class Analysis:
                 fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
                 fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", showlegend=False)
                 fig_temp.write_html(f"./{self.output_folder}/Correlation/acquisition_G{acq.prn}.html")
-            
-        
-        
+
         return
 
     def tracking(self, satelliteDict):

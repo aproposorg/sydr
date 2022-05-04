@@ -1,42 +1,42 @@
+# -*- coding: utf-8 -*-
+# ============================================================================
+# Abstract class for channel definition.
+# Author: Antoine GRENIER (TAU)
+# Date: 2022.05.04
+# References: 
+# =============================================================================
+# PACKAGES
 from abc import ABC, abstractmethod
-from gnsstools.gnsssignal import GNSSSignal
-from gnsstools.rfsignal import RFSignal
-from gnsstools.utils import ChannelState
-from gnsstools.acquisition import Acquisition_PCPS, AcquisitionAbstract
-from gnsstools.tracking import Tracking_EPL, TrackingAbstract
 import numpy as np
 import copy
-
+from gnsstools.acquisition.abstract import AcquisitionAbstract
+from gnsstools.gnsssignal import GNSSSignal
+from gnsstools.rfsignal import RFSignal
+from gnsstools.tracking.abstract import TrackingAbstract
+from gnsstools.utils import ChannelState
+# =============================================================================
 class ChannelAbstract(ABC):
 
+    state                  : ChannelState
+    acquisition            : AcquisitionAbstract
+    tracking               : TrackingAbstract
+    dataRequiredAcquisition: int
+    dataRequiredAcquisition: int
+    buffer                 : np.array
+    trackingResults        : list
+
     @abstractmethod
-    def __init__(self, cid:int, signalConfig:GNSSSignal, rfConfig:RFSignal):
-        self.cid = cid
+    def __init__(self, cid:int, rfConfig:RFSignal, signalConfig:GNSSSignal):
+        self.cid          = cid
         self.signalConfig = signalConfig
-        self.rfConfig = rfConfig
-        self.switchState(ChannelState.IDLE)
-        
-        self.acquisition : AcquisitionAbstract
-        self.tracking : TrackingAbstract
+        self.rfConfig     = rfConfig
+        self.state        = ChannelState.IDLE
 
-        # Minimum data required for process in number of samples
-        # Default is 1 ms
-        self.dataRequiredAcquisition = int(1 * self.rfConfig.samplingFrequency * 1e-3)
-        self.dataRequiredTracking = int(1 * self.rfConfig.samplingFrequency * 1e-3)
-
-        # Buffer keeps in memory the last ms for each channel
-        # Default is 10 ms for buffer
-        # TODO Don't like a hardcoded default, need to find something
-        self.bufferMaxSize = int(10 * self.rfConfig.samplingFrequency * 1e-3)
-        self.buffer = np.empty(self.bufferMaxSize, dtype=np.complex128)
-        self.buffer[:] = np.nan
-        self.bufferSize = 0
-        self.isBufferFull = False
-
-        # save
         self.trackingResults = []
 
         return
+    
+    # -------------------------------------------------------------------------
 
     def run(self, rfData, numberOfms=1):
 
@@ -81,6 +81,8 @@ class ChannelAbstract(ABC):
 
         return
 
+    # -------------------------------------------------------------------------
+
     def setSatellite(self, svid):
         # Update the configuration
         self.svid = svid
@@ -94,13 +96,18 @@ class ChannelAbstract(ABC):
 
         return
 
+    # -------------------------------------------------------------------------
+
     def switchState(self, newState):
         self.state = newState
-        #self.updateMsRequired()
         return
+
+    # -------------------------------------------------------------------------
     
     def getState(self):
         return self.state
+
+    # -------------------------------------------------------------------------
 
     def shiftBuffer(self, data, shift:int):
         bufferShifted = np.empty_like(self.buffer)
@@ -117,33 +124,6 @@ class ChannelAbstract(ABC):
             self.currentSample -= shift
 
         return
-
-
-class Channel(ChannelAbstract):
-    def __init__(self, cid:int, signalConfig:GNSSSignal, rfConfig:RFSignal):
-        super().__init__(cid, signalConfig, rfConfig)
-
-        self.acquisition = Acquisition_PCPS(self.rfConfig, self.signalConfig)
-        self.tracking    = Tracking_EPL(self.rfConfig, self.signalConfig)
-
-        self.dataRequiredAcquisition = int(self.signalConfig.codeMs * \
-            self.acquisition.nonCohIntegration * \
-            self.acquisition.cohIntegration * self.rfConfig.samplingFrequency * 1e-3)
-        
-        self.dataRequiredTracking = int(self.signalConfig.codeMs * self.rfConfig.samplingFrequency * 1e-3)
-
-        # Buffer keeps in memory the last ms for each channel
-        # Buffer size is based on the maximum amont of data required, most 
-        # probably from acquisition.
-        self.bufferMaxSize = np.max([self.dataRequiredTracking, self.dataRequiredAcquisition])
-        self.buffer = np.empty(self.bufferMaxSize, dtype=np.complex128)
-        self.buffer[:] = np.nan
-        self.bufferSize = 0
-        self.isBufferFull = False
-
-        return
     
-    
-        
-        
-        
+    # -------------------------------------------------------------------------
+    # END OF CLASS

@@ -1,21 +1,21 @@
-
+# -*- coding: utf-8 -*-
+# ============================================================================
+# Abstract class for tracking process.
+# Author: Antoine GRENIER (TAU)
+# Date: 2022.05.04
+# References: 
+# =============================================================================
+# PACKAGES
 import numpy as np
 import configparser
-
-import matplotlib.pyplot as plt
-
-
-from gnsstools.channel import Channel
-from gnsstools.rffile import RFFile
+from gnsstools.channel.channel_default import Channel
 from gnsstools.utils import ChannelState
-
-
+# =============================================================================
 class Receiver():
 
-    READ_CHUNK = 1000 # in ms
-    MS_CHUNCK = 2 # in ms
-
     def __init__(self, receiverConfigFile, signalConfig):
+
+        self.signalConfig = signalConfig
         
         config = configparser.ConfigParser()
         config.read(receiverConfigFile)
@@ -24,20 +24,15 @@ class Receiver():
         self.nbChannels  = config.getint('DEFAULT', 'nb_channels')
         self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
 
-        # Signal received
-        self.gpsL1CAEnabled = config.getboolean('SIGNAL', 'GPS_L1_CA_enabled')
-
-        self.signalConfig = signalConfig
+        self.channels = []
 
         return
+
+    # -------------------------------------------------------------------------
     
     def run(self, rfConfig, satelliteList):
 
-        # Variables
-        minMsRequired = 0
-
         # Initialise the channels
-        self.channels = []
         for idx in range(self.nbChannels):
             self.channels.append(Channel(idx, self.signalConfig, rfConfig))
 
@@ -56,9 +51,10 @@ class Receiver():
                 if chan.getState() == ChannelState.IDLE:
                     chan.setSatellite(satelliteList.pop(0))
                 chan.run(rfData)
-
-            if msProcessed == 30000:
-                print("here")
             
             msProcessed += 1
         return
+
+    # END OF CLASS
+
+
