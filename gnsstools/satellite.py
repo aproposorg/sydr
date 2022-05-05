@@ -1,60 +1,32 @@
+from abc import ABC
 from xmlrpc.client import Boolean
 import numpy as np
 
-from gnsstools.acquisition import Acquisition
-from gnsstools.tracking import Tracking
-from gnsstools.ephemeris import Ephemeris
-from gnsstools.decoding import Decoding
 import gnsstools.constants as constants
 
-class Satellite:
 
-    def __init__(self):
-        self.acquisitionEnabled = False
-        self.trackingEnabled    = False
-        self.decodingEnabled    = False
+class Satellite(ABC):
 
-        self.pseudoranges = []
-        self.coarsePseudoranges = []
-        self.doppler = []
-        self.measurementsTOW  = []
+    signals: list
 
-        return
+    def __init__(self, svid):
 
-    # =========================================================================
-    # SETTER
-    # -------------------------------------------------------------------------
+        self.svid = svid
 
-    def setAcquisition(self, acquisition:Acquisition):
-        self.acquisition = acquisition
-        self.acquisitionEnabled = True
-        return
-    
-    # -------------------------------------------------------------------------
+        self.dspMeasurements  = []
+        self.gnssMeasurements = []
 
-    def setTracking(self, tracking:Tracking):
-        self.tracking = tracking
-        self.trackingEnabled = True
+        self.ephemeris = []
+
         return
 
     # -------------------------------------------------------------------------
 
-    def setDecoding(self, decoding:Decoding, isEnabled:Boolean):
-        self.decoding = decoding
-        self.decodingEnabled = isEnabled
+    def _initSignal(self):
+        for sig in self.signals:
+            self.dspMeasurements[sig]  = []
+            self.gnssMeasurements[sig] = []
         return
-    
-    # =========================================================================
-    # GETTER
-    # -------------------------------------------------------------------------
-
-    def getAcquisition(self):
-        return self.acquisition
-
-    # -------------------------------------------------------------------------
-
-    def getTracking(self):
-        return self.tracking
 
     # -------------------------------------------------------------------------
 

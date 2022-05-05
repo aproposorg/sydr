@@ -1,4 +1,5 @@
 import configparser
+from dataclasses import replace
 import os
 from enum import Enum
 import numpy as np
@@ -7,6 +8,9 @@ import gnsstools.ca as ca
 
 class SignalType(Enum):
     GPS_L1_CA = 0
+    
+    def __str__(self):
+        return str(self.name).replace("_", " ")
 
 class GNSSSignal:
     def __init__(self, configfile, signalType:SignalType):

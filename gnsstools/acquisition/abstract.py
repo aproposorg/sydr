@@ -15,6 +15,7 @@ class AcquisitionAbstract(ABC):
 
     estimatedFrequency: float
     estimatedCode     : float
+    correlationMap    : np.array
 
     @abstractmethod
     def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
@@ -44,6 +45,11 @@ class AcquisitionAbstract(ABC):
 
     def getEstimation(self):
         return self.estimatedFrequency, self.estimatedCode
+
+    # -------------------------------------------------------------------------
+
+    def getCorrelationMap(self):
+        return self.correlationMap
     
     # -------------------------------------------------------------------------
     # ABSTRACT METHODS

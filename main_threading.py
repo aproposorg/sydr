@@ -1,4 +1,5 @@
 
+from gnsstools.analysis import Analysis
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.receiver import Receiver
 from gnsstools.rfsignal import RFSignal
@@ -14,5 +15,8 @@ signalConfig[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini'
 
 receiver = Receiver(receiverConfigFile, signalConfig[SignalType.GPS_L1_CA])
 
-receiver.run(rffile, [2,3,4,6,9,29,31])
+receiver.run(rffile, [2])
 
+# Analysis
+analysis = Analysis()
+analysis.tracking(receiver.satelliteDict)

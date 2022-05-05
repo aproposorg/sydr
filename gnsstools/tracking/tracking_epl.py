@@ -66,7 +66,7 @@ class Tracking(TrackingAbstract):
         self.samplesRequired = int(np.ceil((self.signalConfig.codeBits - self.remCodePhase) / self.codePhaseStep))
         
         self.correlatorSpacing = [-self.correlatorSpacing, 0.0, self.correlatorSpacing]
-        self.correlatorResults = [0.0, 0.0, 0.0]
+        self.correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         return
     
@@ -126,6 +126,7 @@ class Tracking(TrackingAbstract):
         
         self.codeError = newCodeError
         self.codeFrequency = self.signalConfig.codeFrequency - self.codeNCO
+        self.dll = self.codeNCO
 
         return
 
@@ -144,6 +145,7 @@ class Tracking(TrackingAbstract):
 
         self.carrierError = newCarrierError
         self.carrierFrequency = self.initialFrequency + self.carrierNCO
+        self.pll = self.carrierNCO
 
         return
 
@@ -173,6 +175,11 @@ class Tracking(TrackingAbstract):
         tau2 = 2.0 * dumpingRatio / Wn
 
         return tau1, tau2
+
+    # -------------------------------------------------------------------------
+
+    def getPrompt(self):
+        return self.correlatorResults[2], self.correlatorResults[3]
     
     # -------------------------------------------------------------------------
     # END OF CLASS

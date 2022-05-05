@@ -41,9 +41,7 @@ class Acquisition(AcquisitionAbstract):
         self.frequencyBins = np.arange(-self.dopplerRange, \
                                         self.dopplerRange, \
                                         self.dopplerSteps)
-        
-        #self.estimatedCode      = np.nan
-        #self.estimatedFrequency = np.nan
+
         self.estimatedDoppler   = np.nan
         self.acquisitionMetric  = np.nan
         
@@ -71,10 +69,10 @@ class Acquisition(AcquisitionAbstract):
         """
 
         # Perform PCPS loop
-        correlationMap = self.PCPS(rfData)
+        self.correlationMap = self.PCPS(rfData)
 
         # Analyse results
-        results = self.twoCorrelationPeakComparison(correlationMap)
+        results = self.twoCorrelationPeakComparison(self.correlationMap)
 
         self.estimatedDoppler     = results[0]
         self.estimatedCode        = results[1]

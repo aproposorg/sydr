@@ -13,7 +13,16 @@ from gnsstools.acquisition.abstract import AcquisitionAbstract
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
-from gnsstools.utils import ChannelState
+from enum import Enum, unique
+
+# =============================================================================
+@unique
+class ChannelState(Enum):
+    IDLE      = 0
+    ACQUIRING = 1
+    ACQUIRED  = 2
+    TRACKING  = 3
+
 # =============================================================================
 class ChannelAbstract(ABC):
 
@@ -23,7 +32,7 @@ class ChannelAbstract(ABC):
     dataRequiredAcquisition: int
     dataRequiredAcquisition: int
     buffer                 : np.array
-    trackingResults        : list
+    currentSample          : int
 
     @abstractmethod
     def __init__(self, cid:int, rfConfig:RFSignal, signalConfig:GNSSSignal):
@@ -32,7 +41,7 @@ class ChannelAbstract(ABC):
         self.rfConfig     = rfConfig
         self.state        = ChannelState.IDLE
 
-        self.trackingResults = []
+        self.currentSample = 0
 
         return
     
@@ -52,25 +61,38 @@ class ChannelAbstract(ABC):
         
         # ACQUIRING
         # Find coarse parameters of the signal
-        if self.state == ChannelState.ACQUIRING:
+        elif self.state == ChannelState.ACQUIRING:
             self.acquisition.run(self.buffer[-self.dataRequiredAcquisition:])
 
             if self.acquisition.isAcquired:
-                frequency, code = self.acquisition.getEstimation()
-                self.tracking.setInitialValues(frequency)
-                self.currentSample = code + 1
-                self.switchState(ChannelState.TRACKING)
+                self.switchState(ChannelState.ACQUIRED)
+            else:
+                self.switchState(ChannelState.IDLE)
+            
+            return
+
+        elif self.state == ChannelState.ACQUIRED:
+            frequency, code = self.acquisition.getEstimation()
+            self.tracking.setInitialValues(frequency)
+            samplesRequired = self.tracking.getSamplesRequired()
+            self.currentSample = code + 1
+            while self.currentSample <= (self.bufferMaxSize -  2 * samplesRequired):
+                self.currentSample += self.tracking.samplesRequired
+            self.switchState(ChannelState.TRACKING)
         
         # TRACKING
         # Fine alignement of the signal replica  
         if self.state == ChannelState.TRACKING:
             samplesRequired = self.tracking.getSamplesRequired()
             while self.currentSample <= (self.bufferMaxSize - samplesRequired):
+                # Run tracking
                 self.tracking.run(self.buffer[self.currentSample:self.currentSample + samplesRequired])
+                # Update the index for samples
                 self.currentSample += self.tracking.samplesRequired
+                # Update the amount of samples required for next loop
                 samplesRequired = self.tracking.getSamplesRequired()
-                
-                self.trackingResults.append(copy.copy(self.tracking))
+
+            return
 
         # # DECODING
         # if self.tracking.preambuleFound:
@@ -124,6 +146,21 @@ class ChannelAbstract(ABC):
             self.currentSample -= shift
 
         return
+
+    # -------------------------------------------------------------------------
+
+    def getAcquisitionEstimation(self):
+        frequency, code = self.acquisition.getEstimation()
+        correlationMap = self.acquisition.getCorrelationMap()
+        return frequency, code, correlationMap
+
+    def getTrackingEstimation(self):
+        i, q = self.tracking.getPrompt()
+        frequency = self.tracking.getCarrierFrequency()
+        code = self.tracking.getCodeFrequency()
+        dll  = self.tracking.getDLL()
+        pll  = self.tracking.getPLL()
+        return frequency, code, i, q, dll, pll
     
     # -------------------------------------------------------------------------
     # END OF CLASS

@@ -13,15 +13,13 @@ class Analysis:
 
         return
 
-    def acquisition(self, channels):
+    def acquisition(self, satelliteDict):
         """
         Parse and analyse result from the acquisition process. Graphs are created
         using Plotly and saved to the output folder. 
 
-        Inputs:
-        -------
-        satelliteDict : Dict()
-            Dictionnary of results.
+        Args:
+            satelliteDict (Dictionary): Dictionnary of results.
         corrMapsEnabled : Boolean
             Enable plotting and saving of correlation maps for each satellites.
 
@@ -106,7 +104,7 @@ class Analysis:
                   "Quadraphase (Q) Prompt"]
         
         for prn, results in satelliteDict.items():
-            track = results.getTracking()
+            dsp = results.dspMeasurements
             fig = make_subplots(5, 2,\
                 start_cell="top-left",
                 specs=specs, 
@@ -114,14 +112,17 @@ class Analysis:
                 vertical_spacing=0.1, 
                 horizontal_spacing = 0.1)
 
-            time = np.arange(0, len(track.iPrompt)/1e3, 1e-3)
+            # TODO change
+            dsp = dsp[0]
+
+            time = np.arange(0, len(dsp.iPrompt)/1e3, 1e-3)
 
             colors = plotly.colors.DEFAULT_PLOTLY_COLORS
             
             # I/Q scatter
             last = 1000
             pos = (1,1)
-            fig.add_trace(go.Scatter(x=track.iPrompt[-last:], y=track.qPrompt[-last:], mode="markers",
+            fig.add_trace(go.Scatter(x=dsp.iPrompt[-last:], y=dsp.qPrompt[-last:], mode="markers",
                             	    line=dict(width=2, color=colors[0])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray', constrain="domain")
@@ -130,7 +131,7 @@ class Analysis:
 
             # Raw DLL discriminator (Relative)
             pos = (2,1)
-            fig.add_trace(go.Scatter(x=time, y=track.codeNCO,
+            fig.add_trace(go.Scatter(x=time, y=dsp.dll,
                             	    line=dict(width=2, color=colors[0])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -139,7 +140,7 @@ class Analysis:
 
             # Raw DLL discriminator (Absolute)
             pos = (2,2)
-            fig.add_trace(go.Scatter(x=time, y=track.codeFrequency,
+            fig.add_trace(go.Scatter(x=time, y=dsp.codeFrequency,
                             	    line=dict(width=2, color=colors[0])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -148,7 +149,7 @@ class Analysis:
 
             # Raw PLL discriminator (Relative)
             pos = (3,1)
-            fig.add_trace(go.Scatter(x=time, y=track.carrierNCO,
+            fig.add_trace(go.Scatter(x=time, y=dsp.pll,
                             	    line=dict(width=2, color=colors[1])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -157,7 +158,7 @@ class Analysis:
             
             # Raw PLL discriminator (Absolute)
             pos = (3,2)
-            fig.add_trace(go.Scatter(x=time, y=track.carrierFrequency,
+            fig.add_trace(go.Scatter(x=time, y=dsp.carrierFrequency,
                             	    line=dict(width=2, color=colors[1])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -166,7 +167,7 @@ class Analysis:
 
             # In-phase (I) Prompt
             pos = (4,1)
-            fig.add_trace(go.Scatter(x=time, y=track.iPrompt,
+            fig.add_trace(go.Scatter(x=time, y=dsp.iPrompt,
                             	    line=dict(width=2, color=colors[2])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
@@ -175,15 +176,15 @@ class Analysis:
 
             # Quadraphase (Q) Prompt
             pos = (5,1)
-            fig.add_trace(go.Scatter(x=time, y=track.qPrompt,
+            fig.add_trace(go.Scatter(x=time, y=dsp.qPrompt,
                             	    line=dict(width=2, color=colors[3])), row=pos[0], col=pos[1])
             fig.update_xaxes(title_text="Time [s]", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
             fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-            fig.update_layout(title=f"Tracking G{track.prn} ({track.signal.name})", showlegend=False) 
-            fig.write_html(f"./{self.output_folder}/tracking_{track.prn}.html")
+            fig.update_layout(title=f"Tracking G{prn} ({dsp.signalType})", showlegend=False) 
+            fig.write_html(f"./{self.output_folder}/tracking_{prn}.html")
         
 
         return

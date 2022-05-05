@@ -23,6 +23,8 @@ class TrackingAbstract(ABC):
     samplesRequired   : int
     correlatorSpacing : list
     correlatorResults : list
+    pll : float
+    dll : float
 
     # -------------------------------------------------------------------------
 
@@ -84,6 +86,21 @@ class TrackingAbstract(ABC):
     def getSamplesRequired(self):
         return self.samplesRequired
 
+    def getCorrelatorResults(self):
+        return self.correlatorResults
+
+    def getCarrierFrequency(self):
+        return self.carrierFrequency
+    
+    def getCodeFrequency(self):
+        return self.codeFrequency
+
+    def getDLL(self):
+        return self.dll
+
+    def getPLL(self):
+        return self.pll 
+
     # -------------------------------------------------------------------------
     # ACSTRACT METHODS
     
@@ -97,6 +114,10 @@ class TrackingAbstract(ABC):
 
     @abstractmethod
     def phaseLockLoop(self):
+        pass
+    
+    @abstractmethod
+    def getPrompt(self):
         pass
 
     # END OF CLASS
