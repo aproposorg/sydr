@@ -15,7 +15,12 @@ class AcquisitionAbstract(ABC):
 
     estimatedFrequency: float
     estimatedCode     : float
+    acquisitionMetric : float
+    
     correlationMap    : np.array
+    frequencyBins     : np.array
+    idxEstimatedFrequency : float
+    idxEstimatedCode : float
 
     @abstractmethod
     def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
@@ -50,7 +55,12 @@ class AcquisitionAbstract(ABC):
 
     def getCorrelationMap(self):
         return self.correlationMap
-    
+
+    # -------------------------------------------------------------------------
+
+    def getMetric(self):
+        return self.acquisitionMetric
+
     # -------------------------------------------------------------------------
     # ABSTRACT METHODS
 

@@ -79,7 +79,7 @@ class ChannelAbstract(ABC):
             while self.currentSample <= (self.bufferMaxSize -  2 * samplesRequired):
                 self.currentSample += self.tracking.samplesRequired
             self.switchState(ChannelState.TRACKING)
-        
+                    
         # TRACKING
         # Fine alignement of the signal replica  
         if self.state == ChannelState.TRACKING:
@@ -151,8 +151,8 @@ class ChannelAbstract(ABC):
 
     def getAcquisitionEstimation(self):
         frequency, code = self.acquisition.getEstimation()
-        correlationMap = self.acquisition.getCorrelationMap()
-        return frequency, code, correlationMap
+        acquisitionMetric = self.acquisition.getMetric()
+        return frequency, code, acquisitionMetric
 
     def getTrackingEstimation(self):
         i, q = self.tracking.getPrompt()

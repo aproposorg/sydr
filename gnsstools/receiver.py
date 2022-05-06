@@ -8,6 +8,7 @@
 # PACKAGES
 import numpy as np
 import configparser
+import copy
 from gnsstools.channel.abstract import ChannelState
 from gnsstools.channel.channel_default import Channel
 from gnsstools.gnsssignal import GNSSSignal
@@ -43,7 +44,6 @@ class Receiver():
         self.satelliteDict = {}
         for svid in satelliteList:
             self.satelliteDict[svid] = Satellite(svid)
-            self.satelliteDict[svid].dspMeasurements.append(DSPmeasurements(self.signalConfig.signalType))
 
         # Loop through the file contents
         # TODO Load by chunck of data instead of ms per ms
@@ -59,7 +59,11 @@ class Receiver():
             for chan in self.channels:
                 if chan.getState() == ChannelState.IDLE:
                     # Give a new satellite from list
+                    if not satelliteList:
+                        # List empty, skip 
+                        continue
                     svid = satelliteList.pop(0)
+                    self.satelliteDict[svid].dspMeasurements.append(DSPmeasurements(self.signalConfig))
 
                     # Set the satellite parameters in the channel
                     chan.setSatellite(svid)
@@ -67,21 +71,27 @@ class Receiver():
 
             # Handle results
             for chan in self.channels:
+                svid = chan.svid
                 state = chan.getState()
                 dsp   = self.satelliteDict[svid].dspMeasurements[-1] # For cleaner code
                 if state == ChannelState.IDLE:
                     # Signal was not aquired
-                    self.satelliteDict[svid].dspMeasurements.append(DSPmeasurements())
+                    frequency, code, acqMetric = chan.getAcquisitionEstimation()
+                    dsp.estimatedFrequency = frequency
+                    dsp.estimatedCode = code
+                    dsp.acquisitionMetric = acqMetric
+                    self.satelliteDict[svid].acquisition.append(copy.copy(chan.acquisition))
                     pass
                 elif state == ChannelState.ACQUIRING:
                     # Buffer not full (most probably)
                     pass
                 elif state == ChannelState.ACQUIRED:
                     # Signal was acquired
-                    frequency, code, correlationMap = chan.getAcquisitionEstimation()
+                    frequency, code, acqMetric = chan.getAcquisitionEstimation()
                     dsp.estimatedFrequency = frequency
                     dsp.estimatedCode = code
-                    dsp.correlationMap = correlationMap
+                    dsp.acquisitionMetric = acqMetric
+                    self.satelliteDict[svid].acquisition.append(copy.copy(chan.acquisition))
                     pass
                 elif state == ChannelState.TRACKING:
                     # Signal is being tracked
@@ -92,6 +102,7 @@ class Receiver():
                     dsp.qPrompt.append(qPrompt)
                     dsp.dll.append(dll)
                     dsp.pll.append(pll)
+                    self.satelliteDict[svid].tracking.append(copy.copy(chan.tracking))
                 else:
                     raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
             

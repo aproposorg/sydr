@@ -2,18 +2,23 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly
 import numpy as np
+import os
+from gnsstools.acquisition.abstract import AcquisitionAbstract as Acquisition
 from gnsstools.navigation import Navigation
 import gnsstools.constants as constants
 import pymap3d as pm
 
-class Analysis:
-    def __init__(self):
+from gnsstools.rfsignal import RFSignal
 
+class Analysis:
+    def __init__(self, rfConfig:RFSignal):
+
+        self.rfConfig = rfConfig
         self.output_folder = '_results'
 
         return
 
-    def acquisition(self, satelliteDict):
+    def acquisition(self, satelliteDict, corrMapsEnabled=False):
         """
         Parse and analyse result from the acquisition process. Graphs are created
         using Plotly and saved to the output folder. 
@@ -38,15 +43,21 @@ class Analysis:
         coarseDoppler = []
         coarseCode = []
         coarseCodeNorm = []
+        threshold = []
         for prn, results in satelliteDict.items():
-            acq = results.getAcquisition()
-            titles.append(f"G{acq.prn} ({acq.signal.name})")
-            names.append(f"G{acq.prn} ({acq.signal.name})")
-            acqMetric.append(f"{acq.acqMetric:>6.2f}")
-            coarseFreq.append(f"{acq.coarseFreq:>8.2f}")    
-            coarseDoppler.append(f"{acq.coarseDoppler:>8.2f}")   
-            coarseCode.append(f"{acq.coarseCode:>8.2f}")
-            coarseCodeNorm.append(f"{acq.coarseCodeNorm:>8.2f}")
+            dsp = results.dspMeasurements
+            # TODO change
+            dsp = dsp[0]
+            signalConfig = dsp.signalConfig
+            samplesPerCode = round(self.rfConfig.samplingFrequency / (signalConfig.codeFrequency / signalConfig.codeBits))
+            titles.append(f"G{prn} ({dsp.signalConfig.signalType})")
+            names.append(f"G{prn} ({dsp.signalConfig.signalType})")
+            acqMetric.append(f"{dsp.acquisitionMetric:>6.2f}")
+            coarseFreq.append(f"{dsp.estimatedFrequency:>8.2f}")    
+            coarseDoppler.append(f"{(dsp.estimatedFrequency-self.rfConfig.interFrequency):>8.2f}")   
+            coarseCode.append(f"{dsp.estimatedCode:>8.2f}")
+            coarseCodeNorm.append(f"{dsp.estimatedCode * signalConfig.codeBits / samplesPerCode:>8.2f}")
+            threshold.append(results.acquisition[0].metricThreshold)
         
         # Make de subplot
         fig = make_subplots(2, 1,\
@@ -71,21 +82,66 @@ class Analysis:
         
         # Results bar chart
         fig.add_trace(go.Bar(x=names, y=[float(i) for i in acqMetric]), row=2, col=1)
+        fig.add_trace(go.Scatter(x=names, y=threshold, line=dict(width=2)),row=2, col=1)
         fig.update_layout(title=f"Acquisition", showlegend=False)
         fig.write_html(f"./{self.output_folder}/acquisition.html")
         
         if corrMapsEnabled:
-            # Loop for correlation results
-            i = 0
             for prn, results in satelliteDict.items():
-                acq = results.getAcquisition()
-                x = np.linspace(0, acq.signal.code_bit, np.size(acq.correlationMap, axis=1))
-                y = np.arange(-acq.doppler_range, acq.doppler_range, acq.doppler_steps)
-                z = acq.correlationMap
+                i = 0
+                for acq in results.acquisition:
+                    path =  f"./{self.output_folder}/correlation_{i}/"
+                    if not os.path.exists(path):
+                        os.mkdir(path)
+                    self.plotCorrelation(acq, path)
+                    i += 1
+        
+        return
 
-                fig_temp = go.Figure(data=[go.Surface(z=z, x=x, y=y,showscale=False)])
-                fig_temp.update_layout(title=f"Correlation G{acq.prn} ({acq.signal.name})", showlegend=False)
-                fig_temp.write_html(f"./{self.output_folder}/Correlation/acquisition_G{acq.prn}.html")
+    def plotCorrelation(self, acquisition:Acquisition, path):
+        codeSpace = np.linspace(0, acquisition.signalConfig.codeBits, np.size(acquisition.correlationMap, axis=1))
+        frequencySpace = acquisition.frequencyBins
+        z = acquisition.correlationMap
+
+        idxFrequency = acquisition.idxEstimatedFrequency
+        idxCode = acquisition.idxEstimatedCode
+
+        grid   = [[{'type': 'xy'}, {'type': 'xy'}], 
+                  [{'type': 'surface', "colspan": 2}, None]]
+        titles = ["Frequency correlation", "Code correlation", "Correlation map"]
+
+        fig = make_subplots(2, 2,\
+            start_cell="top-left",
+            specs=grid, 
+            subplot_titles=titles, 
+            vertical_spacing=0.05, 
+            horizontal_spacing = 0.05)
+
+        # Frequency correlation
+        pos = (1,1)
+        fig.add_trace(go.Scatter(x=frequencySpace, y=acquisition.correlationMap[:, idxCode],
+                            	line=dict(width=2)), row=pos[0], col=pos[1])
+        fig.update_xaxes(title_text="Frequency [Hz]", row=pos[0], col=pos[1], \
+            showgrid=True, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
+            showgrid=True, gridcolor='LightGray')
+
+        # Code correlation
+        pos = (1,2)
+        fig.add_trace(go.Scatter(x=codeSpace, y=acquisition.correlationMap[idxFrequency, :],
+                            	line=dict(width=2)), row=pos[0], col=pos[1])
+        fig.update_xaxes(title_text="Samples", row=pos[0], col=pos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray', constrain="domain")
+        fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        # Correlation map
+        pos = (2,1)
+        fig.add_trace(go.Surface(z=z, x=codeSpace, y=frequencySpace, showscale=False), \
+            row=pos[0], col=pos[1])
+        
+        fig.update_layout(title=f"Correlation G{acquisition.svid} ({acquisition.signalConfig.signalType})", showlegend=False)
+        fig.write_html(f"{path}acquisition_G{acquisition.svid}.html")
 
         return
 
@@ -183,7 +239,7 @@ class Analysis:
             fig.update_yaxes(title_text="Amplitude", row=pos[0], col=pos[1], \
                 showgrid=True, gridwidth=1, gridcolor='LightGray')
 
-            fig.update_layout(title=f"Tracking G{prn} ({dsp.signalType})", showlegend=False) 
+            fig.update_layout(title=f"Tracking G{prn} ({dsp.signalConfig.signalType})", showlegend=False) 
             fig.write_html(f"./{self.output_folder}/tracking_{prn}.html")
         
 

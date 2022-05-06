@@ -1,6 +1,6 @@
 import numpy as np
 from gnsstools.channel.abstract import ChannelState
-from gnsstools.gnsssignal import SignalType
+from gnsstools.gnsssignal import GNSSSignal, SignalType
 
 class DSPmeasurements():
 
@@ -9,9 +9,9 @@ class DSPmeasurements():
     channelState: list
 
     # Acquisition 
-    correlationMap: np.array
     estimatedFrequency: float
     estimatedCode: float
+    acquisitionMetric : float
 
     # Tracking
     iPrompt: list
@@ -21,8 +21,8 @@ class DSPmeasurements():
     codeFrequency: list
     carrierFrequency: list
 
-    def __init__(self, signalType:SignalType):
-        self.signalType = signalType
+    def __init__(self, signalConfig:GNSSSignal):
+        self.signalConfig = signalConfig
         self.time = []
         self.channelState = []
 

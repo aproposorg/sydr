@@ -16,6 +16,9 @@ class Satellite(ABC):
         self.dspMeasurements  = []
         self.gnssMeasurements = []
 
+        self.acquisition = []
+        self.tracking = []
+
         self.ephemeris = []
 
         return

@@ -32,7 +32,7 @@ class Acquisition(AcquisitionAbstract):
         self.dopplerSteps      = config.getfloat('ACQUISITION', 'doppler_steps')
         self.cohIntegration    = config.getint  ('ACQUISITION', 'coh_integration')
         self.nonCohIntegration = config.getint  ('ACQUISITION', 'noncoh_integration')
-        self.metricThreshold   = config.getfloat('ACQUISITION','metric_threshold')
+        self.metricThreshold   = config.getfloat('ACQUISITION', 'metric_threshold')
         
         self.samplesPerCode     = round(self.rfConfig.samplingFrequency / (signalConfig.codeFrequency / signalConfig.codeBits))
         self.samplesPerCodeChip = round(self.rfConfig.samplingFrequency / signalConfig.codeFrequency)
@@ -74,9 +74,6 @@ class Acquisition(AcquisitionAbstract):
         # Analyse results
         results = self.twoCorrelationPeakComparison(self.correlationMap)
 
-        self.estimatedDoppler     = results[0]
-        self.estimatedCode        = results[1]
-        self.acquisitionMetric    = results[2]
         self.estimatedFrequency   = self.rfConfig.interFrequency + self.estimatedDoppler 
 
         if self.acquisitionMetric > self.metricThreshold:
@@ -139,7 +136,7 @@ class Acquisition(AcquisitionAbstract):
             
             correlationMap[idx, :] = abs(noncoh_sum)
             idx += 1
-        correlationMap = np.squeeze(correlationMap)
+        correlationMap = np.squeeze(np.squeeze(correlationMap))
 
         return correlationMap
 
@@ -183,7 +180,13 @@ class Acquisition(AcquisitionAbstract):
         
         acquisitionMetric = peak_1 / peak_2
 
-        return estimatedDoppler, estimatedCode, acquisitionMetric
+        self.estimatedDoppler  = estimatedDoppler
+        self.estimatedCode     = estimatedCode
+        self.acquisitionMetric = acquisitionMetric
+        self.idxEstimatedFrequency = int(idx[0])
+        self.idxEstimatedCode = int(idx[1])
+
+        return
     
     # END OF CLASS
 
