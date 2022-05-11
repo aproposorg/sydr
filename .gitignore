@@ -1,3 +1,5 @@
 # Don't track this
 __pycache__/
 _results/
+scalene_profile.json
+speedscope_profile.txt
