@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 from abc import ABC, abstractmethod
+from random import sample
 import numpy as np
 import copy
 from gnsstools.acquisition.abstract import AcquisitionAbstract
@@ -15,13 +16,24 @@ from gnsstools.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
 from enum import Enum, unique
 
+from gnsstools.utils.circularbuffer import CircularBuffer
+
+# =============================================================================
+class ChannelConfig:
+    cid : int
+    gnssSignal : GNSSSignal
+    rfSignal : RFSignal
+    pass
+    
 # =============================================================================
 @unique
 class ChannelState(Enum):
-    IDLE      = 0
-    ACQUIRING = 1
-    ACQUIRED  = 2
-    TRACKING  = 3
+    OFF           = 0
+    IDLE          = 1
+    ACQUIRING     = 2
+    ACQUIRED      = 3
+    TRACKING      = 4
+    FINE_TRACKING = 5
 
 # =============================================================================
 class ChannelAbstract(ABC):
@@ -31,17 +43,19 @@ class ChannelAbstract(ABC):
     tracking               : TrackingAbstract
     dataRequiredAcquisition: int
     dataRequiredAcquisition: int
-    buffer                 : np.array
+    buffer                 : CircularBuffer
     currentSample          : int
+    unprocessedSamples     : int
 
     @abstractmethod
-    def __init__(self, cid:int, rfConfig:RFSignal, signalConfig:GNSSSignal):
+    def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal):
         self.cid          = cid
-        self.signalConfig = signalConfig
-        self.rfConfig     = rfConfig
+        self.gnssSignal   = gnssSignal
+        self.rfSignal     = rfSignal
         self.state        = ChannelState.IDLE
 
         self.currentSample = 0
+        self.unprocessedSamples = 0
 
         return
     
@@ -49,9 +63,12 @@ class ChannelAbstract(ABC):
 
     def run(self, rfData, numberOfms=1):
 
-        self.shiftBuffer(rfData, int(numberOfms*self.rfConfig.samplingFrequency*1e-3))
-        if not self.isBufferFull:
+        self.buffer.shift(rfData)
+
+        if not self.buffer.isFull():
             return
+        
+        self.unprocessedSamples += len(rfData)
 
         # IDLE
         # Initialise the acquisition
@@ -62,7 +79,8 @@ class ChannelAbstract(ABC):
         # ACQUIRING
         # Find coarse parameters of the signal
         elif self.state == ChannelState.ACQUIRING:
-            self.acquisition.run(self.buffer[-self.dataRequiredAcquisition:])
+            buffer = self.buffer.getBuffer()
+            self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
 
             if self.acquisition.isAcquired:
                 self.switchState(ChannelState.ACQUIRED)
@@ -75,22 +93,31 @@ class ChannelAbstract(ABC):
             frequency, code = self.acquisition.getEstimation()
             self.tracking.setInitialValues(frequency)
             samplesRequired = self.tracking.getSamplesRequired()
-            self.currentSample = code + 1
-            while self.currentSample <= (self.bufferMaxSize -  2 * samplesRequired):
-                self.currentSample += self.tracking.samplesRequired
+
+            # We take double the amount required to be sure one full code will fit
+            self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
+            self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
             self.switchState(ChannelState.TRACKING)
                     
         # TRACKING
         # Fine alignement of the signal replica  
         if self.state == ChannelState.TRACKING:
             samplesRequired = self.tracking.getSamplesRequired()
-            while self.currentSample <= (self.bufferMaxSize - samplesRequired):
+            
+            while self.unprocessedSamples >= samplesRequired:
+
+                buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
+                
                 # Run tracking
-                self.tracking.run(self.buffer[self.currentSample:self.currentSample + samplesRequired])
+                self.tracking.run(buffer)
                 # Update the index for samples
-                self.currentSample += self.tracking.samplesRequired
-                # Update the amount of samples required for next loop
+                self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
+                self.unprocessedSamples -= samplesRequired
+
+                # Update for next loop
                 samplesRequired = self.tracking.getSamplesRequired()
+                buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
+
 
             return
 
@@ -131,28 +158,12 @@ class ChannelAbstract(ABC):
 
     # -------------------------------------------------------------------------
 
-    def shiftBuffer(self, data, shift:int):
-        bufferShifted = np.empty_like(self.buffer)
-        bufferShifted[self.bufferMaxSize-shift:] = data
-        bufferShifted[:self.bufferMaxSize-shift] = self.buffer[shift:]
-        self.buffer = bufferShifted
-        
-        # Update buffer size
-        if not self.isBufferFull:
-            self.bufferSize += shift
-            if self.bufferSize >= self.bufferMaxSize:
-                self.isBufferFull = True
-        else:
-            self.currentSample -= shift
-
-        return
-
-    # -------------------------------------------------------------------------
-
     def getAcquisitionEstimation(self):
         frequency, code = self.acquisition.getEstimation()
         acquisitionMetric = self.acquisition.getMetric()
         return frequency, code, acquisitionMetric
+
+    # -------------------------------------------------------------------------
 
     def getTrackingEstimation(self):
         i, q = self.tracking.getPrompt()
@@ -161,6 +172,20 @@ class ChannelAbstract(ABC):
         dll  = self.tracking.getDLL()
         pll  = self.tracking.getPLL()
         return frequency, code, i, q, dll, pll
+
+    # -------------------------------------------------------------------------
+
+    def getConfig(self):
+
+        config = ChannelConfig()
+        config.cid = self.cid
+        config.gnssSignal = self.gnssSignal
+        config.rfSignal = self.rfSignal
+
+        return
     
     # -------------------------------------------------------------------------
     # END OF CLASS
+
+
+

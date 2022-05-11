@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rfsignal import RFSignal
+
 # =============================================================================
 class TrackingAbstract(ABC):
     """ Abstract class for defining tracking processes.
@@ -29,13 +30,13 @@ class TrackingAbstract(ABC):
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
+    def __init__(self, rfSignal:RFSignal, gnssSignal:GNSSSignal):
         """
         TODO
         """
 
-        self.rfConfig  = rfConfig
-        self.signalConfig = signalConfig
+        self.rfSignal  = rfSignal
+        self.gnssSignal = gnssSignal
 
         return
     
@@ -58,6 +59,20 @@ class TrackingAbstract(ABC):
         return iCorr, qCorr
 
     # -------------------------------------------------------------------------
+
+    def generateReplica(self):
+
+        # Generate replica and mix signal
+        time = self.time[0:self.samplesRequired+1]
+        temp = -(self.carrierFrequency * 2.0 * np.pi * time) + self.remCarrierPhase
+
+        self.remCarrierPhase = temp[self.samplesRequired] % (2 * np.pi)
+        
+        replica = np.exp(1j * temp[:self.samplesRequired])
+
+        return replica
+
+    # -------------------------------------------------------------------------
     
     def setInitialValues(self, estimatedFrequency):
         """
@@ -76,7 +91,7 @@ class TrackingAbstract(ABC):
         """
         
         self.svid = svid
-        code = self.signalConfig.getCode(svid)
+        code = self.gnssSignal.getCode(svid)
         self.code = np.r_[code[-1], code, code[0]]
         
         return 

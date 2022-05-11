@@ -1,35 +1,40 @@
 from abc import ABC
+from typing import Dict
 from xmlrpc.client import Boolean
 import numpy as np
 
 import gnsstools.constants as constants
+from gnsstools.ephemeris import Ephemeris
+from gnsstools.gnsssignal import GNSSSignal, SignalType
+from gnsstools.measurements import DSPEpochs, DSPmeasurement
 
 
 class Satellite(ABC):
 
-    signals: list
+    satelliteID : int
+    dspEpochs   : Dict[SignalType, DSPmeasurement]
+    gnssEpochs  : dict
+    ephemeris   : Ephemeris
+    navMessage  : dict
 
-    def __init__(self, svid):
+    def __init__(self, svid, signals):
 
-        self.svid = svid
-
-        self.dspMeasurements  = []
-        self.gnssMeasurements = []
-
-        self.acquisition = []
-        self.tracking = []
-
-        self.ephemeris = []
-
+        self.satelliteID = svid
+        self.dspEpochs   = {}
+        self.gnssEpochs  = {}
+        self.navMessage  = {}
+        for sig in signals:
+            self.dspEpochs[sig] = DSPEpochs(svid, sig)
+        self.ephemeris   = Ephemeris()
         return
 
     # -------------------------------------------------------------------------
 
-    def _initSignal(self):
-        for sig in self.signals:
-            self.dspMeasurements[sig]  = []
-            self.gnssMeasurements[sig] = []
-        return
+    # def _initSignal(self):
+    #     for sig in self.signals:
+    #         self.dspMeasurements[sig]  = []
+    #         self.gnssMeasurements[sig] = []
+    #     return
 
     # -------------------------------------------------------------------------
 

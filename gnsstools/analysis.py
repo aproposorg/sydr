@@ -81,8 +81,8 @@ class Analysis:
             row=1, col=1)
         
         # Results bar chart
-        fig.add_trace(go.Bar(x=names, y=[float(i) for i in acqMetric]), row=2, col=1)
-        fig.add_trace(go.Scatter(x=names, y=threshold, line=dict(width=2)),row=2, col=1)
+        fig.add_trace(go.Bar(x=names, y=[float(i) for i in acqMetric], width=800, height=400), row=2, col=1)
+        fig.add_trace(go.Scatter(x=names, y=threshold, line=dict(width=2), width=800, height=400),row=2, col=1)
         fig.update_layout(title=f"Acquisition", showlegend=False)
         fig.write_html(f"./{self.output_folder}/acquisition.html")
         
@@ -90,9 +90,7 @@ class Analysis:
             for prn, results in satelliteDict.items():
                 i = 0
                 for acq in results.acquisition:
-                    path =  f"./{self.output_folder}/correlation_{i}/"
-                    if not os.path.exists(path):
-                        os.mkdir(path)
+                    path =  f"./{self.output_folder}/correlation/acquisition_{i}"
                     self.plotCorrelation(acq, path)
                     i += 1
         
@@ -141,7 +139,7 @@ class Analysis:
             row=pos[0], col=pos[1])
         
         fig.update_layout(title=f"Correlation G{acquisition.svid} ({acquisition.signalConfig.signalType})", showlegend=False)
-        fig.write_html(f"{path}acquisition_G{acquisition.svid}.html")
+        fig.write_html(f"{path}_G{acquisition.svid}.html")
 
         return
 
@@ -434,4 +432,14 @@ class Analysis:
             fig.write_html(f"./{self.output_folder}/measurements_{results.tracking.prn}.html")
             
             
+        return
+
+
+    def analyseDSP(self, satellites):
+
+        for prn, sat in satellites.items():
+            grid = [[{'type': 'table'}, {'type': 'xy'}, {'type': 'xy'}], [{'type': 'xy'}]]
+
+
+
         return

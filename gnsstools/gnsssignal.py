@@ -22,6 +22,7 @@ class GNSSSignal:
         config.read(configfile)
         
         self.configFile    = configfile
+        self.config        = config
         self.signalType    = signalType
 
         # DEFAULT
@@ -31,7 +32,6 @@ class GNSSSignal:
         self.codeFrequency    = config.getfloat("DEFAULT", 'code_frequency')
 
         self.codeMs     = int(self.codeFrequency / self.codeBits / 1e3)
-        self.configFile = configfile
 
         return
 

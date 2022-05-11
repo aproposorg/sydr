@@ -23,13 +23,13 @@ class AcquisitionAbstract(ABC):
     idxEstimatedCode : float
 
     @abstractmethod
-    def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
+    def __init__(self, rfSignal:RFSignal, gnssSignal:GNSSSignal):
         """
         TODO
         """
 
-        self.rfConfig     = rfConfig
-        self.signalConfig = signalConfig
+        self.rfSignal   = rfSignal
+        self.gnssSignal = gnssSignal
 
         return
 
@@ -42,7 +42,7 @@ class AcquisitionAbstract(ABC):
         """
 
         self.svid = svid
-        self.code = self.signalConfig.getCode(svid, self.rfConfig.samplingFrequency)   
+        self.code = self.gnssSignal.getCode(svid, self.rfSignal.samplingFrequency)   
 
         return
     

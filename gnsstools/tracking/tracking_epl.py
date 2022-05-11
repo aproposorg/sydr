@@ -17,20 +17,22 @@ class Tracking(TrackingAbstract):
     TODO
     """
 
-    def __init__(self, rfConfig:RFSignal, signalConfig:GNSSSignal):
+    def __init__(self, rfSignal:RFSignal, gnssSignal:GNSSSignal):
         """
         TODO
         """
-        super().__init__(rfConfig, signalConfig)
+        super().__init__(rfSignal, gnssSignal)
 
-        # Read tracking parameters for signal
-        config = configparser.ConfigParser()
-        config.read(self.signalConfig.configFile)
+        config = self.gnssSignal.config
 
         self.pdiCode    = config.getfloat('TRACKING', 'pdi_code')
         self.pdiCarrier = config.getfloat('TRACKING', 'pdi_carrier')
-
-        self.correlatorSpacing = config.getfloat('TRACKING', 'correlator_spacing')
+        
+        correlatorNumber = config.getint  ('TRACKING', 'correlator_number')
+        self.correlatorSpacing = []
+        for i in range(correlatorNumber):
+            self.correlatorSpacing.append(config.getfloat('TRACKING', f'correlator_{i}'))
+        self.correlatorPrompt = config.getint('TRACKING', f'correlator_prompt')
 
         self.dllDumpingRatio   = config.getfloat('TRACKING', 'dll_dumping_ratio')
         self.dllNoiseBandwidth = config.getfloat('TRACKING', 'dll_noise_bandwidth')
@@ -61,12 +63,13 @@ class Tracking(TrackingAbstract):
         self.pllTau1, self.pllTau2 = self.getLoopCoefficients(self.pllNoiseBandwidth, \
             self.pllDumpingRatio, self.pllLoopGain)
 
-        self.codeFrequency   = self.signalConfig.codeFrequency
-        self.codePhaseStep   = self.signalConfig.codeFrequency / self.rfConfig.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.signalConfig.codeBits - self.remCodePhase) / self.codePhaseStep))
+        self.codeFrequency   = self.gnssSignal.codeFrequency
+        self.codePhaseStep   = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
+        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
         
-        self.correlatorSpacing = [-self.correlatorSpacing, 0.0, self.correlatorSpacing]
         self.correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+        self.time = np.arange(0, self.samplesRequired+2) / self.rfSignal.samplingFrequency
 
         return
     
@@ -77,13 +80,9 @@ class Tracking(TrackingAbstract):
         TODO
         """
 
-        # Generate replica and mix signal
-        time = np.arange(0, self.samplesRequired+1) / self.rfConfig.samplingFrequency
-        temp = -(self.carrierFrequency * 2.0 * np.pi * time) + self.remCarrierPhase
-
-        self.remCarrierPhase = temp[self.samplesRequired] % (2 * np.pi)
+        replica = self.generateReplica()
         
-        carrierSignal = np.exp(1j * temp[:self.samplesRequired]) * rfData
+        carrierSignal = replica * rfData
         self.iSignal = np.real(carrierSignal)
         self.qSignal = np.imag(carrierSignal)
 
@@ -103,10 +102,10 @@ class Tracking(TrackingAbstract):
         # Get remaining phase
         idx = np.linspace(self.remCodePhase, self.samplesRequired * self.codePhaseStep + self.remCodePhase, \
                           self.samplesRequired, endpoint=False)
-        self.remCodePhase = idx[self.samplesRequired-1] + self.codePhaseStep - self.signalConfig.codeBits
+        self.remCodePhase = idx[self.samplesRequired-1] + self.codePhaseStep - self.gnssSignal.codeBits
 
-        self.codePhaseStep = self.codeFrequency / self.rfConfig.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.signalConfig.codeBits - self.remCodePhase) / self.codePhaseStep))
+        self.codePhaseStep = self.codeFrequency / self.rfSignal.samplingFrequency
+        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
 
         return
 
@@ -125,7 +124,7 @@ class Tracking(TrackingAbstract):
         self.codeNCO += self.pdiCode / self.dllTau1 * newCodeError
         
         self.codeError = newCodeError
-        self.codeFrequency = self.signalConfig.codeFrequency - self.codeNCO
+        self.codeFrequency = self.gnssSignal.codeFrequency - self.codeNCO
         self.dll = self.codeNCO
 
         return
