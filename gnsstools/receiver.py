@@ -87,6 +87,7 @@ class Receiver():
             signal = chan.gnssSignal.signalType
             state = chan.getState()
             dsp   = self.satelliteDict[svid].dspEpochs[signal] # For cleaner code
+            message = self.satelliteDict[svid].navMessage[signal] # For cleaner code
             if chan.getState() == ChannelState.OFF:
                 continue
             elif state == ChannelState.IDLE:
@@ -103,9 +104,18 @@ class Receiver():
             elif state == ChannelState.TRACKING:
                 # Signal is being tracked
                 dsp.addTracking(msProcessed, state, chan.tracking)
+
+                # Decode
+                iPrompt, _ = chan.tracking.getPrompt()
+                message.addMeasurement(iPrompt)
+                message.run()
+
             else:
                 raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
         return
+
+
+    # -------------------------------------------------------------------------
 
     def saveSatellites(self, outfile):
         with open(outfile , 'wb') as f:

@@ -57,6 +57,8 @@ class ChannelAbstract(ABC):
         self.currentSample = 0
         self.unprocessedSamples = 0
 
+        self.decodingStarted = False
+
         return
     
     # -------------------------------------------------------------------------
@@ -70,14 +72,9 @@ class ChannelAbstract(ABC):
         
         self.unprocessedSamples += len(rfData)
 
-        # IDLE
-        # Initialise the acquisition
         if self.state == ChannelState.IDLE:
             print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
             return
-        
-        # ACQUIRING
-        # Find coarse parameters of the signal
         elif self.state == ChannelState.ACQUIRING:
             buffer = self.buffer.getBuffer()
             self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
@@ -88,7 +85,6 @@ class ChannelAbstract(ABC):
                 self.switchState(ChannelState.IDLE)
             
             return
-
         elif self.state == ChannelState.ACQUIRED:
             frequency, code = self.acquisition.getEstimation()
             self.tracking.setInitialValues(frequency)
@@ -100,27 +96,12 @@ class ChannelAbstract(ABC):
             self.switchState(ChannelState.TRACKING)
                     
         # TRACKING
-        # Fine alignement of the signal replica  
         if self.state == ChannelState.TRACKING:
-            samplesRequired = self.tracking.getSamplesRequired()
-            
-            while self.unprocessedSamples >= samplesRequired:
+            # Track
+            self.doTracking()
+            # Decode
 
-                buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
-                
-                # Run tracking
-                self.tracking.run(buffer)
-                # Update the index for samples
-                self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
-                self.unprocessedSamples -= samplesRequired
-
-                # Update for next loop
-                samplesRequired = self.tracking.getSamplesRequired()
-                buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
-
-
-            return
-
+        
         # # DECODING
         # if self.tracking.preambuleFound:
         #     print("HOW decoding")
@@ -128,6 +109,26 @@ class ChannelAbstract(ABC):
         # if self.tracking.frameFound:
         #     print("Frame decoding")
 
+        return
+
+    # -------------------------------------------------------------------------
+
+    def doTracking(self):
+        samplesRequired = self.tracking.getSamplesRequired()
+            
+        while self.unprocessedSamples >= samplesRequired:
+
+            buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
+            
+            # Run tracking
+            self.tracking.run(buffer)
+            # Update the index for samples
+            self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
+            self.unprocessedSamples -= samplesRequired
+
+            # Update for next loop
+            samplesRequired = self.tracking.getSamplesRequired()
+            buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
         return
 
     # -------------------------------------------------------------------------

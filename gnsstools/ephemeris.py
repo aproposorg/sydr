@@ -1,39 +1,58 @@
+from abc import ABC, abstractclassmethod
 import numpy as np
 
-class Ephemeris:
+class Ephemeris(ABC):
+
+    @abstractclassmethod
+    def computePosition(self):
+        pass
+
+# =============================================================================
+
+class BRDCEphemeris(Ephemeris):
+    iode     : int
+    iodc     : int
+    toe      : float
+    toc      : float
+    tgd      : float
+    af2      : float
+    af1      : float
+    af0      : float
+    ecc      : float 
+    sqrtA    : float
+    crs      : float
+    deltan   : float
+    m0       : float
+    cuc      : float
+    cus      : float
+    cic      : float
+    omega0   : float
+    cis      : float
+    i0       : float
+    crc      : float
+    omega    : float
+    omegaDot : float
+    iDot     : float
+    alpha0   : float
+
+    subframe1Flag : bool
+    subframe2Flag : bool
+    subframe3Flag : bool
+
     def __init__(self):
-        self.weekNumber = np.NaN
-        self.accuracy   = np.NaN
-        self.health     = np.NaN
-        self.IODC       = np.NaN
-        self.t_oc       = np.NaN
-        self.T_GD       = np.NaN
-        self.a_f2       = np.NaN
-        self.a_f1       = np.NaN
-        self.a_f0       = np.NaN
-        self.IODE_sf2   = np.NaN
-        self.e          = np.NaN
-        self.sqrtA      = np.NaN
-        self.t_oe       = np.NaN
-        self.C_rs       = np.NaN
-        self.deltan     = np.NaN
-        self.M_0        = np.NaN
-        self.C_uc       = np.NaN
-        self.C_us       = np.NaN
-        self.C_ic       = np.NaN
-        self.omega_0    = np.NaN
-        self.C_is       = np.NaN
-        self.i_0        = np.NaN
-        self.C_rc       = np.NaN
-        self.omega      = np.NaN
-        self.omegaDot   = np.NaN
-        self.iDot       = np.NaN
-        self.IODE_sf3   = np.NaN
-        self.alpha0     = np.NaN
-        # self.alpha1     = np.NaN
-        # self.alpha2     = np.NaN
-        # self.alpha3     = np.NaN
-        # self.beta0      = np.NaN
-        # self.beta1      = np.NaN
-        # self.beta2      = np.NaN
-        # self.beta3      = np.NaN
+        self.subframe1Flag = False
+        self.subframe2Flag = False
+        self.subframe3Flag = False
+        return
+
+    def resetFlags(self):
+        self.subframe1Flag = False
+        self.subframe2Flag = False
+        self.subframe3Flag = False
+
+    def checkFlags(self):
+        return self.subframe1Flag and self.subframe2Flag and self.subframe3Flag
+
+    def computePosition(self):
+        # TODO
+        pass

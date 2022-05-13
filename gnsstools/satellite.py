@@ -7,6 +7,7 @@ import gnsstools.constants as constants
 from gnsstools.ephemeris import Ephemeris
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.measurements import DSPEpochs, DSPmeasurement
+from gnsstools.message.lnav import LNAV
 
 
 class Satellite(ABC):
@@ -25,7 +26,7 @@ class Satellite(ABC):
         self.navMessage  = {}
         for sig in signals:
             self.dspEpochs[sig] = DSPEpochs(svid, sig)
-        self.ephemeris   = Ephemeris()
+            self.navMessage[sig] = self.selectNavMessage(sig)
         return
 
     # -------------------------------------------------------------------------
@@ -40,6 +41,14 @@ class Satellite(ABC):
 
     def getEphemeris(self):
         return self.ephemeris
+
+    # -------------------------------------------------------------------------
+
+    def selectNavMessage(self, sig):
+        if sig == SignalType.GPS_L1_CA:
+            return LNAV()
+        else:
+            raise ValueError("Incorrect signal type.")
 
     # =========================================================================
 

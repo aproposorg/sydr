@@ -116,6 +116,11 @@ class TrackingAbstract(ABC):
     def getPLL(self):
         return self.pll 
 
+    def getPrompt(self):
+        iPrompt = self.correlatorResults[2*self.correlatorPrompt]
+        qPrompt = self.correlatorResults[2*self.correlatorPrompt+1]
+        return iPrompt, qPrompt
+
     # -------------------------------------------------------------------------
     # ACSTRACT METHODS
     

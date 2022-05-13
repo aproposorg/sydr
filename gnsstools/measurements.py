@@ -69,8 +69,7 @@ class DSPEpochs():
         dsp.dopplerFrequency = tracking.carrierFrequency
         dsp.codeFrequency = tracking.codeFrequency
         dsp.correlators = tracking.correlatorResults
-        dsp.iPrompt = tracking.correlatorResults[2*tracking.correlatorPrompt]
-        dsp.qPrompt = tracking.correlatorResults[2*tracking.correlatorPrompt+1]
+        dsp.iPrompt, dsp.qPrompt = tracking.getPrompt()
         dsp.dll = tracking.dll
         dsp.pll = tracking.pll
         dsp.fll = np.nan #TODO add FLL in tracking
