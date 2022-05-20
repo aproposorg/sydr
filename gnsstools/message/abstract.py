@@ -10,11 +10,15 @@ class NavMessageType(Enum):
 # =============================================================================
 class NavigationMessageAbstract():
     
-    NavMessageType : NavMessageType
+    navMessageType : NavMessageType
+
+    towFound : bool
 
     def __init__(self):
 
         return
+
+    # -------------------------------------------------------------------------
     
     # -------------------------------------------------------------------------
 

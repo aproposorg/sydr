@@ -1,12 +1,16 @@
 from abc import ABC
+from asyncore import read
+from sys import flags
 from typing import Dict
 from xmlrpc.client import Boolean
 import numpy as np
+from gnsstools.channel.abstract import ChannelState
 
 import gnsstools.constants as constants
 from gnsstools.ephemeris import Ephemeris
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.measurements import DSPEpochs, DSPmeasurement
+from gnsstools.message.abstract import NavMessageType
 from gnsstools.message.lnav import LNAV
 
 
@@ -18,6 +22,14 @@ class Satellite(ABC):
     ephemeris   : Ephemeris
     navMessage  : dict
 
+    # Flags
+    isAcquired         : bool
+    isFineTracking     : bool
+    isTOWDecoded       : bool
+    isEphemerisDecoded : bool
+
+    lastPosition : np.array
+
     def __init__(self, svid, signals):
 
         self.satelliteID = svid
@@ -26,16 +38,13 @@ class Satellite(ABC):
         self.navMessage  = {}
         for sig in signals:
             self.dspEpochs[sig] = DSPEpochs(svid, sig)
-            self.navMessage[sig] = self.selectNavMessage(sig)
+            self.navMessage[sig] = self.selectNavMessage(svid, sig)
+
+
+        self.isTOWDecoded = False
+        self.isEphemerisDecoded = False
+        
         return
-
-    # -------------------------------------------------------------------------
-
-    # def _initSignal(self):
-    #     for sig in self.signals:
-    #         self.dspMeasurements[sig]  = []
-    #         self.gnssMeasurements[sig] = []
-    #     return
 
     # -------------------------------------------------------------------------
 
@@ -44,11 +53,28 @@ class Satellite(ABC):
 
     # -------------------------------------------------------------------------
 
-    def selectNavMessage(self, sig):
+    def selectNavMessage(self, svid, sig):
         if sig == SignalType.GPS_L1_CA:
-            return LNAV()
+            return LNAV(svid)
         else:
             raise ValueError("Incorrect signal type.")
+
+    # -------------------------------------------------------------------------
+
+    def isSatelliteReady(self):
+        
+        ready = True
+
+        # Check if TOW found
+        ready = ready and self.isTOWDecoded
+
+        # Check if ephemeris available
+        ready = ready and self.isEphemerisDecoded
+
+        # Check if satellite flag as healthy 
+        # TODO
+
+        return ready
 
     # =========================================================================
 
@@ -107,6 +133,7 @@ class Satellite(ABC):
         satellitePosition[0] = np.cos(u)*r*np.cos(Omega) - np.sin(u)*r*np.cos(i)*np.sin(Omega)
         satellitePosition[1] = np.cos(u)*r*np.sin(Omega) + np.sin(u)*r*np.cos(i)*np.cos(Omega)
         satellitePosition[2] = np.sin(u)*r*np.sin(i)
+        self.lastPosition = satellitePosition
 
         satelliteClockCorrection = (eph.a_f2*dt + eph.a_f1)*dt + eph.a_f0 + dtr
 
@@ -138,3 +165,25 @@ class Satellite(ABC):
             corrTime = time + 2 * half_week
         
         return corrTime
+
+    # ------------------------------------------------------------ 
+
+    def addDSPMeasurement(self, msProcessed, samplesProcessed, chan):
+        state      = chan.getState()
+        signal     = chan.gnssSignal.signalType
+        dspEpoch   = self.dspEpochs[signal]
+        navMessage = self.navMessage[signal]
+        if state == ChannelState.ACQUIRING:
+            dspEpoch.addAcquisition(msProcessed, samplesProcessed, chan)
+        elif state == ChannelState.TRACKING:
+            dspEpoch.addTracking(msProcessed, samplesProcessed, chan)
+            # Decode
+            lastMeasurement = self.dspEpochs[signal].getLastMeasurement()
+            navMessage.addMeasurement(msProcessed, lastMeasurement)
+            navMessage.run()
+            # Update status
+            self.isTOWDecoded = navMessage.isTOWDecoded
+            self.isEphemerisDecoded = navMessage.isEphemerisDecoded
+
+        return
+        

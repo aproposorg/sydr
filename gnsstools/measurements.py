@@ -1,11 +1,12 @@
 import numpy as np
 from gnsstools.acquisition.acquisition_pcps import Acquisition
 from gnsstools.channel.abstract import ChannelConfig, ChannelState
+from gnsstools.channel.channel_default import Channel
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.tracking.tracking_epl import Tracking
 
 class DSPmeasurement():
-    time  : float
+    sample  : float
     state : ChannelState
 
 class AcquisitionMeasurement(DSPmeasurement):
@@ -42,13 +43,15 @@ class DSPEpochs():
         self.dspMeasurements = []
         return
 
-    def addAcquisition(self, time, state:ChannelState, acquisition:Acquisition):
+    def addAcquisition(self, time, samples, channel:Channel):
         self.time.append(time)
-        self.state.append(state)
+        self.state.append(channel.state)
+
+        acquisition = channel.acquisition
         
         dsp = AcquisitionMeasurement()
-        dsp.time = time
-        dsp.state = state
+        dsp.sample = samples - channel.unprocessedSamples
+        dsp.state = channel.state
         dsp.correlationMap = acquisition.correlationMap
         dsp.idxDoppler = acquisition.idxEstimatedFrequency
         dsp.idxCode = acquisition.idxEstimatedCode
@@ -58,14 +61,16 @@ class DSPEpochs():
 
         self.dspMeasurements.append(dsp)
 
-    def addTracking(self, time, state:ChannelState, tracking:Tracking):
+    def addTracking(self, time, samples, channel:Channel):
 
         self.time.append(time)
-        self.state.append(state)
+        self.state.append(channel.state)
+
+        tracking = channel.tracking
         
         dsp = TrackingMeasurement()
-        dsp.time = time
-        dsp.state = state
+        dsp.sample = samples - channel.unprocessedSamples
+        dsp.state = channel.state
         dsp.dopplerFrequency = tracking.carrierFrequency
         dsp.codeFrequency = tracking.codeFrequency
         dsp.correlators = tracking.correlatorResults
@@ -77,6 +82,9 @@ class DSPEpochs():
         self.dspMeasurements.append(dsp)
 
         return
+
+    def getLastMeasurement(self):
+        return self.dspMeasurements[-1]
 
 
 # =============================================================================

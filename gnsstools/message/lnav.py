@@ -3,20 +3,27 @@ import numpy as np
 import gnsscal
 import copy
 from gnsstools.ephemeris import BRDCEphemeris
+from gnsstools.measurements import DSPmeasurement, TrackingMeasurement
 from gnsstools.message.abstract import NavigationMessageAbstract
 import gnsstools.constants as constants
 
 
 class LNAV(NavigationMessageAbstract):
 
-    PREAMBULE_BITS = np.array([1, 0, 0, 0, 1, 0, 1, 1])
+    PREAMBULE_BITS     = np.array([1, 0, 0, 0, 1, 0, 1, 1])
+    PREAMBULE_BITS_INV = np.array([0, 1, 1, 1, 0, 1, 0, 0])
     MS_IN_NAV_BIT  = 20 # TODO move to configuration file
     SUBFRAME_BITS  = 300
     WORD_BITS      = 30
 
+    svid           : int
+
+    time           : list
+
     data           : list
     idxData        : int
     bits           : list
+    bitsSamples    : list  # List containing the absolute sample number corresponding each start bit
     idxBits        : int
     bitFound       : bool
     subframeFound  : bool
@@ -32,18 +39,27 @@ class LNAV(NavigationMessageAbstract):
     tow              : int
     weekNumber       : int
 
+    # Flags
+    isTOWDecoded       : bool
+    isEphemerisDecoded : bool
+
 # -----------------------------------------------------------------------------
 
-    def __init__(self):
+    def __init__(self, svid):
+
+        self.svid = svid
 
         self.data = np.empty(self.MS_IN_NAV_BIT)
         self.partialEphemeris = BRDCEphemeris()
 
         self.data = np.zeros(self.MS_IN_NAV_BIT)
         self.idxData = 0
+        self.time = []
         self.bits = []
+        self.bitsSamples = []
         self.idxBits = 0
-        self.bitFound = False
+        self.firstBitFound = False          # Bool to see if a switch of bit has been found, starting point of decoding
+        self.bitFound = False               # Track if a new bit is available to be decoded
         self.subframeFound = False
         self.idxSubframe = 0
         self.subframeProcessed = False
@@ -51,42 +67,47 @@ class LNAV(NavigationMessageAbstract):
         self.tow = 0
         self.weekNumber = 0
 
+        self.isTOWDecoded = False
+        self.isEphemerisDecoded = False
+
         pass
 
 # -----------------------------------------------------------------------------
 
-    def addMeasurement(self, value):
+    def addMeasurement(self, time, dspMeasurement:TrackingMeasurement):
 
-        self.data[self.idxData] = value
+        self.data[self.idxData] = dspMeasurement.iPrompt
         self.idxData += 1
 
         # Check for bit change
-        if not self.bitFound and self.idxData > 1: 
+        if not self.firstBitFound and self.idxData > 1: 
             if  np.sign(self.data[self.idxData-2]) != np.sign(self.data[self.idxData-1]):
-                self.bitFound = True
+                self.firstBitFound = True
                 self.data.fill(0.0)
-                self.data[0] = value
+                self.data[0] = dspMeasurement.iPrompt
                 self.idxData = 1
-        
-        return
 
-# -----------------------------------------------------------------------------
-
-    def decodeBit(self):
+        # Check if enough data is present to decode the bit
         if self.idxData == self.MS_IN_NAV_BIT:
             bit = self.toBits(np.array(self.data), accumulate=self.MS_IN_NAV_BIT)
             self.bits.append(bit[0])
+            self.bitsSamples.append(dspMeasurement.sample)
             self.data.fill(0.0)
             self.idxData = 0
+            self.time.append(time)
+            self.bitFound = True
+        
         return
 
 # -----------------------------------------------------------------------------
 
     def run(self):
 
-        # Decode the last bit found
-        self.decodeBit()
-
+        # Check is a new bit is available, otherwise nothing to do
+        if not self.bitFound:
+            return
+        self.bitFound = False
+        
         # Check for subframe
         self.checkSubframe()
 
@@ -106,13 +127,14 @@ class LNAV(NavigationMessageAbstract):
         if not (len(self.bits) > minBits):
             return 
 
-        # Check if subframe if it is not too early for a new subframe
+        # Check subframe if it is not too early for a new subframe
         if self.subframeFound and len(self.bits[self.idxSubframe:]) < self.SUBFRAME_BITS + minBits:
            return
 
         self.subframeProcessed = False
 
-        if (self.bits[-minBits:-minBits+self.PREAMBULE_BITS.size] == self.PREAMBULE_BITS).all():
+        if (self.bits[-minBits:-minBits+self.PREAMBULE_BITS.size] == self.PREAMBULE_BITS).all() \
+            or (self.bits[-minBits:-minBits+self.PREAMBULE_BITS_INV.size] == self.PREAMBULE_BITS_INV).all():
             idx = len(self.bits) - minBits
 
             # Need to convert the '0' into '-1' for the parity check function
@@ -121,6 +143,7 @@ class LNAV(NavigationMessageAbstract):
                self.parityCheck(bits[self.WORD_BITS:2*self.WORD_BITS+2]):
                self.subframeFound = True
                self.idxSubframe = idx
+               print(f"Subframe found for satellite satellite G{self.svid}.")  
         
         return 
 
@@ -163,7 +186,7 @@ class LNAV(NavigationMessageAbstract):
             eph.af1           = self.twosComp2dec(subframe[248:264]) * 2 ** (- 43)
             eph.af0           = self.twosComp2dec(subframe[270:292]) * 2 ** (- 31)
             eph.subframe1Flag = True
-        elif 2 == subframeID:
+        elif subframeID == 2:
             # It contains first part of ephemeris parameters
             eph.iode          = self.bin2dec(subframe[60:68]) # TODO Check IODE consistency
             eph.ecc           = self.bin2dec(subframe[166:174] + subframe[180:204]) * 2 ** (- 33)
@@ -175,7 +198,7 @@ class LNAV(NavigationMessageAbstract):
             eph.cuc           = self.twosComp2dec(subframe[150:166]) * 2 ** (- 29)
             eph.cus           = self.twosComp2dec(subframe[210:226]) * 2 ** (- 29)
             eph.subframe2Flag = True
-        elif 3 == subframeID:
+        elif subframeID == 3:
             # It contains second part of ephemeris parameters
             eph.iode          = self.bin2dec(subframe[270:278]) # TODO Check IODE consistency
             eph.cic           = self.twosComp2dec(subframe[60:76]) * 2 ** (- 29)
@@ -188,7 +211,7 @@ class LNAV(NavigationMessageAbstract):
             eph.iDot          = self.twosComp2dec(subframe[278:292]) * 2 ** (- 43) * constants.PI
             eph.subframe3Flag = True
 
-        elif 4 == subframeID:
+        elif subframeID == 4:
             # Almanac, ionospheric model, UTC parameters.
             # SV health (PRN: 25-32).
             # Not decoded at the moment.
@@ -202,15 +225,18 @@ class LNAV(NavigationMessageAbstract):
             # self.ephemeris.beta2  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 16) / constants.PI**2
             # self.ephemeris.beta3  = self.twosComp2dec(subframe[60:76]) * 2 ** ( 16) / constants.PI**3
             pass
-        elif 5 == subframeID:
+        elif subframeID == 5:
             # SV almanac and health (PRN: 1-24).
             # Almanac reference week number and time.
             # Not decoded at the moment.
             # TODO
             pass
+        else: 
+            print(f"Unrecognised suframe ID {subframeID} found for satellite G{self.svid}")
 
         if eph.checkFlags():
             self.ephemeris = copy.copy(self.partialEphemeris)
+            self.isEphemerisDecoded = True
 
         # Compute the time of week (TOW) of the first sub-frames in the array ====
         # Also correct the TOW. The transmitted TOW is actual TOW of the next
@@ -219,6 +245,7 @@ class LNAV(NavigationMessageAbstract):
         # Also the TOW written in the message is referred to very begining of the 
         # subframe, meaning the first bit of the preambule.
         self.tow = self.bin2dec(subframe[30:47]) * 6 - 30
+        self.isTOWDecoded = True
 
         if self.tow != 0 and self.weekNumber != 0:
             self.doy = gnsscal.gpswd2yrdoy(self.weekNumber, \
@@ -226,4 +253,14 @@ class LNAV(NavigationMessageAbstract):
 
         self.subframeProcessed = True
 
+        print(f"Subframe {subframeID} decoded for satellite satellite G{self.svid}.") 
+
         return
+    
+    # -------------------------------------------------------------------------
+
+    def getSampleSubframe(self):
+        """
+        Get the sample number of the last subframe 
+        """
+        return self.bitsSamples[self.idxSubframe]

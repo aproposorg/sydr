@@ -10,6 +10,8 @@ from bokeh.plotting import figure
 from bokeh.models import Div, ColumnDataSource, HoverTool, BoxSelectTool, LassoSelectTool
 from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
 
+from gnsstools.ephemeris import Ephemeris
+
 from .rfsignal import RFSignal
 from .satellite import Satellite
 from .gnsssignal import SignalType
@@ -29,7 +31,6 @@ class Visualisation:
         # Bokeh parameters
         self.backgroundColor = "#fafafa"
         self.tooltips = [("x", "$x{8.3f}"), ("y", "$y{8.3f}")]
-
         pass
 
     # -------------------------------------------------------------------------
@@ -52,9 +53,13 @@ class Visualisation:
         # Tracking
         trackLayout = self.getTrackingLayout(satellite, signalType)
         trackTab = Panel(child=trackLayout, title="Tracking")
+
+        # Decoding
+        decodingLayout = self.getDecodingLayout(satellite, signalType)
+        decodingTab = Panel(child=decodingLayout, title="Decoding")
         
         # Make tabs
-        tabs = Tabs(tabs=[acqTab, trackTab])
+        tabs = Tabs(tabs=[acqTab, trackTab, decodingTab])
 
         # Save file
         output_file(f'{self.outfolder}dsp_analysis_G{satellite.satelliteID}.html', title=f'DSP analysis G{satellite.satelliteID}')
@@ -76,7 +81,7 @@ class Visualisation:
         tabTitle = Div(text=html)
 
         # Find first successful acquisition
-        idx = epochs.state.index(ChannelState.ACQUIRED)
+        idx = epochs.state.index(ChannelState.ACQUIRING)
         dsp = epochs.dspMeasurements[idx]
 
         dopplerRange = gnssSignal.config.getfloat('ACQUISITION', 'doppler_range')
@@ -143,6 +148,9 @@ class Visualisation:
         TODO
         """
 
+        tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
+            'pan', 'wheel_zoom', 'box_zoom,reset']
+
         gnssSignal = self.gnssSignals[signalType]
         epochs = satellite.dspEpochs[signalType]
 
@@ -167,8 +175,6 @@ class Visualisation:
         # create a column data source for the plots to share
         # This is to share the lasso selection
         source = ColumnDataSource(data=dict(time=time, iprompt=iprompt, qprompt=qprompt, dll=dll, pll=pll))
-        tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
-            'pan', 'wheel_zoom', 'box_zoom,reset']
         
         # I/Q plots
         height=400
@@ -235,6 +241,40 @@ class Visualisation:
                               [figIPrompt], [figQPrompt]])
         
         return trackLayout
+
+    # -------------------------------------------------------------------------
+
+    def getDecodingLayout(self, satellite:Satellite, signalType: SignalType):
+
+        tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
+            'pan', 'wheel_zoom', 'box_zoom,reset']
+
+        gnssSignal = self.gnssSignals[signalType]
+        navMessage = satellite.navMessage[signalType]
+
+        html = f"<h2>Decoding results summary</h2>\n<h3>{signalType}</h3>"
+        tabTitle = Div(text=html)
+
+        time = np.array(navMessage.time) / 1e3
+
+        height=300
+        width=1000
+        # Decoded bits
+        figBits = figure(
+            title="Navigation message bits", \
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools)
+        figBits.line(x=time, y=navMessage.bits)
+        figBits.yaxis.axis_label = "Bits"
+        figBits.xaxis.axis_label = "Time [s]"
+
+        # Content table
+        # TODO
+        
+        decodingLayout = layout([[tabTitle],
+                              [figBits]])
+        
+        return decodingLayout
 
     # -------------------------------------------------------------------------
 

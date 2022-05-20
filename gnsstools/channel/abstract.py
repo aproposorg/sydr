@@ -14,7 +14,7 @@ from gnsstools.acquisition.abstract import AcquisitionAbstract
 from gnsstools.gnsssignal import GNSSSignal
 from gnsstools.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
-from enum import Enum, unique
+from enum import Enum, IntFlag, unique, auto
 
 from gnsstools.utils.circularbuffer import CircularBuffer
 
@@ -31,9 +31,7 @@ class ChannelState(Enum):
     OFF           = 0
     IDLE          = 1
     ACQUIRING     = 2
-    ACQUIRED      = 3
-    TRACKING      = 4
-    FINE_TRACKING = 5
+    TRACKING      = 3
 
 # =============================================================================
 class ChannelAbstract(ABC):
@@ -47,6 +45,10 @@ class ChannelAbstract(ABC):
     currentSample          : int
     unprocessedSamples     : int
 
+    isAcquired     : bool
+    isTracking     : bool
+    isFineTracking : bool
+
     @abstractmethod
     def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal):
         self.cid          = cid
@@ -57,14 +59,15 @@ class ChannelAbstract(ABC):
         self.currentSample = 0
         self.unprocessedSamples = 0
 
-        self.decodingStarted = False
+        self.isAcquired = False
+        self.isTracking = False
 
         return
     
     # -------------------------------------------------------------------------
 
-    def run(self, rfData, numberOfms=1):
-
+    def run(self, rfData):
+        
         self.buffer.shift(rfData)
 
         if not self.buffer.isFull():
@@ -74,40 +77,25 @@ class ChannelAbstract(ABC):
 
         if self.state == ChannelState.IDLE:
             print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
-            return
         elif self.state == ChannelState.ACQUIRING:
             buffer = self.buffer.getBuffer()
             self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
+            self.isAcquired = self.acquisition.isAcquired
 
-            if self.acquisition.isAcquired:
-                self.switchState(ChannelState.ACQUIRED)
+            if self.isAcquired:
+                frequency, code = self.acquisition.getEstimation()
+                self.tracking.setInitialValues(frequency)
+                samplesRequired = self.tracking.getSamplesRequired()
+
+                # We take double the amount required to be sure one full code will fit
+                self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
+                self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
             else:
                 self.switchState(ChannelState.IDLE)
             
-            return
-        elif self.state == ChannelState.ACQUIRED:
-            frequency, code = self.acquisition.getEstimation()
-            self.tracking.setInitialValues(frequency)
-            samplesRequired = self.tracking.getSamplesRequired()
-
-            # We take double the amount required to be sure one full code will fit
-            self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
-            self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
-            self.switchState(ChannelState.TRACKING)
-                    
-        # TRACKING
-        if self.state == ChannelState.TRACKING:
+        elif self.state == ChannelState.TRACKING:
             # Track
             self.doTracking()
-            # Decode
-
-        
-        # # DECODING
-        # if self.tracking.preambuleFound:
-        #     print("HOW decoding")
-
-        # if self.tracking.frameFound:
-        #     print("Frame decoding")
 
         return
 
