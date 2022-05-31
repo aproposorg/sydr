@@ -188,13 +188,13 @@ class NavigationMessageAbstract():
         #                   (character array).
 
         word_new = []
-        if d30star == '1':
+        if d30star == 1:
             # Data bits must be inverted
             for i in range(0, 24):
-                if word[i] == '1':
-                    word[i] = '0'
-                elif word[i] == '0':
-                    word[i] = '1'
+                if word[i] == 1:
+                    word[i] = 0
+                elif word[i] == 0:
+                    word[i] = 1
         return word
 
 # =============================================================================

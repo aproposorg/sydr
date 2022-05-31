@@ -1,4 +1,5 @@
 
+from warnings import WarningMessage
 import numpy as np
 import gnsscal
 import copy
@@ -30,6 +31,11 @@ class LNAV(NavigationMessageAbstract):
     idxSubframe    : int
     preambuleFound : bool
     idxPreambule   : int
+
+    bitsLastSubframe : int
+    idxFirstSubframe : int   # Current subframe list, used as a buffer when no subframe has been decoded yet.
+    subframeDecoded : list
+    isBitInverted : bool
     
     # Message contents
     ephemeris        : BRDCEphemeris
@@ -40,8 +46,9 @@ class LNAV(NavigationMessageAbstract):
     weekNumber       : int
 
     # Flags
-    isTOWDecoded       : bool
-    isEphemerisDecoded : bool
+    isTOWDecoded        : bool
+    isEphemerisDecoded  : bool
+    isFirstSubframeFound: bool
 
 # -----------------------------------------------------------------------------
 
@@ -64,11 +71,17 @@ class LNAV(NavigationMessageAbstract):
         self.idxSubframe = 0
         self.subframeProcessed = False
 
+        self.bitsLastSubframe = 0
+
         self.tow = 0
         self.weekNumber = 0
 
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
+        self.isFirstSubframeFound = False
+        self.isBitInverted = False
+
+        self.idxFirstSubframe = -1
 
         pass
 
@@ -89,13 +102,14 @@ class LNAV(NavigationMessageAbstract):
 
         # Check if enough data is present to decode the bit
         if self.idxData == self.MS_IN_NAV_BIT:
-            bit = self.toBits(np.array(self.data), accumulate=self.MS_IN_NAV_BIT)
+            bit = self.toBits(np.array(self.data), accumulate=self.MS_IN_NAV_BIT)            
             self.bits.append(bit[0])
             self.bitsSamples.append(dspMeasurement.sample)
             self.data.fill(0.0)
             self.idxData = 0
             self.time.append(time)
             self.bitFound = True
+            self.bitsLastSubframe += 1
         
         return
 
@@ -111,9 +125,9 @@ class LNAV(NavigationMessageAbstract):
         # Check for subframe
         self.checkSubframe()
 
-        if self.subframeFound and not self.subframeProcessed:
-            if len(self.bits[self.idxSubframe:]) == self.SUBFRAME_BITS:
-                self.decodeSubframe()
+        # if self.subframeFound and not self.subframeProcessed:
+        #     if len(self.bits[self.idxSubframe:]) == self.SUBFRAME_BITS:
+        #         self.decodeSubframe()
 
         return
 
@@ -124,32 +138,89 @@ class LNAV(NavigationMessageAbstract):
         # Need at least the preambule bits plus the previous 2 bit to perform checks
         # plus the 2 words afterwards
         minBits = 2 + 2 * self.WORD_BITS
-        if not (len(self.bits) > minBits):
+        if len(self.bits) < minBits:
             return 
 
-        # Check subframe if it is not too early for a new subframe
-        if self.subframeFound and len(self.bits[self.idxSubframe:]) < self.SUBFRAME_BITS + minBits:
-           return
-
-        self.subframeProcessed = False
-
-        if (self.bits[-minBits:-minBits+self.PREAMBULE_BITS.size] == self.PREAMBULE_BITS).all() \
-            or (self.bits[-minBits:-minBits+self.PREAMBULE_BITS_INV.size] == self.PREAMBULE_BITS_INV).all():
+        # Check if the first subframe has been found
+        if not self.isFirstSubframeFound:
+            isSecondSubframeFound = False
             idx = len(self.bits) - minBits
+            if not self.checkPreambule(idx):
+                return
+            
+            if self.idxFirstSubframe == -1:
+                self.idxFirstSubframe = idx
+                return
+            elif idx - self.idxFirstSubframe != self.SUBFRAME_BITS:
+                self.idxFirstSubframe = idx
+                return
+            
+            # The first subframe has been verified
+            self.isFirstSubframeFound = True
+            
+            # Decode first subframe 
+            self.decodeSubframe(self.idxFirstSubframe)
 
-            # Need to convert the '0' into '-1' for the parity check function
-            bits = np.array([-1 if x == 0 else 1 for x in self.bits[idx-2:idx+2*self.WORD_BITS]])
-            if self.parityCheck(bits[:self.WORD_BITS+2]) and \
-               self.parityCheck(bits[self.WORD_BITS:2*self.WORD_BITS+2]):
-               self.subframeFound = True
-               self.idxSubframe = idx
-               print(f"Subframe found for satellite satellite G{self.svid}.")  
+            self.bitsLastSubframe = minBits
+
+        if self.bitsLastSubframe < self.SUBFRAME_BITS:
+            return
+        
+        idx = len(self.bits) - self.SUBFRAME_BITS
+        if not self.checkPreambule(idx):
+            print(f"WARNING: Subframe for satellite G{self.svid} is not found where it was expected. Subframe tracking will be reseted.")
+            self.isFirstSubframeFound = False
+            self.currSubframeList = []
+            return
+        
+        self.decodeSubframe(idx)
+        self.bitsLastSubframe = 0
+
+        # # Need at least the preambule bits plus the previous 2 bit to perform checks
+        # # plus the 2 words afterwards
+        # minBits = 2 + 2 * self.WORD_BITS
+        # if not (len(self.bits) > minBits):
+        #     return 
+
+        # # Check subframe if it is not too early for a new subframe
+        # if self.subframeFound and len(self.bits[self.idxSubframe:]) < self.SUBFRAME_BITS + minBits:
+        #    return
+
+        # self.subframeProcessed = False
+
+        # if (self.bits[-minBits:-minBits+self.PREAMBULE_BITS.size] == self.PREAMBULE_BITS).all() \
+        #     or (self.bits[-minBits:-minBits+self.PREAMBULE_BITS_INV.size] == self.PREAMBULE_BITS_INV).all():
+        #     idx = len(self.bits) - minBits
+
+        #     # Need to convert the '0' into '-1' for the parity check function
+        #     bits = np.array([-1 if x == 0 else 1 for x in self.bits[idx-2:idx+2*self.WORD_BITS]])
+        #     if self.parityCheck(bits[:self.WORD_BITS+2]) and \
+        #        self.parityCheck(bits[self.WORD_BITS:2*self.WORD_BITS+2]):
+        #        self.subframeFound = True
+        #        self.idxSubframe = idx
+        #        print(f"Subframe found for satellite satellite G{self.svid}.")  
         
         return 
 
 # -----------------------------------------------------------------------------
 
-    def decodeSubframe(self):
+    def checkPreambule(self, idx):
+        subframeFound = False
+        if (self.bits[idx:idx+self.PREAMBULE_BITS.size] == self.PREAMBULE_BITS).all() \
+            or (self.bits[idx:idx+self.PREAMBULE_BITS.size]  == self.PREAMBULE_BITS_INV).all():
+
+            # Need to convert the '0' into '-1' for the parity check function
+            bits = np.array([-1 if x == 0 else 1 for x in self.bits[idx-2:idx+2*self.WORD_BITS]])
+            if self.parityCheck(bits[:self.WORD_BITS+2]) and \
+               self.parityCheck(bits[self.WORD_BITS:2*self.WORD_BITS+2]):
+               subframeFound = True
+
+        return subframeFound
+
+
+# -----------------------------------------------------------------------------
+
+    def decodeSubframe(self, idxSubframe):
         """
         Decode of the navigation message based on the navigation bits. For
         detailed information about the procedure, refer to the GPS ICD 
@@ -158,8 +229,8 @@ class LNAV(NavigationMessageAbstract):
 
         # Last bit of previous word use to check if bits inversion 
         # is needed.
-        d30star = self.bits[self.idxSubframe - 1]
-        subframe = self.bits[self.idxSubframe : self.idxSubframe + self.SUBFRAME_BITS]
+        d30star = self.bits[idxSubframe - 1]
+        subframe = self.bits[idxSubframe : idxSubframe + self.SUBFRAME_BITS]
         
         # Word check 
         for j in range(10):
