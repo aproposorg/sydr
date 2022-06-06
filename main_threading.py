@@ -15,14 +15,13 @@ rfSignal = RFSignal(rfConfigFile)
 gnssSignals = {}
 gnssSignals[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini', SignalType.GPS_L1_CA)
 
-receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA])
+receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA], rfSignal)
 
-receiver.run(rfSignal, [4])
-
+receiver.run([2,3,4,6,9])
 receiver.saveSatellites('./_results/dump_satellites.pkl')
 
 receiver.loadSatellites('./_results/dump_satellites.pkl')
-receiver.computeGNSSMeasurements(35 * rfSignal.samplingFrequency)
+receiver.computeGNSSMeasurements(292310000)
 
 # # Analysis
 # correlationMapEnabled = True

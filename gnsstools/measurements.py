@@ -6,6 +6,7 @@ from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.tracking.tracking_epl import Tracking
 
 class DSPmeasurement():
+    idx : int
     sample  : float
     state : ChannelState
 
@@ -32,6 +33,7 @@ class DSPEpochs():
     satelliteID     : int
     signalID        : SignalType
     time            : list
+    samples         : list
     state           : list
     dspMeasurements : list
 
@@ -41,6 +43,8 @@ class DSPEpochs():
         self.time = []
         self.state = []
         self.dspMeasurements = []
+        self.samples = []
+        self.dspMeasurementCounter = 0
         return
 
     def addAcquisition(self, time, samples, channel:Channel):
@@ -50,6 +54,7 @@ class DSPEpochs():
         acquisition = channel.acquisition
         
         dsp = AcquisitionMeasurement()
+        dsp.idx = self.trackingMeasurementCounter 
         dsp.sample = samples - channel.unprocessedSamples
         dsp.state = channel.state
         dsp.correlationMap = acquisition.correlationMap
@@ -60,15 +65,19 @@ class DSPEpochs():
         dsp.acquisitionMetric = acquisition.acquisitionMetric
 
         self.dspMeasurements.append(dsp)
+        self.samples.append(dsp.sample)
+
+        self.trackingMeasurementCounter += 1
 
     def addTracking(self, time, samples, channel:Channel):
-
+        
         self.time.append(time)
         self.state.append(channel.state)
 
         tracking = channel.tracking
         
         dsp = TrackingMeasurement()
+        dsp.idx = self.trackingMeasurementCounter 
         dsp.sample = samples - channel.unprocessedSamples
         dsp.state = channel.state
         dsp.dopplerFrequency = tracking.carrierFrequency
@@ -80,6 +89,9 @@ class DSPEpochs():
         dsp.fll = np.nan #TODO add FLL in tracking
 
         self.dspMeasurements.append(dsp)
+        self.samples.append(dsp.sample)
+
+        self.trackingMeasurementCounter += 1
 
         return
 

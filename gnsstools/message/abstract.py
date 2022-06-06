@@ -14,11 +14,16 @@ class NavigationMessageAbstract():
 
     towFound : bool
 
+    tow : int
+
     def __init__(self):
 
         return
 
     # -------------------------------------------------------------------------
+
+    def getTow(self):
+        return self.tow
     
     # -------------------------------------------------------------------------
 

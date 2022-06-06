@@ -36,6 +36,7 @@ class LNAV(NavigationMessageAbstract):
     idxFirstSubframe : int   # Current subframe list, used as a buffer when no subframe has been decoded yet.
     subframeDecoded : list
     isBitInverted : bool
+    idxLastSubframe : int   # Index to the last decoded subframe, w.r.t. the bit array
     
     # Message contents
     ephemeris        : BRDCEphemeris
@@ -68,7 +69,6 @@ class LNAV(NavigationMessageAbstract):
         self.firstBitFound = False          # Bool to see if a switch of bit has been found, starting point of decoding
         self.bitFound = False               # Track if a new bit is available to be decoded
         self.subframeFound = False
-        self.idxSubframe = 0
         self.subframeProcessed = False
 
         self.bitsLastSubframe = 0
@@ -82,6 +82,11 @@ class LNAV(NavigationMessageAbstract):
         self.isBitInverted = False
 
         self.idxFirstSubframe = -1
+        self.idxLastSubframe = -1
+        self.idxCodeSubframe = -1
+
+        self.codeCounter = 0 # Code counter, reset at each new TOW
+        self.idxCode = []
 
         pass
 
@@ -91,6 +96,7 @@ class LNAV(NavigationMessageAbstract):
 
         self.data[self.idxData] = dspMeasurement.iPrompt
         self.idxData += 1
+        self.codeCounter += 1 
 
         # Check for bit change
         if not self.firstBitFound and self.idxData > 1: 
@@ -105,6 +111,7 @@ class LNAV(NavigationMessageAbstract):
             bit = self.toBits(np.array(self.data), accumulate=self.MS_IN_NAV_BIT)            
             self.bits.append(bit[0])
             self.bitsSamples.append(dspMeasurement.sample)
+            self.idxCode.append(dspMeasurement.idx)
             self.data.fill(0.0)
             self.idxData = 0
             self.time.append(time)
@@ -315,8 +322,11 @@ class LNAV(NavigationMessageAbstract):
         # (the variable subframe at this point contains bits of the last subframe).
         # Also the TOW written in the message is referred to very begining of the 
         # subframe, meaning the first bit of the preambule.
-        self.tow = self.bin2dec(subframe[30:47]) * 6 - 30
+        # So we remove 6 seconds to have the TOW of the current subframe
+        self.tow = self.bin2dec(subframe[30:47]) * 6 - 6
+        self.idxLastSubframe = idxSubframe
         self.isTOWDecoded = True
+        self.codeCounter = 0
 
         if self.tow != 0 and self.weekNumber != 0:
             self.doy = gnsscal.gpswd2yrdoy(self.weekNumber, \
@@ -332,6 +342,18 @@ class LNAV(NavigationMessageAbstract):
 
     def getSampleSubframe(self):
         """
-        Get the sample number of the last subframe 
+        Get the sample number of the last TOW.
         """
-        return self.bitsSamples[self.idxSubframe]
+        return self.bitsSamples[self.idxLastSubframe]
+
+    # -------------------------------------------------------------------------
+
+    def getCodeSubframe(self):
+        """
+        Get the index of the code of the last subframe.
+        """
+
+        return self.idxCode[self.idxLastSubframe]
+
+
+    # -------------------------------------------------------------------------

@@ -9,7 +9,7 @@ SECONDS_PER_DAY = 86400.0
 GPS_WEEK_ROLLOVER = 2
 
 # Pseudorange constants
-AVG_TRAVEL_TIME_MS = 80.0
+AVG_TRAVEL_TIME_MS = 76.0
 
 # Earth constants
 EARTH_RADIUS        =  6378137.0       # [m]

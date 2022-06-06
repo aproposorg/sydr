@@ -12,13 +12,15 @@ import pickle
 from gnsstools.channel.abstract import ChannelState
 from gnsstools.channel.channel_default import Channel
 from gnsstools.gnsssignal import GNSSSignal, SignalType
+from gnsstools.measurements import DSPEpochs
 from gnsstools.message.abstract import NavMessageType
+from gnsstools.rfsignal import RFSignal
 from gnsstools.satellite import Satellite
-from gnsstools.constants import AVG_TRAVEL_TIME_MS, SPEED_OF_LIGHT
+from gnsstools.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
 # =============================================================================
 class Receiver():
 
-    def __init__(self, receiverConfigFile, gnssSignal:GNSSSignal):
+    def __init__(self, receiverConfigFile, gnssSignal:GNSSSignal, rfSignal:RFSignal):
 
         self.gnssSignal = gnssSignal
         
@@ -35,16 +37,19 @@ class Receiver():
         self.isClockInitialised = False
 
         self.receiverClock =  0.0
+        self.receiverClockError = 0.0
+        self.lastMeasurementTime = 0.0
+        self.receiverPosition = []
 
         self.measurementFrequency = 1  # In Hz
+
+        self.rfSignal = rfSignal
 
         return
 
     # -------------------------------------------------------------------------
     
-    def run(self, rfSignal, satelliteList):
-
-        self.rfSignal = rfSignal
+    def run(self, satelliteList):
 
         # TEMPORARY solution TODO change
         signalDict = {}
@@ -53,7 +58,7 @@ class Receiver():
 
         # Initialise the channels
         for idx in range(min(self.nbChannels, len(satelliteList))):
-            self.channels.append(Channel(idx, self.gnssSignal, rfSignal))
+            self.channels.append(Channel(idx, self.gnssSignal, self.rfSignal))
 
         # Initialise satellite structure
         self.satelliteDict = {}
@@ -62,12 +67,14 @@ class Receiver():
 
         # Loop through the file contents
         # TODO Load by chunck of data instead of ms per ms
-        samplesInMs = int(rfSignal.samplingFrequency * 1e-3)
+        msPerLoop = 1
+        samplesInMs = int(msPerLoop * self.rfSignal.samplingFrequency * 1e-3)
         rfData = np.empty(samplesInMs)
-        sampleCounter = 0
+        self.sampleCounter = 0
         for msProcessed in range(self.msToProcess):
-            rfData = rfSignal.readFile(timeLength=1, keep_open=True)
-            sampleCounter += samplesInMs
+            rfData = self.rfSignal.readFile(timeLength=msPerLoop, keep_open=True)
+            self.sampleCounter += samplesInMs
+            self.receiverClock += msPerLoop
 
             if rfData.size < samplesInMs:
                 raise EOFError("EOF encountered earlier than expected in file.")
@@ -76,10 +83,18 @@ class Receiver():
             self.runChannels(rfData)
 
             # Handle channels results
-            self.processChannels(msProcessed, sampleCounter)
+            self.processChannels(msProcessed, self.sampleCounter)
 
-            # Compute measurements
-            #self.computeGNSSMeasurements(sampleCounter, self.gnssSignal)
+            # if (self.sampleCounter == 292310000):
+            #     return
+
+            # Compute measurements based on receiver time
+            # For measurement frequency of 1 Hz, that's every round second.
+            if not self.isClockInitialised:
+                # First time we run it to estimate receiver clock error
+                self.computeGNSSMeasurements()
+            elif int(self.receiverClock % int(1/self.measurementFrequency*1e3)) == 0:
+                self.computeGNSSMeasurements()
 
             msProcessed += 1
         return
@@ -105,7 +120,7 @@ class Receiver():
 
     # -------------------------------------------------------------------------
 
-    def processChannels(self, msProcessed, samplesProcessed):
+    def processChannels(self, msProcessed, sampleCounter):
         for chan in self.channels:
             svid    = chan.svid
             state   = chan.getState()
@@ -114,13 +129,13 @@ class Receiver():
                 continue
             elif state == ChannelState.IDLE:
                 # Signal was not aquired
-                satellite.addDSPMeasurement(msProcessed, samplesProcessed, chan)
+                satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                 print(f"Channel {chan.cid} could not acquire satellite G{svid}.")    
                 pass
             elif state == ChannelState.ACQUIRING:
                 # Buffer not full (most probably)
                 if chan.isAcquired:
-                    satellite.addDSPMeasurement(msProcessed, samplesProcessed, chan)
+                    satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                     chan.switchState(ChannelState.TRACKING)
                     print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
                 else:
@@ -128,7 +143,13 @@ class Receiver():
                     pass
             elif state == ChannelState.TRACKING:
                 # Signal is being tracked
-                satellite.addDSPMeasurement(msProcessed, samplesProcessed, chan)
+                satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
+
+                # if satellite.isTOWDecoded and not self.isClockInitialised:
+                #     # Receiver clock initialised on the first TOW decoded
+                #     self.isClockInitialised = True
+                #     self.receiverClock = satellite.tow
+                #     self.timeSinceTow = 
             else:
                 raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
             
@@ -137,7 +158,85 @@ class Receiver():
 
     # -------------------------------------------------------------------------
 
-    def computeGNSSMeasurements(self, sampleCounter):
+    def computeGNSSMeasurements_(self, sampleCounter):
+
+        # Check if satellite ready for measurement
+        prnList = []
+        for prn, satellite in self.satelliteDict.items():
+            if not satellite.isSatelliteReady():
+                continue
+            prnList.append(prn)
+        
+        if len(prnList) < 5:
+            # Not enough satellites
+            return
+        
+        # sampleCounter = 292310000
+
+        # Retrieve transmitted time
+        samplingFrequency = self.rfSignal.samplingFrequency
+        samplesPerCode = self.gnssSignal.getSamplesPerCode(samplingFrequency)
+        transmittedTime = np.zeros(len(prnList))
+        satellitesPositions = np.zeros((len(prnList), 3))
+        satellitesClocks = np.zeros(len(prnList))
+        idx = 0
+        for prn in prnList:
+            satellite = self.satelliteDict[prn]
+            navMessage = satellite.navMessage[self.gnssSignal.signalType]
+            lastDSPMeasurement = satellite.dspEpochs[self.gnssSignal.signalType].getLastMeasurement()
+
+            # Get the last TOW
+            tow = navMessage.getTow()
+
+            # Get sample index of subframe
+            sampleSubframe = navMessage.getSampleTOW()
+
+            print(sampleSubframe)
+
+            # Find difference between last TOW and last code tracked
+            diffTowCode = lastDSPMeasurement.sample - sampleSubframe
+
+            # Find difference between current sample and last code tracked
+            diffCurrentCode = sampleCounter - lastDSPMeasurement.sample
+
+            # Find the code phase
+            # codePhase = diffCurrentCode / samplesPerCode
+
+            # Build transmitted time 
+            transmittedTime[idx] = tow + (diffTowCode + diffCurrentCode) / samplingFrequency
+
+            satellitesPositions[idx, :], satellitesClocks[idx] = satellite.computePosition(transmittedTime[idx])
+
+            idx += 1 
+        
+        # Estimated received time
+        if not self.isClockInitialised:
+            # The largest value is the one that was received first
+            # We add an average travel time to obtain a more realistic initial value
+            self.receiverClock = np.min(transmittedTime) + (AVG_TRAVEL_TIME_MS/1e3)
+        else:
+            self.receiverClock += 1 / self.measurementFrequency
+        
+        # Compute pseudoranges
+        pseudoranges = (self.receiverClock - transmittedTime) * SPEED_OF_LIGHT
+
+        # Correct pseudoranges
+        idx = 0
+        for prn in prnList:
+            satellite = self.satelliteDict[prn]
+            pseudoranges += (satellitesClocks[idx] + satellite.getTGD()) * SPEED_OF_LIGHT
+            idx += 1
+
+        # Compute receiver position
+        self.computeReceiverPosition(pseudoranges, satellitesPositions)
+
+        return
+
+    # -------------------------------------------------------------------------
+
+    def computeGNSSMeasurements(self):
+
+        samplingFrequency = self.rfSignal.samplingFrequency
 
         # Check if satellite ready for measurement
         prnList = []
@@ -150,56 +249,62 @@ class Receiver():
             # Not enough satellites
             return
 
-        # Retrieve transmitted time
-        samplingFrequency = self.rfSignal.samplingFrequency
-        samplesPerCode = self.gnssSignal.getSamplesPerCode(samplingFrequency)
-        transmittedTime = np.zeros(len(prnList))
+        # Find earliest signal
+        latestTowSample = 0
+        earliestTowSample = np.inf
+        for prn in prnList:
+            navMessage = self.satelliteDict[prn].navMessage[self.gnssSignal.signalType]
+            if earliestTowSample > navMessage.getSampleSubframe():
+                earliestTowSample = navMessage.getSampleSubframe()
+                tow = self.satelliteDict[prn].tow
+        
+        if not self.isClockInitialised:
+            self.receiverClock = tow
+            self.isClockInitialised = True
+        
         satellitesPositions = np.zeros((len(prnList), 3))
+        satellitesClocks = np.zeros(len(prnList))
+        pseudoranges = np.zeros(len(prnList))
+        correctedPseudoranges = np.zeros(len(prnList))
         idx = 0
         for prn in prnList:
             satellite = self.satelliteDict[prn]
+            dspEpochs = dspEpochs[self.gnssSignal.signalType]
             navMessage = satellite.navMessage[self.gnssSignal.signalType]
-            lastDSPMeasurement = satellite.dspEpochs[self.gnssSignal.signalType].getLastMeasurement()
 
-            # Get the last TOW
-            tow = navMessage.getTow()
+            # # Rewind to be align with the earliest TOW sample
+            # idxCode = navMessage.getCodeSubframe()
+            # sample = dspEpochs.dspMeasurements[idxCode].sample 
+            # while sample < earliestTowSample:
+            #     idxCode -= 1
+            #     sample = dspEpochs.dspMeasurements[idxCode].sample 
 
-            # Get sample index of subframe
-            sampleSuframe = navMessage.getSampleSubframe()
+            # Compute the relative difference between satellites
+            relativeTime = (navMessage.getSampleSubframe() - earliestTowSample) / samplingFrequency
+            transmitTime = tow - (AVG_TRAVEL_TIME_MS * 1e3 + relativeTime)
 
-            # Find difference between last TOW and last code tracked
-            diffTowCode = lastDSPMeasurement.sample - sampleSuframe
+            pseudoranges[idx] = (transmitTime - self.receiverClock) * SPEED_OF_LIGHT
 
-            # Find difference between current sample and last code tracked
-            diffCurrentCode = sampleCounter - lastDSPMeasurement.sample
+            # Compute the time of transmission
+            relativeTime = (navMessage.getSampleSubframe() - earliestTowSample) / samplingFrequency
+            transmitTime = satellite.tow + timeSinceTOW - relativeTime
 
-            # Find the code phase
-            # codePhase = diffCurrentCode / samplesPerCode
+            # Compute satellite positions and clock errors
+            satellitesPositions[idx, :], satellitesClocks[idx] = satellite.computePosition(transmitTime)
 
-            # Build transmitted time 
-            transmittedTime[idx] = tow + (diffTowCode + diffCurrentCode) * samplingFrequency
+            # Compute pseudoranges
+            # TODO add remaining phase
+            pseudoranges[idx] = (self.receiverClock - transmitTime) * SPEED_OF_LIGHT
 
-            # Correct the time
-            transmittedTime += satellite.getTGD()  # Total Group Delay
-
-            satellitesPositions[idx, :], satclk = satellite.computePosition(transmittedTime[idx])
-            transmittedTime += satclk
-
-            idx += 1 
+            # Apply corrections
+            # TODO Ionosphere, troposhere ...
+            correctedPseudoranges[idx] = pseudoranges
+            correctedPseudoranges[idx] -= satellitesClocks[idx] * SPEED_OF_LIGHT # Satellite clock error
+            correctedPseudoranges[idx] -= satellite.getTDG() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
+            
+            idx += 1
         
-        # Estimated received time
-        if not self.isClockInitialised:
-            # The largest value is the one that was received first
-            # We add an average travel time to obtain a more realistic initial value
-            self.receiverClock = np.max(transmittedTime) + (AVG_TRAVEL_TIME_MS/1e3)
-        else:
-            self.receiverClock += 1 / self.measurementFrequency
-        
-        # Compute pseudoranges
-        pseudoranges = (self.receiverClock - transmittedTime) * SPEED_OF_LIGHT
-
-        # Compute receiver position
-        self.computeReceiverPosition(pseudoranges, satellitesPositions)
+        self.computeReceiverPosition(correctedPseudoranges, satellitesPositions)
 
         return
 
@@ -249,7 +354,7 @@ class Receiver():
                 A[idx, 2] = (satpos[idx, 2] - x[2]) / p
                 A[idx, 3] = 1
 
-                B[idx] = pseudoranges[idx] - p - x[3]
+                B[idx] = pseudoranges[idx] - p #- x[3]
             
             # Least Squares
             N = np.transpose(A).dot(A)
@@ -258,9 +363,43 @@ class Receiver():
             v = A.dot(_x) - B
         
         self.receiverPosition.append(x[0:3])
-        self.receiverClockError.append(x[3])
+        self.receiverClockError = x[3]
 
         return
+
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def correctEarthRotation(traveltime, X_sat):
+        """
+        E_R_CORR  Returns rotated satellite ECEF coordinates due to Earth
+        rotation during signal travel time
+
+        X_sat_rot = e_r_corr(traveltime, X_sat);
+
+          Inputs:
+              travelTime  - signal travel time
+              X_sat       - satellite's ECEF coordinates
+
+          Outputs:
+              X_sat_rot   - rotated satellite's coordinates (ECEF)
+
+        Written by Kai Borre
+        Copyright (c) by Kai Borre
+        """
+
+        # --- Find rotation angle --------------------------------------------------
+        omegatau = EARTH_ROTATION_RATE * traveltime
+
+        # --- Make a rotation matrix -----------------------------------------------
+        R3 = np.array([[np.cos(omegatau), np.sin(omegatau), 0.0],
+                       [-np.sin(omegatau), np.cos(omegatau), 0.0],
+                       [0.0, 0.0, 1.0]])
+
+        # --- Do the rotation ------------------------------------------------------
+        X_sat_rot = R3.dot(X_sat)
+        
+        return X_sat_rot
 
     # -------------------------------------------------------------------------
 

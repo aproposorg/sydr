@@ -52,15 +52,15 @@ class CircularBuffer:
             return self.buffer[idxStart:idxStop]
         
 
-        if idxStart + samplesRequired <= self.bufferMaxSize:
-            idxStop = idxStart + samplesRequired
-        else:
-            idxStop = (idxStart + samplesRequired) % self.bufferMaxSize
+        # if idxStart + samplesRequired <= self.bufferMaxSize:
+        #     idxStop = idxStart + samplesRequired
+        # else:
+        #     idxStop = (idxStart + samplesRequired) % self.bufferMaxSize
         
-        if idxStop < idxStart:
-            return self.buffer[idxStart:] + self.buffer[:idxStop]
-        else: 
-            return self.buffer[idxStart:idxStop]
+        # if idxStop < idxStart:
+        #     return self.buffer[idxStart:] + self.buffer[:idxStop]
+        # else: 
+        #     return self.buffer[idxStart:idxStop]
 
     def getBuffer(self):
         return self.buffer
