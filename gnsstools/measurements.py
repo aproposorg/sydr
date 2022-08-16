@@ -1,6 +1,6 @@
 import numpy as np
 from gnsstools.acquisition.acquisition_pcps import Acquisition
-from gnsstools.channel.abstract import ChannelConfig, ChannelState
+from gnsstools.channel.abstract import ChannelState
 from gnsstools.channel.channel_default import Channel
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.tracking.tracking_epl import Tracking
@@ -54,7 +54,7 @@ class DSPEpochs():
         acquisition = channel.acquisition
         
         dsp = AcquisitionMeasurement()
-        dsp.idx = self.trackingMeasurementCounter 
+        dsp.idx = self.dspMeasurementCounter 
         dsp.sample = samples - channel.unprocessedSamples
         dsp.state = channel.state
         dsp.correlationMap = acquisition.correlationMap
@@ -67,7 +67,7 @@ class DSPEpochs():
         self.dspMeasurements.append(dsp)
         self.samples.append(dsp.sample)
 
-        self.trackingMeasurementCounter += 1
+        self.dspMeasurementCounter += 1
 
     def addTracking(self, time, samples, channel:Channel):
         
@@ -77,7 +77,7 @@ class DSPEpochs():
         tracking = channel.tracking
         
         dsp = TrackingMeasurement()
-        dsp.idx = self.trackingMeasurementCounter 
+        dsp.idx = self.dspMeasurementCounter 
         dsp.sample = samples - channel.unprocessedSamples
         dsp.state = channel.state
         dsp.dopplerFrequency = tracking.carrierFrequency
@@ -91,7 +91,7 @@ class DSPEpochs():
         self.dspMeasurements.append(dsp)
         self.samples.append(dsp.sample)
 
-        self.trackingMeasurementCounter += 1
+        self.dspMeasurementCounter += 1
 
         return
 

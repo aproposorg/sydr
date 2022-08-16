@@ -88,13 +88,13 @@ class Receiver():
             # if (self.sampleCounter == 292310000):
             #     return
 
-            # Compute measurements based on receiver time
-            # For measurement frequency of 1 Hz, that's every round second.
-            if not self.isClockInitialised:
-                # First time we run it to estimate receiver clock error
-                self.computeGNSSMeasurements()
-            elif int(self.receiverClock % int(1/self.measurementFrequency*1e3)) == 0:
-                self.computeGNSSMeasurements()
+            # # Compute measurements based on receiver time
+            # # For measurement frequency of 1 Hz, that's every round second.
+            # if not self.isClockInitialised:
+            #     # First time we run it to estimate receiver clock error
+            #     self.computeGNSSMeasurements()
+            # elif int(self.receiverClock % int(1/self.measurementFrequency*1e3)) == 0:
+            #     self.computeGNSSMeasurements()
 
             msProcessed += 1
         return

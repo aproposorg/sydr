@@ -7,7 +7,7 @@ import configparser
 from bokeh.io import save, output_file
 from bokeh.layouts import layout
 from bokeh.plotting import figure
-from bokeh.models import Div, ColumnDataSource, HoverTool, BoxSelectTool, LassoSelectTool
+from bokeh.models import Div, ColumnDataSource, HoverTool, PrintfTickFormatter, Range1d
 from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
 
 from gnsstools.ephemeris import Ephemeris
@@ -84,24 +84,45 @@ class Visualisation:
         idx = epochs.state.index(ChannelState.ACQUIRING)
         dsp = epochs.dspMeasurements[idx]
 
+        titleFontSize = '16pt'
+        tickFontSize = '16pt'
+        axisFontSize = '16pt'
+        lineWidth = 2
+
         dopplerRange = gnssSignal.config.getfloat('ACQUISITION', 'doppler_range')
         dopplerSteps = gnssSignal.config.getfloat('ACQUISITION', 'doppler_steps')
         frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerSteps)
         codeBins =  np.linspace(0, gnssSignal.codeBits, np.size(dsp.correlationMap, axis=1))
 
+        height = 300
+        width = 500
         # Frequency correlation
-        figAcqDoppler = figure(title="Frequency correlation", background_fill_color=self.backgroundColor)
-        figAcqDoppler.line(x=frequencyBins, y=dsp.correlationMap[:, dsp.idxCode])
+        figAcqDoppler = figure(title="Frequency correlation", background_fill_color=self.backgroundColor, \
+            height=height, width=width)
+        figAcqDoppler.line(x=frequencyBins, y=dsp.correlationMap[:, dsp.idxCode], line_width=lineWidth)
         figAcqDoppler.yaxis.axis_label = "Correlation amplitude"
-        figAcqDoppler.xaxis.axis_label = "Frequency range"
+        figAcqDoppler.xaxis.axis_label = "Frequency range [Hz]"
         figAcqDoppler.add_tools(HoverTool(tooltips=self.tooltips))
+        figAcqDoppler.title.text_font_size = titleFontSize
+        figAcqDoppler.xaxis.major_label_text_font_size = tickFontSize
+        figAcqDoppler.xaxis.axis_label_text_font_size = axisFontSize
+        figAcqDoppler.yaxis.major_label_text_font_size = tickFontSize
+        figAcqDoppler.yaxis.axis_label_text_font_size = axisFontSize
+        figAcqDoppler.yaxis.formatter=PrintfTickFormatter(format="%0e")
 
         # Code correlation
-        figAcqCode = figure(title="Code correlation", background_fill_color=self.backgroundColor)
-        figAcqCode.line(x=codeBins, y=dsp.correlationMap[dsp.idxDoppler, :])
+        figAcqCode = figure(title="Code correlation", background_fill_color=self.backgroundColor, \
+            height=height, width=width)
+        figAcqCode.line(x=codeBins, y=dsp.correlationMap[dsp.idxDoppler, :], line_width=lineWidth)
         figAcqCode.yaxis.axis_label = "Correlation amplitude"
-        figAcqCode.xaxis.axis_label = "Code range"
+        figAcqCode.xaxis.axis_label = "Code range [chip]"
         figAcqCode.add_tools(HoverTool(tooltips=self.tooltips))
+        figAcqCode.title.text_font_size = titleFontSize
+        figAcqCode.xaxis.major_label_text_font_size = tickFontSize
+        figAcqCode.xaxis.axis_label_text_font_size = axisFontSize
+        figAcqCode.yaxis.major_label_text_font_size = tickFontSize
+        figAcqCode.yaxis.axis_label_text_font_size = axisFontSize
+        figAcqCode.yaxis.formatter=PrintfTickFormatter(format="%0e")
 
         # 3D Correlation map
         # TODO No 3D support in Bokeh
@@ -148,8 +169,13 @@ class Visualisation:
         TODO
         """
 
+        titleFontSize = '16pt'
+        tickFontSize = '16pt'
+        axisFontSize = '16pt'
+        lineWidth = 2
+
         tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
-            'pan', 'wheel_zoom', 'box_zoom,reset']
+            'pan', 'wheel_zoom', 'box_zoom,reset', 'save']
 
         gnssSignal = self.gnssSignals[signalType]
         epochs = satellite.dspEpochs[signalType]
@@ -197,9 +223,15 @@ class Visualisation:
             title="DLL", \
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools)
-        figDLL.line(x='time', y='dll', source=source)
+        figDLL.line(x='time', y='dll', source=source, line_width=lineWidth)
         figDLL.yaxis.axis_label = "Code frequency jitter [Hz]"
         figDLL.xaxis.axis_label = "Time [s]"
+        figDLL.title.text_font_size = titleFontSize
+        figDLL.xaxis.major_label_text_font_size = tickFontSize
+        figDLL.xaxis.axis_label_text_font_size = axisFontSize
+        figDLL.yaxis.major_label_text_font_size = tickFontSize
+        figDLL.yaxis.axis_label_text_font_size = axisFontSize
+        #figDLL.yaxis.formatter=PrintfTickFormatter(format="%0e")
 
         # PLL
         figPLL = figure(
@@ -207,9 +239,15 @@ class Visualisation:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             x_range=figDLL.x_range)
-        figPLL.line(x='time', y='pll', source=source)
+        figPLL.line(x='time', y='pll', source=source, line_width=lineWidth)
         figPLL.yaxis.axis_label = "Doppler frequency jitter [Hz]"
         figPLL.xaxis.axis_label = "Time [s]"
+        figPLL.title.text_font_size = titleFontSize
+        figPLL.xaxis.major_label_text_font_size = tickFontSize
+        figPLL.xaxis.axis_label_text_font_size = axisFontSize
+        figPLL.yaxis.major_label_text_font_size = tickFontSize
+        figPLL.yaxis.axis_label_text_font_size = axisFontSize
+        #figPLL.yaxis.formatter=PrintfTickFormatter(format="%0e")
 
         height=300
         width=1000
@@ -218,22 +256,34 @@ class Visualisation:
             title="In-Phase (I) Prompt", \
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
-            x_range=figDLL.x_range)
-        figIPrompt.line(x='time', y='iprompt', source=source)
+            x_range=figDLL.x_range,
+            y_range=Range1d(-20e3, 20e3))
+        figIPrompt.line(x='time', y='iprompt', source=source, line_width=lineWidth)
         figIPrompt.scatter(x='time', y='iprompt', source=source, marker='dot')
         figIPrompt.yaxis.axis_label = "Correlation amplitude"
         figIPrompt.xaxis.axis_label = "Time [s]"
+        figIPrompt.title.text_font_size = titleFontSize
+        figIPrompt.xaxis.major_label_text_font_size = tickFontSize
+        figIPrompt.xaxis.axis_label_text_font_size = axisFontSize
+        figIPrompt.yaxis.major_label_text_font_size = tickFontSize
+        figIPrompt.yaxis.axis_label_text_font_size = axisFontSize
 
         # Quadraphase (Q) Prompt
         figQPrompt = figure(
             title="Quadraphase (Q) Prompt",\
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
-            x_range=figDLL.x_range)
-        figQPrompt.line(x='time', y='qprompt', source=source)
+            x_range=figDLL.x_range,
+            y_range=Range1d(-20e3, 20e3))
+        figQPrompt.line(x='time', y='qprompt', source=source, line_width=lineWidth)
         figQPrompt.scatter(x='time', y='qprompt', source=source, marker='dot')
         figQPrompt.yaxis.axis_label = "Correlation amplitude"
         figQPrompt.xaxis.axis_label = "Time [s]"
+        figQPrompt.title.text_font_size = titleFontSize
+        figQPrompt.xaxis.major_label_text_font_size = tickFontSize
+        figQPrompt.xaxis.axis_label_text_font_size = axisFontSize
+        figQPrompt.yaxis.major_label_text_font_size = tickFontSize
+        figQPrompt.yaxis.axis_label_text_font_size = axisFontSize
 
         trackLayout = layout([[tabTitle],
                               [figConstellation, tableParameters],\

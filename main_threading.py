@@ -20,8 +20,8 @@ receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA], rfSig
 receiver.run([2,3,4,6,9])
 receiver.saveSatellites('./_results/dump_satellites.pkl')
 
-receiver.loadSatellites('./_results/dump_satellites.pkl')
-receiver.computeGNSSMeasurements(292310000)
+#receiver.loadSatellites('./_results/dump_satellites.pkl')
+#receiver.computeGNSSMeasurements(292310000)
 
 # # Analysis
 # correlationMapEnabled = True
