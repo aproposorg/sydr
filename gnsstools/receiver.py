@@ -58,7 +58,7 @@ class Receiver():
 
         # Initialise the channels
         for idx in range(min(self.nbChannels, len(satelliteList))):
-            self.channels.append(Channel(idx, self.gnssSignal, self.rfSignal))
+            self.channels.append(Channel(idx, self.gnssSignal, self.rfSignal, 0))
 
         # Initialise satellite structure
         self.satelliteDict = {}

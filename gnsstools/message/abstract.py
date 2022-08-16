@@ -1,20 +1,21 @@
 
+from abc import ABC, abstractmethod
 import numpy as np
 
 from enum import Enum, unique
+
 # =============================================================================
 @unique
 class NavMessageType(Enum):
     GPS_LNAV = 0
 
 # =============================================================================
-class NavigationMessageAbstract():
+class NavigationMessageAbstract(ABC):
     
     navMessageType : NavMessageType
-
     towFound : bool
-
     tow : int
+    svid : int
 
     def __init__(self):
 
@@ -22,8 +23,26 @@ class NavigationMessageAbstract():
 
     # -------------------------------------------------------------------------
 
+    def setSatellite(self, svid):
+        self.svid = svid
+        return
+
+    # -------------------------------------------------------------------------
+
     def getTow(self):
         return self.tow
+
+    # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def addMeasurement(self, time, iPrompt):
+        return
+
+    # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def run(self):
+        return
     
     # -------------------------------------------------------------------------
 

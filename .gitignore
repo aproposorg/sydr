@@ -1,4 +1,6 @@
 # Don't track this
+*.png
+*.eps
 __pycache__/
 _results/
 scalene_profile.json

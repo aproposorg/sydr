@@ -34,6 +34,11 @@ class BRDCEphemeris(Ephemeris):
     omegaDot : float
     iDot     : float
     alpha0   : float
+    ura      : float
+    health   : float
+    
+    tow        : int
+    weekNumber : int
 
     subframe1Flag : bool
     subframe2Flag : bool

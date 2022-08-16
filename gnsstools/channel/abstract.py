@@ -8,10 +8,13 @@
 # PACKAGES
 from abc import ABC, abstractmethod
 from random import sample
+from typing import List
 import numpy as np
 import copy
 from gnsstools.acquisition.abstract import AcquisitionAbstract
 from gnsstools.gnsssignal import GNSSSignal
+from ..message.abstract import NavigationMessageAbstract
+#from ..message.abstract import NavigationMessageAbstract
 from gnsstools.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
 from enum import Enum, IntFlag, unique, auto
@@ -39,25 +42,32 @@ class ChannelAbstract(ABC):
     state                  : ChannelState
     acquisition            : AcquisitionAbstract
     tracking               : TrackingAbstract
+    decoding               : NavigationMessageAbstract
     dataRequiredAcquisition: int
-    dataRequiredAcquisition: int
+    timeInSamples          : int                        # Number of samples since the receiver started, needed to synchronise the channels together
+
     buffer                 : CircularBuffer
     currentSample          : int
     unprocessedSamples     : int
+
+    iPrompt : List
 
     isAcquired     : bool
     isTracking     : bool
     isFineTracking : bool
 
     @abstractmethod
-    def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal):
+    def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal, timeInSamples:int):
         self.cid          = cid
         self.gnssSignal   = gnssSignal
         self.rfSignal     = rfSignal
         self.state        = ChannelState.IDLE
+        self.timeInSamples= timeInSamples
 
         self.currentSample = 0
         self.unprocessedSamples = 0
+
+        self.iPrompt = []
 
         self.isAcquired = False
         self.isTracking = False
@@ -97,6 +107,11 @@ class ChannelAbstract(ABC):
             # Track
             self.doTracking()
 
+            # If decoding
+            self.doDecoding()
+        else:
+            raise ValueError(f"Channel state {self.state} is not valid.")
+
         return
 
     # -------------------------------------------------------------------------
@@ -107,9 +122,11 @@ class ChannelAbstract(ABC):
         while self.unprocessedSamples >= samplesRequired:
 
             buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
+            self.timeInSamples += samplesRequired
             
             # Run tracking
             self.tracking.run(buffer)
+
             # Update the index for samples
             self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
             self.unprocessedSamples -= samplesRequired
@@ -121,6 +138,19 @@ class ChannelAbstract(ABC):
 
     # -------------------------------------------------------------------------
 
+    def doDecoding(self):
+        
+        # Gather last measurements
+        iPrompt, qPrompt = self.tracking.getPrompt()
+        self.decoding.addMeasurement(self.timeInSamples, iPrompt)
+
+        # Run decoding
+        self.decoding.run()
+
+        return
+
+    # -------------------------------------------------------------------------
+
     def setSatellite(self, svid):
         # Update the configuration
         self.svid = svid
@@ -128,6 +158,7 @@ class ChannelAbstract(ABC):
         # Update the methods
         self.acquisition.setSatellite(svid)
         self.tracking.setSatellite(svid)
+        self.decoding.setSatellite(svid)
 
         # Set state to acquisition
         self.switchState(ChannelState.ACQUIRING)

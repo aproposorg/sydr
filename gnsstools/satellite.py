@@ -38,7 +38,8 @@ class Satellite(ABC):
         self.navMessage  = {}
         for sig in signals:
             self.dspEpochs[sig] = DSPEpochs(svid, sig)
-            self.navMessage[sig] = self.selectNavMessage(svid, sig)
+            self.navMessage[sig] = self.selectNavMessage(sig)
+            self.navMessage[sig].setSatellite(svid)
 
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
@@ -52,9 +53,9 @@ class Satellite(ABC):
 
     # -------------------------------------------------------------------------
 
-    def selectNavMessage(self, svid, sig):
+    def selectNavMessage(self, sig):
         if sig == SignalType.GPS_L1_CA:
-            return LNAV(svid)
+            return LNAV()
         else:
             raise ValueError("Incorrect signal type.")
 
@@ -178,8 +179,8 @@ class Satellite(ABC):
             dspEpoch.addTracking(msProcessed, samplesProcessed, chan)
             # Decode
             lastMeasurement = self.dspEpochs[signal].getLastMeasurement()
-            navMessage.addMeasurement(msProcessed, lastMeasurement)
-            navMessage.run()
+            #navMessage.addMeasurement(msProcessed, lastMeasurement)
+            #navMessage.run()
             # Update status
             self.isTOWDecoded = navMessage.isTOWDecoded
             self.isEphemerisDecoded = navMessage.isEphemerisDecoded

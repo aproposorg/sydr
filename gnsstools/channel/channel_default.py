@@ -8,6 +8,7 @@
 # PACKAGES
 import numpy as np
 from gnsstools.gnsssignal import GNSSSignal
+from ..message.lnav import LNAV
 from gnsstools.rfsignal import RFSignal
 from gnsstools.channel.abstract import ChannelAbstract
 from gnsstools.tracking.tracking_epl import Tracking
@@ -16,11 +17,12 @@ from gnsstools.utils.circularbuffer import CircularBuffer
 # =============================================================================
 
 class Channel(ChannelAbstract):
-    def __init__(self, cid:int, gnssSignal:GNSSSignal, rfSignal:RFSignal):
-        super().__init__(cid, rfSignal, gnssSignal)
+    def __init__(self, cid:int, gnssSignal:GNSSSignal, rfSignal:RFSignal, timeInSamples):
+        super().__init__(cid, rfSignal, gnssSignal, timeInSamples)
 
         self.acquisition = Acquisition(self.rfSignal, self.gnssSignal)
         self.tracking    = Tracking(self.rfSignal, self.gnssSignal)
+        self.decoding    = LNAV()
 
         self.dataRequiredAcquisition = int(self.gnssSignal.codeMs * \
             self.acquisition.nonCohIntegration * \
