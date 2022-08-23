@@ -30,15 +30,6 @@ class Channel(ChannelAbstract):
         
         self.dataRequiredTracking = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
 
-        # Buffer keeps in memory the last ms for each channel
-        # Buffer size is based on the maximum amont of data required, most 
-        # probably from acquisition.
-        # self.bufferMaxSize = np.max([self.dataRequiredTracking, self.dataRequiredAcquisition])
-        # self.buffer = np.empty(self.bufferMaxSize, dtype=np.complex128)
-        # self.buffer[:] = np.nan
-        # self.bufferSize = 0
-        # self.isBufferFull = False
-
         self.buffer = CircularBuffer(np.max([self.dataRequiredTracking, self.dataRequiredAcquisition]))
 
         return

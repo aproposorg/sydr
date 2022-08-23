@@ -7,10 +7,10 @@ import numpy as np
 from gnsstools.channel.abstract import ChannelState
 
 import gnsstools.constants as constants
-from gnsstools.ephemeris import Ephemeris
+from gnsstools.ephemeris import BRDCEphemeris, Ephemeris
 from gnsstools.gnsssignal import GNSSSignal, SignalType
 from gnsstools.measurements import DSPEpochs, DSPmeasurement
-from gnsstools.message.abstract import NavMessageType
+from gnsstools.message.abstract import NavMessageType, NavigationMessageAbstract
 from gnsstools.message.lnav import LNAV
 
 
@@ -19,7 +19,7 @@ class Satellite(ABC):
     satelliteID : int
     dspEpochs   : Dict[SignalType, DSPmeasurement]
     gnssEpochs  : dict
-    ephemeris   : Ephemeris
+    ephemeris   : list
     navMessage  : dict
 
     # Flags
@@ -29,27 +29,40 @@ class Satellite(ABC):
     isEphemerisDecoded : bool
 
     lastPosition : np.array
+    lastBRDCEphemeris : BRDCEphemeris
 
     def __init__(self, svid, signals):
 
         self.satelliteID = svid
         self.dspEpochs   = {}
         self.gnssEpochs  = {}
-        self.navMessage  = {}
-        for sig in signals:
-            self.dspEpochs[sig] = DSPEpochs(svid, sig)
-            self.navMessage[sig] = self.selectNavMessage(sig)
-            self.navMessage[sig].setSatellite(svid)
+        self.navMessages  = {}
 
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
+
+        self.ephemeris = []
+        self.lastBRDCEphemeris = BRDCEphemeris()
         
         return
 
     # -------------------------------------------------------------------------
 
-    def getEphemeris(self):
-        return self.ephemeris
+    def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
+        self.ephemeris.append(ephemeris)
+        self.lastBRDCEphemeris = ephemeris
+        return
+
+    # -------------------------------------------------------------------------
+
+    def getLastBRDCEphemeris(self):
+        return self.lastBRDCEphemeris
+
+    # -------------------------------------------------------------------------
+
+    def addNavMessage(self, navMessage:NavigationMessageAbstract):
+        self.navMessages[navMessage.type] = navMessage
+        return
 
     # -------------------------------------------------------------------------
 
@@ -89,7 +102,7 @@ class Satellite(ABC):
             satellitePosition : numpy.array(3)
             Satellite position in ECEF 
         """        
-        eph = self.ephemeris
+        eph = self.ephemeris[-1]
 
         # Compute difference between current time and orbit reference time
         # Check for week rollover at the same time
@@ -135,14 +148,14 @@ class Satellite(ABC):
         satellitePosition[2] = np.sin(u)*r*np.sin(i)
         self.lastPosition = satellitePosition
 
-        satelliteClockCorrection = (eph.af2*dt + eph.af1)*dt + eph.af0 + dtr
+        satelliteClockCorrection = (eph.af2*dt + eph.af1)*dt + eph.af0 - dtr
 
         # TODO Satellite velocity
 
         return satellitePosition, satelliteClockCorrection
 
     def getTGD(self):
-        return self.ephemeris.tgd
+        return self.ephemeris[-1].tgd
     
     @staticmethod
     def timeCheck(time):
@@ -171,25 +184,15 @@ class Satellite(ABC):
     def addDSPMeasurement(self, msProcessed, samplesProcessed, chan):
         state      = chan.getState()
         signal     = chan.gnssSignal.signalType
-        dspEpoch   = self.dspEpochs[signal]
-        navMessage = self.navMessage[signal]
+
+        # Check if signal exist, otherwise initialize
+        if signal not in self.dspEpochs:
+            self.dspEpochs[signal] = DSPEpochs(self.satelliteID, signal)
+        
         if state == ChannelState.ACQUIRING:
-            dspEpoch.addAcquisition(msProcessed, samplesProcessed, chan)
+            self.dspEpochs[signal].addAcquisition(msProcessed, samplesProcessed, chan)
         elif state == ChannelState.TRACKING:
-            dspEpoch.addTracking(msProcessed, samplesProcessed, chan)
-            # Decode
-            lastMeasurement = self.dspEpochs[signal].getLastMeasurement()
-            #navMessage.addMeasurement(msProcessed, lastMeasurement)
-            #navMessage.run()
-            # Update status
-            self.isTOWDecoded = navMessage.isTOWDecoded
-            self.isEphemerisDecoded = navMessage.isEphemerisDecoded
-
-            if self.isTOWDecoded:
-                self.tow = navMessage.tow
-            
-            if self.isEphemerisDecoded:
-                self.ephemeris = navMessage.ephemeris
-
+            self.dspEpochs[signal].addTracking(msProcessed, samplesProcessed, chan)
+        
         return
         

@@ -3,7 +3,7 @@ import numpy as np
 import gnsscal
 import copy
 from gnsstools.ephemeris import BRDCEphemeris
-from gnsstools.message.abstract import NavigationMessageAbstract
+from gnsstools.message.abstract import NavMessageType, NavigationMessageAbstract
 import gnsstools.constants as constants
 
 
@@ -20,6 +20,7 @@ class LNAV(NavigationMessageAbstract):
     idxData        : int  # Current index of data table, reset at each new bit.
     bits           : list # List of bits decoded.
     bitsSamples    : list # List containing the absolute sample number corresponding each start bit
+    TOWInSamples   : int 
 
     bitsLastSubframe : int # Number of bits since last subframe.
     idxFirstSubframe : int # Current subframe list, used as a buffer when no subframe has been decoded yet.
@@ -40,15 +41,18 @@ class LNAV(NavigationMessageAbstract):
 
     def __init__(self):
 
+        self.type = NavMessageType.GPS_LNAV
+
         # Initialise objects
-        self.data = np.zeros(self.MS_IN_NAV_BIT)
-        self.idxData = 0
-        self.bits        = []
-        self.bitsSamples = []
+        self.data             = np.zeros(self.MS_IN_NAV_BIT)
+        self.idxData          = 0
+        self.bits             = []
+        self.bitsSamples      = []
         self.bitsLastSubframe = 0 
+        self.TOWInSamples     = -1
 
         self.idxFirstSubframe = -1
-        self.idxLastSubframe = -1
+        self.idxLastSubframe  = -1
 
         # Flags
         self.isTOWDecoded         = False
@@ -101,10 +105,6 @@ class LNAV(NavigationMessageAbstract):
         
         # Check for subframe
         self.checkSubframe()
-
-        # if self.subframeFound and not self.subframeProcessed:
-        #     if len(self.bits[self.idxSubframe:]) == self.SUBFRAME_BITS:
-        #         self.decodeSubframe()
 
         return
 
@@ -197,17 +197,6 @@ class LNAV(NavigationMessageAbstract):
         subframeID = self.bin2dec(subframe[49:52])
 
         eph = self.ephemeris
-        # Compute the time of week (TOW) of the first sub-frames in the array ====
-        # Also correct the TOW. The transmitted TOW is actual TOW of the next
-        # subframe and we need the TOW of the first subframe in this data block
-        # (the variable subframe at this point contains bits of the last subframe).
-        # Also the TOW written in the message is referred to very begining of the 
-        # subframe, meaning the first bit of the preambule.
-        # So we remove 6 seconds to have the TOW of the current subframe
-        self.tow = self.bin2dec(subframe[30:47]) * 6 - 6
-        eph.tow = self.tow
-        self.isTOWDecoded = True
-        
         # Identify the subframe
         if subframeID == 1:
             # It contains WN, SV clock corrections, health and accuracy
@@ -273,6 +262,19 @@ class LNAV(NavigationMessageAbstract):
             self.isEphemerisDecoded = True
         
         self.idxLastSubframe = idxSubframe
+
+        # Actualize TOW
+        # Compute the time of week (TOW) of the first sub-frames in the array ====
+        # Also correct the TOW. The transmitted TOW is actual TOW of the next
+        # subframe and we need the TOW of the first subframe in this data block
+        # (the variable subframe at this point contains bits of the last subframe).
+        # Also the TOW written in the message is referred to very begining of the 
+        # subframe, meaning the first bit of the preambule.
+        # So we remove 6 seconds to have the TOW of the current subframe
+        self.tow = self.bin2dec(subframe[30:47]) * 6 - 6
+        eph.tow = self.tow
+        self.TOWInSamples = self.bitsSamples[idxSubframe]
+        self.isTOWDecoded = True
 
         # if self.tow != 0 and self.weekNumber != 0:
         #     self.doy = gnsscal.gpswd2yrdoy(self.weekNumber, \

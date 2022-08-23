@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 from abc import ABC, abstractmethod
+from os import system
 from random import sample
 from typing import List
 import numpy as np
@@ -38,6 +39,8 @@ class ChannelState(Enum):
 
 # =============================================================================
 class ChannelAbstract(ABC):
+    cid    : int  # Channel ID
+    svid   : int  # Satellite ID
 
     state                  : ChannelState
     acquisition            : AcquisitionAbstract
@@ -45,6 +48,8 @@ class ChannelAbstract(ABC):
     decoding               : NavigationMessageAbstract
     dataRequiredAcquisition: int
     timeInSamples          : int                        # Number of samples since the receiver started, needed to synchronise the channels together
+    samplesSinceFirstTOW   : int # Number of samples since the first TOW found
+    tow                    : int 
 
     buffer                 : CircularBuffer
     currentSample          : int
@@ -52,9 +57,9 @@ class ChannelAbstract(ABC):
 
     iPrompt : List
 
-    isAcquired     : bool
-    isTracking     : bool
-    isFineTracking : bool
+    isAcquired         : bool
+    isTOWDecoded       : bool
+    isEphemerisDecoded : bool
 
     @abstractmethod
     def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal, timeInSamples:int):
@@ -63,6 +68,9 @@ class ChannelAbstract(ABC):
         self.rfSignal     = rfSignal
         self.state        = ChannelState.IDLE
         self.timeInSamples= timeInSamples
+        self.samplesSinceFirstTOW = -1
+
+        self.codeSinceLastTOW = 0
 
         self.currentSample = 0
         self.unprocessedSamples = 0
@@ -70,7 +78,8 @@ class ChannelAbstract(ABC):
         self.iPrompt = []
 
         self.isAcquired = False
-        self.isTracking = False
+        self.isTOWDecoded = False
+        self.isEphemerisDecoded = False
 
         return
     
@@ -122,10 +131,14 @@ class ChannelAbstract(ABC):
         while self.unprocessedSamples >= samplesRequired:
 
             buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
-            self.timeInSamples += samplesRequired
             
             # Run tracking
             self.tracking.run(buffer)
+
+            self.timeInSamples += samplesRequired
+            if self.isTOWDecoded:
+                # TODO Change to add the number of epoch processed at each round
+                self.codeSinceLastTOW += 1
 
             # Update the index for samples
             self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
@@ -147,7 +160,28 @@ class ChannelAbstract(ABC):
         # Run decoding
         self.decoding.run()
 
+        # Check if ephemeris decoded
+        # TODO Add condition if a new message is available
+        if not self.isEphemerisDecoded and self.decoding.isEphemerisDecoded:
+            self.isEphemerisDecoded = True
+
+        if not self.isTOWDecoded and self.decoding.isTOWDecoded:
+            self.isTOWDecoded = True
+            self.tow = self.decoding.tow
+            self.codeSinceLastTOW = 0
+
         return
+
+    # -------------------------------------------------------------------------
+
+    def getTimeSinceTOW(self):
+        """
+        Time since the last TOW in milliseconds.
+        """
+        timeSinceTOW = 0
+        timeSinceTOW += self.codeSinceLastTOW * self.gnssSignal.codeMs # Add number of code since TOW
+        timeSinceTOW += self.unprocessedSamples / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
+        return timeSinceTOW
 
     # -------------------------------------------------------------------------
 

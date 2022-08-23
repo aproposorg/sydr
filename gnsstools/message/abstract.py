@@ -12,7 +12,7 @@ class NavMessageType(Enum):
 # =============================================================================
 class NavigationMessageAbstract(ABC):
     
-    navMessageType : NavMessageType
+    type : NavMessageType
     towFound : bool
     tow : int
     svid : int

@@ -48,7 +48,42 @@ class BRDCEphemeris(Ephemeris):
         self.subframe1Flag = False
         self.subframe2Flag = False
         self.subframe3Flag = False
+
+        self.iode     = -1
+        self.iodc     = -1
+        self.toe      = -1.
+        self.toc      = -1.
+        self.tgd      = -1.
+        self.af2      = -1.
+        self.af1      = -1.
+        self.af0      = -1.
+        self.ecc      = -1. 
+        self.sqrtA    = -1.
+        self.crs      = -1.
+        self.deltan   = -1.
+        self.m0       = -1.
+        self.cuc      = -1.
+        self.cus      = -1.
+        self.cic      = -1.
+        self.omega0   = -1.
+        self.cis      = -1.
+        self.i0       = -1.
+        self.crc      = -1.
+        self.omega    = -1.
+        self.omegaDot = -1.
+        self.iDot     = -1.
+        self.alpha0   = -1.
+        self.ura      = -1.
+        self.health   = -1.
+        
         return
+
+    def __eq__(self, other) -> bool:
+
+        if self.iodc == other.iodc and self.iode == other.iode:
+            return True
+        else:
+            return False 
 
     def resetFlags(self):
         self.subframe1Flag = False
