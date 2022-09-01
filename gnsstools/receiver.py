@@ -42,7 +42,8 @@ class Receiver():
         self.measurementTimeList = []
         self.receiverPosition = []
 
-        self.measurementFrequency = 1  # In Hz
+        self.measurementFrequency = 2  # In Hz
+        self.measurementPeriod = 1 / self.measurementFrequency
 
         self.rfSignal = rfSignal
 
@@ -91,9 +92,8 @@ class Receiver():
             if not self.isClockInitialised:
                 # First time we run it to estimate receiver clock error
                 self.computeGNSSMeasurements(receivedTime = 0)
-            elif (self.receiverClock - self.measurementTimeList[-1]) - self.measurementFrequency >= 0:
-                receivedTime = math.floor(self.receiverClock)
-                self.computeGNSSMeasurements(receivedTime)
+            elif self.receiverClock >= self.nextMeasurementTime:
+                self.computeGNSSMeasurements(receivedTime=self.receiverClock)
 
             msProcessed += 1
         return
@@ -201,15 +201,20 @@ class Receiver():
             if maxTOW < chan.getTimeSinceTOW():
                 maxTOW = chan.getTimeSinceTOW()
                 earliestChannel = chan
-
+        
         # Received time
         if not self.isClockInitialised:
             receivedTime = earliestChannel.tow + AVG_TRAVEL_TIME_MS / 1e3
             self.receiverClock = receivedTime
             self.isClockInitialised = True
+            self.nextMeasurementTime = math.ceil(receivedTime)
             tow = earliestChannel.tow
         else:
-            tow = earliestChannel.tow + earliestChannel.getTimeSinceTOW() / 1e3
+            # Compute the residual time to have a "round" received time
+            timeResidual = receivedTime - self.nextMeasurementTime
+            receivedTime = self.receiverClock - timeResidual
+            self.nextMeasurementTime = receivedTime + self.measurementPeriod
+            tow = earliestChannel.tow + earliestChannel.getTimeSinceTOW() / 1e3 - timeResidual
         
         satellitesPositions = np.zeros((len(prnList), 3))
         satellitesClocks = np.zeros(len(prnList))
@@ -242,7 +247,7 @@ class Receiver():
         correctedPseudoranges -= self.receiverClockError[-1]
         self.receiverClock -= self.receiverClockError[-1] / SPEED_OF_LIGHT
 
-        self.measurementTimeList.append(math.floor(receivedTime))
+        self.measurementTimeList.append(receivedTime)
 
         # print("---")
         # print(self.receiverPosition)

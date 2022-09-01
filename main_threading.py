@@ -5,8 +5,6 @@ from gnsstools.receiver import Receiver
 from gnsstools.rfsignal import RFSignal
 from gnsstools.visualisation import Visualisation
 
-import pickle
-
 # Files 
 receiverConfigFile = './config/receiver.ini'
 rfConfigFile       = './config/rf.ini'
