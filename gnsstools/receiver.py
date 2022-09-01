@@ -239,7 +239,7 @@ class Receiver():
             # TODO Ionosphere, troposhere ...
             correctedPseudoranges[idx] = pseudoranges[idx]
             correctedPseudoranges[idx] += satellitesClocks[idx] * SPEED_OF_LIGHT # Satellite clock error
-            correctedPseudoranges[idx] -= satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
+            correctedPseudoranges[idx] += satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
             
             idx += 1
         
