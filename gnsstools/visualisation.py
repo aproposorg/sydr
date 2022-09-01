@@ -9,8 +9,13 @@ from bokeh.layouts import layout
 from bokeh.plotting import figure
 from bokeh.models import Div, ColumnDataSource, HoverTool, PrintfTickFormatter, Range1d
 from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import pymap3d as pm
+from gnsstools.constants import SPEED_OF_LIGHT
 
 from gnsstools.ephemeris import Ephemeris
+from gnsstools.receiver import Receiver
 
 from .rfsignal import RFSignal
 from .satellite import Satellite
@@ -18,6 +23,8 @@ from .gnsssignal import SignalType
 from .channel.abstract import ChannelState
 
 class Visualisation:
+
+    receiver : Receiver
 
     def __init__(self, configfile, rfSignal:RFSignal, gnssSignals:dict):
         self.gnssSignals = gnssSignals
@@ -27,6 +34,12 @@ class Visualisation:
         config.read(configfile)
 
         self.outfolder = config.get('DEFAULT', 'outfolder')
+
+        # Receiver
+        self.referencePosition = np.array([
+            config.getfloat('RECEIVER', 'reference_position_x'), \
+            config.getfloat('RECEIVER', 'reference_position_y'), \
+            config.getfloat('RECEIVER', 'reference_position_z')])
 
         # Bokeh parameters
         self.backgroundColor = "#fafafa"
@@ -39,12 +52,130 @@ class Visualisation:
 
         for prn, sat in self.satelliteDict.items():
             self.plotSatelliteDSP(sat, signalType)
+        
+        # Position analysis
+        self.plotReceiver()
 
         return
 
     # -------------------------------------------------------------------------
 
-    def plotSatelliteDSP(self, satellite:Satellite, signalType: SignalType):
+    def plotReceiver(self):
+
+        specs = [[{'type': 'mapbox',"rowspan": 2}, {'type': 'xy',"rowspan": 2}],
+                 [None, None],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None],
+                 [{'type': 'xy',"colspan": 2}, None]]
+
+        titles = ["Map", "North/East",
+                  "North [m]",
+                  "East [m]",
+                  "Up [m]",
+                  "Recevier clock bias [s]"]
+        
+        recpos = np.array(self.receiver.receiverPosition)
+        recclk = np.array(self.receiver.receiverClockError)
+        refpos = pm.ecef2geodetic( \
+            self.referencePosition[0], \
+            self.referencePosition[1], \
+            self.referencePosition[2], deg=True)
+        
+        # Convert to ENU
+        enu = []
+        llh = []
+        for coord in recpos:
+            enu.append(pm.ecef2enu(coord[0], coord[1], coord[2], refpos[0], refpos[1], refpos[2]))
+            llh.append(pm.ecef2geodetic(coord[0], coord[1], coord[2], ell=None, deg=True))
+        enu = np.array(enu)
+        llh = np.array(llh)
+
+        time = self.receiver.measurementTimeList
+
+        fig = make_subplots(6, 2,\
+                start_cell="top-left",
+                specs=specs, 
+                subplot_titles=titles,
+                vertical_spacing=0.1, 
+                horizontal_spacing = 0.1)
+
+        # Map box
+        figpos = (1,1)
+        fig.add_trace(go.Scattermapbox(lat=llh[:,0], lon=llh[:,1], mode='markers'), \
+            row=figpos[0], col=figpos[1])
+        
+        
+        fig.update_layout(
+            margin ={'l':0,'t':0,'b':0,'r':0},
+            mapbox = {
+                'center': {'lon': refpos[1], 'lat': refpos[0]},
+                'style': "open-street-map",
+                'zoom': 15})
+
+        # North/East view
+        figpos = (1,2)
+        fig.add_trace(go.Scatter(x=enu[:,0], y=enu[:,1], mode="markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="East [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="North [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray', scaleanchor="x", scaleratio=1)
+
+        # East
+        figpos = (3,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,0], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="East [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        # North
+        figpos = (4,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,1], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="North [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        # Up
+        figpos = (5,1)
+        fig.add_trace(go.Scatter(x=time, y=enu[:,2], mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Up [m]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        # Receiver clock bias
+        figpos = (6,1)
+        fig.add_trace(go.Scatter(x=time, y=recclk/SPEED_OF_LIGHT, mode="lines+markers",
+                                line=dict(width=2)), row=figpos[0], col=figpos[1])
+        fig.update_xaxes(title_text="Time [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Bias [s]", row=figpos[0], col=figpos[1], \
+            showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        fig.update_layout(title=f"Navigation solution", margin=dict(l=50,r=50,b=100,t=100,pad=4),showlegend=False) 
+        fig.write_html(f"./{self.outfolder}/navigation.html")
+
+        return
+    
+    # -------------------------------------------------------------------------
+
+    # def getMapLayout(self):
+
+    #     html = f"<h2>Positioning results summary</h2>"
+    #     tabTitle = Div(text=html)
+        
+
+    #     return
+
+    # -------------------------------------------------------------------------
+
+    def plotSatelliteDSP(self, satellite:Satellite, signalType:SignalType):
 
         # Acquisition
         acqLayout = self.getAcquisitionLayout(satellite, signalType)
@@ -54,12 +185,12 @@ class Visualisation:
         trackLayout = self.getTrackingLayout(satellite, signalType)
         trackTab = Panel(child=trackLayout, title="Tracking")
 
-        # Decoding
-        decodingLayout = self.getDecodingLayout(satellite, signalType)
-        decodingTab = Panel(child=decodingLayout, title="Decoding")
+        # # Decoding
+        # decodingLayout = self.getDecodingLayout(satellite, signalType)
+        # decodingTab = Panel(child=decodingLayout, title="Decoding")
         
         # Make tabs
-        tabs = Tabs(tabs=[acqTab, trackTab, decodingTab])
+        tabs = Tabs(tabs=[acqTab, trackTab])
 
         # Save file
         output_file(f'{self.outfolder}dsp_analysis_G{satellite.satelliteID}.html', title=f'DSP analysis G{satellite.satelliteID}')
@@ -351,6 +482,13 @@ class Visualisation:
     def importSatellites(self, picklefile):
         with open(picklefile, 'rb') as f:
                 self.satelliteDict = pickle.load(f)
+        return 
+
+    # -------------------------------------------------------------------------
+
+    def importReceiver(self, picklefile):
+        with open(picklefile, 'rb') as f:
+                self.receiver = pickle.load(f)
         return 
 
 

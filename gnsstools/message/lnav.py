@@ -264,14 +264,17 @@ class LNAV(NavigationMessageAbstract):
         self.idxLastSubframe = idxSubframe
 
         # Actualize TOW
-        # Compute the time of week (TOW) of the first sub-frames in the array ====
-        # Also correct the TOW. The transmitted TOW is actual TOW of the next
-        # subframe and we need the TOW of the first subframe in this data block
-        # (the variable subframe at this point contains bits of the last subframe).
-        # Also the TOW written in the message is referred to very begining of the 
-        # subframe, meaning the first bit of the preambule.
-        # So we remove 6 seconds to have the TOW of the current subframe
-        self.tow = self.bin2dec(subframe[30:47]) * 6 - 6
+        # Compute the time of week (TOW) of the first sub-frames in the array
+        # - The transmitted TOW is actual TOW of the next subframe and we need the TOW of the first subframe in this data block
+        # - The TOW written in the message is referred to very begining of the subframe, meaning the first bit of the preambule.
+        # -> So we remove 6 seconds to have the TOW of the current subframe
+        # - Also need to realign the TOW to the current process time 
+        # -> account for all the bits since last subframe was decoded
+
+        self.tow  = self.bin2dec(subframe[30:47]) * 6 
+        self.tow -= 6
+        self.tow += (self.bitsLastSubframe - idxSubframe) * self.MS_IN_NAV_BIT * 1e-3
+        
         eph.tow = self.tow
         self.TOWInSamples = self.bitsSamples[idxSubframe]
         self.isTOWDecoded = True

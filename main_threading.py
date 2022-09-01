@@ -5,6 +5,8 @@ from gnsstools.receiver import Receiver
 from gnsstools.rfsignal import RFSignal
 from gnsstools.visualisation import Visualisation
 
+import pickle
+
 # Files 
 receiverConfigFile = './config/receiver.ini'
 rfConfigFile       = './config/rf.ini'
@@ -20,6 +22,9 @@ receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA], rfSig
 receiver.run([2,3,4,6,9])
 receiver.saveSatellites('./_results/dump_satellites.pkl')
 
+# with open('./_results/dump_receiver.pkl' , 'wb') as f:
+#     pickle.dump(receiver, f, pickle.HIGHEST_PROTOCOL)
+
 #receiver.loadSatellites('./_results/dump_satellites.pkl')
 #receiver.computeGNSSMeasurements(292310000)
 
@@ -31,4 +36,5 @@ receiver.saveSatellites('./_results/dump_satellites.pkl')
 
 visual = Visualisation(benchmarkConfigFile, rfSignal, gnssSignals)
 visual.importSatellites('./_results/dump_satellites.pkl')
+visual.receiver = receiver
 visual.run(SignalType.GPS_L1_CA)

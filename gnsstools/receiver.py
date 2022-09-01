@@ -38,8 +38,8 @@ class Receiver():
         self.isClockInitialised = False
 
         self.receiverClock =  0.0
-        self.receiverClockError = 0.0
-        self.lastMeasurementTime = 0.0
+        self.receiverClockError = []
+        self.measurementTimeList = []
         self.receiverPosition = []
 
         self.measurementFrequency = 1  # In Hz
@@ -91,7 +91,7 @@ class Receiver():
             if not self.isClockInitialised:
                 # First time we run it to estimate receiver clock error
                 self.computeGNSSMeasurements(receivedTime = 0)
-            elif (self.receiverClock - self.lastMeasurementTime) - self.measurementFrequency >= 0:
+            elif (self.receiverClock - self.measurementTimeList[-1]) - self.measurementFrequency >= 0:
                 receivedTime = math.floor(self.receiverClock)
                 self.computeGNSSMeasurements(receivedTime)
 
@@ -239,15 +239,16 @@ class Receiver():
             idx += 1
         
         self.computeReceiverPosition(correctedPseudoranges, satellitesPositions)
-        correctedPseudoranges -= self.receiverClockError
-        self.receiverClock -= self.receiverClockError / SPEED_OF_LIGHT
+        correctedPseudoranges -= self.receiverClockError[-1]
+        self.receiverClock -= self.receiverClockError[-1] / SPEED_OF_LIGHT
 
-        self.lastMeasurementTime = math.floor(receivedTime)
+        self.measurementTimeList.append(math.floor(receivedTime))
 
-        print("---")
-        print(self.receiverPosition)
-        print(self.receiverClockError)
-        print(self.receiverClock)
+        # print("---")
+        # print(self.receiverPosition)
+        # print(self.receiverClockError)
+        # print(self.receiverClock)
+
 
         return
 
@@ -277,10 +278,11 @@ class Receiver():
         nbMeasurements = len(pseudoranges)
         G = np.zeros((nbMeasurements, 4))
         y = np.zeros(nbMeasurements)
-        x = np.zeros(4)
         dX = np.zeros(4)
         dX[:4] = [1.0, 1.0, 1.0, 1.0]
+        #x = np.zeros(4)
         #x = np.array([2794767.59, 1236088.19, 5579632.92, 0])
+        x = np.array([2793000.0, 1235000.0, 5578000.0, 0])
         v = []
         for i in range(10):
             if np.linalg.norm(dX) < 1e-6:
@@ -309,11 +311,11 @@ class Receiver():
             dX = np.linalg.inv(N).dot(C)
             x = x + dX # Update solution
             v = G.dot(dX) - y
-            print(v)
-            print(dX)
+            #print(v)
+            #print(dX)
         
         self.receiverPosition.append(x[0:3])
-        self.receiverClockError = x[3]
+        self.receiverClockError.append(x[3])
 
         return
 
