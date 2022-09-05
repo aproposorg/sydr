@@ -134,6 +134,7 @@ class LNAV(NavigationMessageAbstract):
             
             # The first subframe has been verified
             self.isFirstSubframeFound = True
+            self.bitsLastSubframe -= self.idxFirstSubframe
             
             # Decode first subframe 
             self.decodeSubframe(self.idxFirstSubframe)
@@ -146,9 +147,6 @@ class LNAV(NavigationMessageAbstract):
         
         idx = len(self.bits) - self.SUBFRAME_BITS
         if not self.checkPreambule(idx):
-            print(f"WARNING: Subframe for satellite G{self.svid} is not found where it was expected. Subframe tracking will be reseted.")
-            self.isFirstSubframeFound = False
-            self.currSubframeList = []
             return
         
         self.decodeSubframe(idx)
@@ -273,8 +271,8 @@ class LNAV(NavigationMessageAbstract):
 
         self.tow  = self.bin2dec(subframe[30:47]) * 6 
         self.tow -= 6
-        self.tow += (self.bitsLastSubframe - idxSubframe) * self.MS_IN_NAV_BIT * 1e-3
-        
+        self.tow += self.bitsLastSubframe * self.MS_IN_NAV_BIT * 1e-3
+
         eph.tow = self.tow
         self.TOWInSamples = self.bitsSamples[idxSubframe]
         self.isTOWDecoded = True

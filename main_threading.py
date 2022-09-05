@@ -17,21 +17,11 @@ gnssSignals[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini',
 
 receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA], rfSignal)
 
+# Run the processing
 receiver.run([2,3,4,6,9])
 receiver.saveSatellites('./_results/dump_satellites.pkl')
 
-# with open('./_results/dump_receiver.pkl' , 'wb') as f:
-#     pickle.dump(receiver, f, pickle.HIGHEST_PROTOCOL)
-
-#receiver.loadSatellites('./_results/dump_satellites.pkl')
-#receiver.computeGNSSMeasurements(292310000)
-
-# # Analysis
-# correlationMapEnabled = True
-# analysis = Analysis(rfconfig)
-# analysis.acquisition(receiver.satelliteDict, correlationMapEnabled)
-# analysis.tracking(receiver.satelliteDict)
-
+# Extract visuals
 visual = Visualisation(benchmarkConfigFile, rfSignal, gnssSignals)
 visual.importSatellites('./_results/dump_satellites.pkl')
 visual.receiver = receiver

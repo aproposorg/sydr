@@ -81,6 +81,8 @@ class ChannelAbstract(ABC):
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
 
+        self.tow = 0
+
         return
     
     # -------------------------------------------------------------------------
@@ -165,7 +167,7 @@ class ChannelAbstract(ABC):
         if not self.isEphemerisDecoded and self.decoding.isEphemerisDecoded:
             self.isEphemerisDecoded = True
 
-        if not self.isTOWDecoded and self.decoding.isTOWDecoded:
+        if self.decoding.isTOWDecoded and self.tow != self.decoding.tow:
             self.isTOWDecoded = True
             self.tow = self.decoding.tow
             self.codeSinceLastTOW = 0

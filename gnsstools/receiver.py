@@ -148,12 +148,12 @@ class Receiver():
                 # TODO This pass a reference, maybe be it should be done only at init? 
                 satellite.addNavMessage(chan.decoding)
 
-                # DEBUG (TO BE REMOVED)
-                if not chan.isEphemerisDecoded:
-                    f = open(f"ephemeris_{chan.svid}.pkl", 'rb')
-                    chan.decoding.ephemeris = pickle.load(f)
-                    chan.decoding.isEphemerisDecoded = True
-                    chan.isEphemerisDecoded = True
+                # # DEBUG (TO BE REMOVED)
+                # if not chan.isEphemerisDecoded:
+                #     f = open(f"ephemeris_{chan.svid}.pkl", 'rb')
+                #     chan.decoding.ephemeris = pickle.load(f)
+                #     chan.decoding.isEphemerisDecoded = True
+                #     chan.isEphemerisDecoded = True
 
                 # Check if ephemeris decoded
                 if chan.isEphemerisDecoded:
