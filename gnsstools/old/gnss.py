@@ -1,11 +1,11 @@
 import configparser
 from tqdm import tqdm
 import pickle
-from gnsstools.gnsssignal import GNSSSignal
+from gnsstools.old.gnsssignal import GNSSSignal
 from gnsstools.acquisition import Acquisition
 from gnsstools.navigation import Navigation
 from gnsstools.rffile import RFFile
-from gnsstools.satellite import Satellite
+from gnsstools.satellite.satellite import Satellite
 from gnsstools.tracking import Tracking
 from gnsstools.decoding import Decoding
 

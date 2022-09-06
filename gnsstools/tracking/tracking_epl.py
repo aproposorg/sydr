@@ -8,8 +8,8 @@
 # PACKAGES
 import configparser
 import numpy as np
-from gnsstools.gnsssignal import GNSSSignal
-from gnsstools.rfsignal import RFSignal
+from gnsstools.signal.gnsssignal import GNSSSignal
+from gnsstools.signal.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
 # =============================================================================
 class Tracking(TrackingAbstract):

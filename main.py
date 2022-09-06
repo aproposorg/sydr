@@ -1,30 +1,27 @@
 
-from gnsstools.gnss import GNSS
-from gnsstools.analysis import Analysis
+from gnsstools.signal.gnsssignal import GNSSSignal, SignalType
+from gnsstools.receiver import Receiver
+from gnsstools.signal.rfsignal import RFSignal
+from gnsstools.analysis.visualisation import Visualisation
 
-# Main program
-configfile = './config/default_config.ini'
-#prnlist = range(1, 33)
-prnlist = [2,3,4,6,9,29,31]
-#prnlist = [3,6,9,15,18,21,22,26]
+# Files 
+receiverConfigFile = './config/receiver.ini'
+rfConfigFile       = './config/rf.ini'
+benchmarkConfigFile = './config/benchmark.ini'
 
-gnss = GNSS(configfile, prnlist)
-analysis = Analysis()
+rfSignal = RFSignal(rfConfigFile)
 
-loadPrevious = False
+gnssSignals = {}
+gnssSignals[SignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini', SignalType.GPS_L1_CA)
 
-# Acquisition
-gnss.doAcquisition(loadPrevious=loadPrevious)
-analysis.acquisition(gnss.satelliteDict, corrMapsEnabled=False)
+receiver = Receiver(receiverConfigFile, gnssSignals[SignalType.GPS_L1_CA], rfSignal)
 
-# Tracking
-gnss.doTracking(loadPrevious=loadPrevious)
-analysis.tracking(gnss.satelliteDict)
+# Run the processing
+receiver.run([2,3,4,6,9])
+receiver.saveSatellites('./_results/dump_satellites.pkl')
 
-# Data decoding
-gnss.doDecoding(loadPrevious=loadPrevious)
-
-# Navigation
-gnss.doNavigation()
-analysis.navigation(gnss.navigation)
-analysis.measurements(gnss.satelliteDict)
+# Extract visuals
+visual = Visualisation(benchmarkConfigFile, rfSignal, gnssSignals)
+visual.importSatellites('./_results/dump_satellites.pkl')
+visual.receiver = receiver
+visual.run(SignalType.GPS_L1_CA)

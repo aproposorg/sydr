@@ -12,15 +12,14 @@ from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pymap3d as pm
-from gnsstools.constants import SPEED_OF_LIGHT
+from gnsstools.utils.constants import SPEED_OF_LIGHT
 
-from gnsstools.ephemeris import Ephemeris
 from gnsstools.receiver import Receiver
 
-from .rfsignal import RFSignal
-from .satellite import Satellite
-from .gnsssignal import SignalType
-from .channel.abstract import ChannelState
+from .utils.rfsignal import RFSignal
+from ..satellite import Satellite
+from ..utils.gnsssignal import SignalType
+from ..channel.channel_abstract import ChannelState
 
 class Visualisation:
 

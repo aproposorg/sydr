@@ -12,11 +12,10 @@ from random import sample
 from typing import List
 import numpy as np
 import copy
-from gnsstools.acquisition.abstract import AcquisitionAbstract
-from gnsstools.gnsssignal import GNSSSignal
+from gnsstools.acquisition.acquisition_abstract import AcquisitionAbstract
+from gnsstools.signal.gnsssignal import GNSSSignal
 from ..message.abstract import NavigationMessageAbstract
-#from ..message.abstract import NavigationMessageAbstract
-from gnsstools.rfsignal import RFSignal
+from gnsstools.signal.rfsignal import RFSignal
 from gnsstools.tracking.abstract import TrackingAbstract
 from enum import Enum, IntFlag, unique, auto
 

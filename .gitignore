@@ -2,6 +2,6 @@
 *.png
 *.eps
 __pycache__/
-_results/
+.results/
 scalene_profile.json
 speedscope_profile.txt

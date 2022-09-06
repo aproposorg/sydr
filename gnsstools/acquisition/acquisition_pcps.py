@@ -8,9 +8,9 @@
 # PACKAGES
 import configparser
 import numpy as np
-from gnsstools.gnsssignal import GNSSSignal
-from gnsstools.rfsignal import RFSignal
-from gnsstools.acquisition.abstract import AcquisitionAbstract
+from gnsstools.signal.gnsssignal import GNSSSignal
+from gnsstools.signal.rfsignal import RFSignal
+from gnsstools.acquisition.acquisition_abstract import AcquisitionAbstract
 # =============================================================================
 class Acquisition(AcquisitionAbstract):
     """

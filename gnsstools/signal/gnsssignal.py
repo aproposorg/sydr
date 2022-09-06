@@ -1,10 +1,9 @@
 import configparser
-from dataclasses import replace
 import os
 from enum import Enum
 import numpy as np
 
-import gnsstools.ca as ca
+import gnsstools.signal.ca as ca
 
 class SignalType(Enum):
     GPS_L1_CA = 0

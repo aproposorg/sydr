@@ -1,8 +1,8 @@
 import numpy as np
 from gnsstools.acquisition.acquisition_pcps import Acquisition
-from gnsstools.channel.abstract import ChannelState
-from gnsstools.channel.channel_default import Channel
-from gnsstools.gnsssignal import GNSSSignal, SignalType
+from gnsstools.channel.channel_abstract import ChannelState
+from gnsstools.channel.channel_L1CA import Channel
+from gnsstools.signal.gnsssignal import GNSSSignal, SignalType
 from gnsstools.tracking.tracking_epl import Tracking
 
 class DSPmeasurement():

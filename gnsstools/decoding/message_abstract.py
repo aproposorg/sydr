@@ -1,8 +1,10 @@
 
-from abc import ABC, abstractmethod
 import numpy as np
-
+from abc import ABC, abstractmethod
 from enum import Enum, unique
+
+from gnsstools.satellite.ephemeris import BRDCEphemeris
+import gnsstools.utils.constants as constants
 
 # =============================================================================
 @unique

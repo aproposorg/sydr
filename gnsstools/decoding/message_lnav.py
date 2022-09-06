@@ -1,11 +1,11 @@
 
 import numpy as np
-import gnsscal
-import copy
-from gnsstools.ephemeris import BRDCEphemeris
-from gnsstools.message.abstract import NavMessageType, NavigationMessageAbstract
-import gnsstools.constants as constants
+from abc import ABC, abstractmethod
+from enum import Enum, unique
 
+from gnsstools.ephemeris import BRDCEphemeris
+from gnsstools.message.abstract import NavigationMessageAbstract
+import gnsstools.utils.constants as constants
 
 class LNAV(NavigationMessageAbstract):
 

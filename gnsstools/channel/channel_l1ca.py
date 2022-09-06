@@ -7,10 +7,10 @@
 # =============================================================================
 # PACKAGES
 import numpy as np
-from gnsstools.gnsssignal import GNSSSignal
+from gnsstools.signal.gnsssignal import GNSSSignal
 from ..message.lnav import LNAV
-from gnsstools.rfsignal import RFSignal
-from gnsstools.channel.abstract import ChannelAbstract
+from gnsstools.signal.rfsignal import RFSignal
+from gnsstools.channel.channel_abstract import ChannelAbstract
 from gnsstools.tracking.tracking_epl import Tracking
 from gnsstools.acquisition.acquisition_pcps import Acquisition
 from gnsstools.utils.circularbuffer import CircularBuffer

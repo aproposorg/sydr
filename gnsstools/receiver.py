@@ -10,14 +10,12 @@ import math
 import numpy as np
 import configparser
 import pickle
-from gnsstools.channel.abstract import ChannelState
-from gnsstools.channel.channel_default import Channel
-from gnsstools.gnsssignal import GNSSSignal, SignalType
-from gnsstools.measurements import DSPEpochs
-from gnsstools.message.abstract import NavMessageType
-from gnsstools.rfsignal import RFSignal
-from gnsstools.satellite import Satellite
-from gnsstools.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
+from gnsstools.channel.channel_abstract import ChannelState
+from gnsstools.channel.channel_L1CA import Channel
+from gnsstools.signal.gnsssignal import GNSSSignal
+from gnsstools.signal.rfsignal import RFSignal
+from gnsstools.satellite.satellite import Satellite
+from gnsstools.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
 # =============================================================================
 class Receiver():
 
@@ -248,12 +246,6 @@ class Receiver():
         self.receiverClock -= self.receiverClockError[-1] / SPEED_OF_LIGHT
 
         self.measurementTimeList.append(receivedTime)
-
-        # print("---")
-        # print(self.receiverPosition)
-        # print(self.receiverClockError)
-        # print(self.receiverClock)
-
 
         return
 

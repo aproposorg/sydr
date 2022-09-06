@@ -4,11 +4,11 @@ from sys import flags
 from typing import Dict
 from xmlrpc.client import Boolean
 import numpy as np
-from gnsstools.channel.abstract import ChannelState
+from gnsstools.channel.channel_abstract import ChannelState
 
-import gnsstools.constants as constants
+import gnsstools.utils.constants as constants
 from gnsstools.ephemeris import BRDCEphemeris, Ephemeris
-from gnsstools.gnsssignal import GNSSSignal, SignalType
+from gnsstools.signal.gnsssignal import GNSSSignal, SignalType
 from gnsstools.measurements import DSPEpochs, DSPmeasurement
 from gnsstools.message.abstract import NavMessageType, NavigationMessageAbstract
 from gnsstools.message.lnav import LNAV
