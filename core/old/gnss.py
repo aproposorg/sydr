@@ -1,13 +1,13 @@
 import configparser
 from tqdm import tqdm
 import pickle
-from gnsstools.old.gnsssignal import GNSSSignal
-from gnsstools.acquisition import Acquisition
-from gnsstools.navigation import Navigation
-from gnsstools.rffile import RFFile
-from gnsstools.satellite.satellite import Satellite
-from gnsstools.tracking import Tracking
-from gnsstools.decoding import Decoding
+from core.old.gnsssignal import GNSSSignal
+from core.acquisition import Acquisition
+from core.navigation import Navigation
+from core.rffile import RFFile
+from core.satellite.satellite import Satellite
+from core.tracking import Tracking
+from core.decoding import Decoding
 
 class GNSS:
     def __init__(self, configfile, prnlist):

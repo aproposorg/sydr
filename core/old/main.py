@@ -1,6 +1,6 @@
 
-from gnsstools.old.gnss import GNSS
-from gnsstools.old.analysis import Analysis
+from core.old.gnss import GNSS
+from core.old.analysis import Analysis
 
 # Main program
 configfile = './config/default_config.ini'

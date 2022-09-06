@@ -1,9 +1,8 @@
 import numpy as np
-from gnsstools.acquisition.acquisition_pcps import Acquisition
-from gnsstools.channel.channel_abstract import ChannelState
-from gnsstools.channel.channel_L1CA import Channel
-from gnsstools.signal.gnsssignal import GNSSSignal, SignalType
-from gnsstools.tracking.tracking_epl import Tracking
+from core.acquisition.acquisition_pcps import Acquisition
+from core.channel.channel_abstract import ChannelAbstract, ChannelState
+from core.channel.channel_l1ca import ChannelL1CA
+from core.signal.gnsssignal import SignalType
 
 class DSPmeasurement():
     idx : int
@@ -47,7 +46,7 @@ class DSPEpochs():
         self.dspMeasurementCounter = 0
         return
 
-    def addAcquisition(self, time, samples, channel:Channel):
+    def addAcquisition(self, time, samples, channel:ChannelAbstract):
         self.time.append(time)
         self.state.append(channel.state)
 
@@ -69,7 +68,7 @@ class DSPEpochs():
 
         self.dspMeasurementCounter += 1
 
-    def addTracking(self, time, samples, channel:Channel):
+    def addTracking(self, time, samples, channel:ChannelAbstract):
         
         self.time.append(time)
         self.state.append(channel.state)

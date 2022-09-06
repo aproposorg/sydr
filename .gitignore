@@ -3,5 +3,6 @@
 *.eps
 __pycache__/
 .results/
+.venv/
 scalene_profile.json
 speedscope_profile.txt

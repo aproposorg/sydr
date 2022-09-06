@@ -1,6 +1,5 @@
 
 import pickle
-from click import prompt
 import numpy as np
 import pandas as pd
 import configparser
@@ -12,18 +11,18 @@ from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pymap3d as pm
-from gnsstools.utils.constants import SPEED_OF_LIGHT
+from core.utils.constants import SPEED_OF_LIGHT
 
-from gnsstools.receiver import Receiver
+from core.receiver.receiver_abstract import ReceiverAbstract
 
-from .utils.rfsignal import RFSignal
-from ..satellite import Satellite
-from ..utils.gnsssignal import SignalType
-from ..channel.channel_abstract import ChannelState
+from core.signal.rfsignal import RFSignal
+from core.satellite.satellite import Satellite
+from core.signal.gnsssignal import SignalType
+from core.channel.channel_abstract import ChannelState
 
 class Visualisation:
 
-    receiver : Receiver
+    receiver : ReceiverAbstract
 
     def __init__(self, configfile, rfSignal:RFSignal, gnssSignals:dict):
         self.gnssSignals = gnssSignals

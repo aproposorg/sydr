@@ -10,16 +10,20 @@ import math
 import numpy as np
 import configparser
 import pickle
-from gnsstools.channel.channel_abstract import ChannelState
-from gnsstools.channel.channel_L1CA import Channel
-from gnsstools.signal.gnsssignal import GNSSSignal
-from gnsstools.signal.rfsignal import RFSignal
-from gnsstools.satellite.satellite import Satellite
-from gnsstools.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
+from core.channel.channel_abstract import ChannelState
+from core.channel.channel_l1ca import ChannelL1CA
+from core.receiver.receiver_abstract import ReceiverAbstract
+from core.signal.gnsssignal import GNSSSignal, SignalType
+from core.signal.rfsignal import RFSignal
+from core.satellite.satellite import Satellite
+from core.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
+
 # =============================================================================
-class Receiver():
+
+class ReceiverGPSL1CA(ReceiverAbstract):
 
     def __init__(self, receiverConfigFile, gnssSignal:GNSSSignal, rfSignal:RFSignal):
+        super().__init__()
 
         self.gnssSignal = gnssSignal
         
@@ -58,7 +62,7 @@ class Receiver():
 
         # Initialise the channels
         for idx in range(min(self.nbChannels, len(satelliteList))):
-            self.channels.append(Channel(idx, self.gnssSignal, self.rfSignal, 0))
+            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0))
         
         # Initialise satellite structure
         self.satelliteDict = {}

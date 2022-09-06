@@ -1,0 +1,17 @@
+bokeh==2.4.3
+Jinja2==3.1.2
+MarkupSafe==2.1.1
+numpy==1.23.2
+packaging==21.3
+pandas==1.4.4
+Pillow==9.2.0
+plotly==5.10.0
+pymap3d==2.9.1
+pyparsing==3.0.9
+python-dateutil==2.8.2
+pytz==2022.2.1
+PyYAML==6.0
+six==1.16.0
+tenacity==8.0.1
+tornado==6.2
+typing-extensions==4.3.0

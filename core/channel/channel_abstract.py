@@ -7,19 +7,16 @@
 # =============================================================================
 # PACKAGES
 from abc import ABC, abstractmethod
-from os import system
-from random import sample
 from typing import List
-import numpy as np
-import copy
-from gnsstools.acquisition.acquisition_abstract import AcquisitionAbstract
-from gnsstools.signal.gnsssignal import GNSSSignal
-from ..message.abstract import NavigationMessageAbstract
-from gnsstools.signal.rfsignal import RFSignal
-from gnsstools.tracking.abstract import TrackingAbstract
-from enum import Enum, IntFlag, unique, auto
 
-from gnsstools.utils.circularbuffer import CircularBuffer
+from core.acquisition.acquisition_abstract import AcquisitionAbstract
+from core.signal.gnsssignal import GNSSSignal
+from core.decoding.message_abstract import NavigationMessageAbstract
+from core.signal.rfsignal import RFSignal
+from core.tracking.tracking_abstract import TrackingAbstract
+from enum import Enum, unique
+
+from core.utils.circularbuffer import CircularBuffer
 
 # =============================================================================
 class ChannelConfig:

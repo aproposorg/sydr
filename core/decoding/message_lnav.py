@@ -1,11 +1,9 @@
 
 import numpy as np
-from abc import ABC, abstractmethod
-from enum import Enum, unique
 
-from gnsstools.ephemeris import BRDCEphemeris
-from gnsstools.message.abstract import NavigationMessageAbstract
-import gnsstools.utils.constants as constants
+from core.satellite.ephemeris import BRDCEphemeris
+from core.decoding.message_abstract import NavigationMessageAbstract, MessageType
+import core.utils.constants as constants
 
 class LNAV(NavigationMessageAbstract):
 
@@ -41,7 +39,7 @@ class LNAV(NavigationMessageAbstract):
 
     def __init__(self):
 
-        self.type = NavMessageType.GPS_LNAV
+        self.type = MessageType.GPS_LNAV
 
         # Initialise objects
         self.data             = np.zeros(self.MS_IN_NAV_BIT)

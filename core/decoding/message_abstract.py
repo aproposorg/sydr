@@ -3,18 +3,15 @@ import numpy as np
 from abc import ABC, abstractmethod
 from enum import Enum, unique
 
-from gnsstools.satellite.ephemeris import BRDCEphemeris
-import gnsstools.utils.constants as constants
-
 # =============================================================================
 @unique
-class NavMessageType(Enum):
+class MessageType(Enum):
     GPS_LNAV = 0
 
 # =============================================================================
 class NavigationMessageAbstract(ABC):
     
-    type : NavMessageType
+    type : MessageType
     towFound : bool
     tow : int
     svid : int

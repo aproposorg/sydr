@@ -1,7 +1,7 @@
 import numpy as np
-from gnsstools.ephemeris import Ephemeris
-import gnsstools.constants as constants
-from gnsstools.tracking import Tracking
+from core.ephemeris import Ephemeris
+import core.constants as constants
+from core.tracking import Tracking
 import gnsscal
 
 class Decoding:

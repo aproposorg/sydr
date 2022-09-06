@@ -3,12 +3,12 @@ import plotly.graph_objects as go
 import plotly
 import numpy as np
 import os
-from gnsstools.acquisition.acquisition_abstract import AcquisitionAbstract as Acquisition
-from gnsstools.navigation import Navigation
-import gnsstools.utils.constants as constants
+from core.acquisition.acquisition_abstract import AcquisitionAbstract as Acquisition
+from core.navigation import Navigation
+import core.utils.constants as constants
 import pymap3d as pm
 
-from gnsstools.signal.rfsignal import RFSignal
+from core.signal.rfsignal import RFSignal
 
 class Analysis:
     def __init__(self, rfConfig:RFSignal):

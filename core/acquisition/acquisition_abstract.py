@@ -8,8 +8,8 @@
 # PACKAGES
 from abc import ABC, abstractmethod
 import numpy as np
-from gnsstools.signal.gnsssignal import GNSSSignal
-from gnsstools.signal.rfsignal import RFSignal
+from core.signal.gnsssignal import GNSSSignal
+from core.signal.rfsignal import RFSignal
 # =============================================================================
 class AcquisitionAbstract(ABC):
 

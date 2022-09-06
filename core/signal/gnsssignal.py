@@ -3,7 +3,7 @@ import os
 from enum import Enum
 import numpy as np
 
-import gnsstools.signal.ca as ca
+import core.signal.ca as ca
 
 class SignalType(Enum):
     GPS_L1_CA = 0

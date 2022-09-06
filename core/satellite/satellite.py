@@ -1,17 +1,14 @@
 from abc import ABC
-from asyncore import read
-from sys import flags
 from typing import Dict
-from xmlrpc.client import Boolean
 import numpy as np
-from gnsstools.channel.channel_abstract import ChannelState
+from core.channel.channel_abstract import ChannelState
 
-import gnsstools.utils.constants as constants
-from gnsstools.ephemeris import BRDCEphemeris, Ephemeris
-from gnsstools.signal.gnsssignal import GNSSSignal, SignalType
-from gnsstools.measurements import DSPEpochs, DSPmeasurement
-from gnsstools.message.abstract import NavMessageType, NavigationMessageAbstract
-from gnsstools.message.lnav import LNAV
+import core.utils.constants as constants
+from core.satellite.ephemeris import BRDCEphemeris
+from core.signal.gnsssignal import SignalType
+from core.measurements import DSPEpochs, DSPmeasurement
+from core.decoding.message_abstract import NavigationMessageAbstract
+from core.decoding.message_lnav import LNAV
 
 
 class Satellite(ABC):

@@ -4,7 +4,7 @@ from http.client import REQUESTED_RANGE_NOT_SATISFIABLE
 import numpy as np
 import pymap3d as pm
 
-import gnsstools.constants as constants
+import core.constants as constants
 
 class Navigation:
 

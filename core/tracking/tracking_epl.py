@@ -8,9 +8,9 @@
 # PACKAGES
 import configparser
 import numpy as np
-from gnsstools.signal.gnsssignal import GNSSSignal
-from gnsstools.signal.rfsignal import RFSignal
-from gnsstools.tracking.abstract import TrackingAbstract
+from core.signal.gnsssignal import GNSSSignal
+from core.signal.rfsignal import RFSignal
+from core.tracking.tracking_abstract import TrackingAbstract
 # =============================================================================
 class Tracking(TrackingAbstract):
     """
