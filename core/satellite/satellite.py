@@ -5,16 +5,15 @@ from core.channel.channel_abstract import ChannelState
 
 import core.utils.constants as constants
 from core.satellite.ephemeris import BRDCEphemeris
-from core.signal.gnsssignal import SignalType
+from core.utils.enumerations import GNSSSignalType
 from core.measurements import DSPEpochs, DSPmeasurement
 from core.decoding.message_abstract import NavigationMessageAbstract
 from core.decoding.message_lnav import LNAV
 
-
 class Satellite(ABC):
 
     satelliteID : int
-    dspEpochs   : Dict[SignalType, DSPmeasurement]
+    dspEpochs   : Dict[GNSSSignalType, DSPmeasurement]
     gnssEpochs  : dict
     ephemeris   : list
     navMessage  : dict
@@ -64,7 +63,7 @@ class Satellite(ABC):
     # -------------------------------------------------------------------------
 
     def selectNavMessage(self, sig):
-        if sig == SignalType.GPS_L1_CA:
+        if sig == GNSSSignalType.GPS_L1_CA:
             return LNAV()
         else:
             raise ValueError("Incorrect signal type.")

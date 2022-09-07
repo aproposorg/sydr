@@ -7,13 +7,16 @@
 # =============================================================================
 # PACKAGES
 import math
+import time
 import numpy as np
 import configparser
-import pickle
-from core.channel.channel_abstract import ChannelState
+
+from core.channel.channel_abstract import ChannelAbstract, ChannelState
 from core.channel.channel_l1ca import ChannelL1CA
 from core.receiver.receiver_abstract import ReceiverAbstract
-from core.signal.gnsssignal import GNSSSignal, SignalType
+from core.record.database import DatabaseHandler
+from core.signal.gnsssignal import GNSSSignal
+from core.utils.enumerations import GNSSSignalType
 from core.signal.rfsignal import RFSignal
 from core.satellite.satellite import Satellite
 from core.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
@@ -31,15 +34,18 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         config.read(receiverConfigFile)
 
         self.name        = config.get   ('DEFAULT', 'name')
+        self.outfolder   = config.get   ('DEFAULT', 'outfolder')
         self.nbChannels  = config.getint('DEFAULT', 'nb_channels')
         self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
 
         self.channels = []
         self.channelsStates = [ChannelState.IDLE] *  self.nbChannels
+        self.channelCounter = 0
 
         self.isClockInitialised = False
 
-        self.receiverClock =  0.0
+        self.sampleCounter = 0
+        self.receiverClock = 0.0
         self.receiverClockError = []
         self.measurementTimeList = []
         self.receiverPosition = []
@@ -49,6 +55,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         self.rfSignal = rfSignal
 
+        self.database = DatabaseHandler(f"{self.outfolder}/{self.name}.db", overwrite=True)
+
         return
 
     # -------------------------------------------------------------------------
@@ -57,7 +65,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         # TEMPORARY solution TODO change
         signalDict = {}
-        signalDict[SignalType.GPS_L1_CA] = self.gnssSignal
+        signalDict[GNSSSignalType.GPS_L1_CA] = self.gnssSignal
         self.satelliteList = satelliteList
 
         # Initialise the channels
@@ -74,7 +82,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         msPerLoop = 1
         samplesInMs = int(msPerLoop * self.rfSignal.samplingFrequency * 1e-3)
         rfData = np.empty(samplesInMs)
-        self.sampleCounter = 0
         for msProcessed in range(self.msToProcess):
             rfData = self.rfSignal.readFile(timeLength=msPerLoop, keep_open=True)
             self.sampleCounter += samplesInMs
@@ -97,6 +104,9 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             elif self.receiverClock >= self.nextMeasurementTime:
                 self.computeGNSSMeasurements(receivedTime=self.receiverClock)
 
+            # Update the database
+            self.updateDatabase()
+
             msProcessed += 1
         return
 
@@ -114,9 +124,16 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     continue
                 svid = self.satelliteList.pop(0)
                 # Set the satellite parameters in the channel
-                chan.setSatellite(svid)
-                print(f"Channel {chan.cid} started with satellite G{svid}.")            
+                chan.setSatellite(svid, self.channelCounter)
+
+                self.addChannelDatabase(chan)
+                print(f"Channel {chan.cid} started with satellite G{svid}.")
+
+                self.channelCounter += 1     
+                
             chan.run(rfData)
+
+            self.updateDatabase()
         return
 
     # -------------------------------------------------------------------------
@@ -134,8 +151,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 print(f"Channel {chan.cid} could not acquire satellite G{svid}.")    
                 pass
             elif state == ChannelState.ACQUIRING:
-                # Buffer not full (most probably)
                 if chan.isAcquired:
+                    self.addAcquisitionDatabase(chan)
                     satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                     chan.switchState(ChannelState.TRACKING)
                     print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
@@ -143,6 +160,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     # Buffer not full (most probably)
                     pass
             elif state == ChannelState.TRACKING:
+                self.addTrackingDatabase(chan)
+
                 # Signal is being tracked
                 satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
 
@@ -150,35 +169,26 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 # TODO This pass a reference, maybe be it should be done only at init? 
                 satellite.addNavMessage(chan.decoding)
 
-                # # DEBUG (TO BE REMOVED)
-                # if not chan.isEphemerisDecoded:
-                #     f = open(f"ephemeris_{chan.svid}.pkl", 'rb')
-                #     chan.decoding.ephemeris = pickle.load(f)
-                #     chan.decoding.isEphemerisDecoded = True
-                #     chan.isEphemerisDecoded = True
+                if chan.decoding.isNewSubframeFound:
+                    self.addDecodingDatabase(chan)
+                    self.isNewSubframeFound = False
 
                 # Check if ephemeris decoded
                 if chan.isEphemerisDecoded:
                     # Check if already saved
                     if chan.decoding.ephemeris != satellite.getLastBRDCEphemeris():
                         satellite.addBRDCEphemeris(chan.decoding.ephemeris)
-
-                        # # DEBUG (TO BE REMOVED)
-                        # f = open(f"ephemeris_{chan.svid}.pkl", 'wb')
-                        # pickle.dump(chan.decoding.ephemeris, f, pickle.HIGHEST_PROTOCOL)
                  
             else:
                 raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
             
             self.channelsStates[chan.cid] = state
-        return
 
+        return
     
     # -------------------------------------------------------------------------
 
     def computeGNSSMeasurements(self, receivedTime=0):
-
-        samplingFrequency = self.rfSignal.samplingFrequency
 
         # Check if channels ready for measurements
         prnList = []
@@ -254,26 +264,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         return
 
     # -------------------------------------------------------------------------
-        
-    def getStartSample(self, gnssSignal:GNSSSignal):
-        
-        startSampleList = []
-        for prn, satellite in self.satelliteDict.items():
-            startSampleList.append(satellite.navMessage[gnssSignal].getSampleSubframe())
-        
-        # Find the latest signal
-        latestSample = np.max(startSampleList)
-
-        # Find in the other signals what is the closest sample compare to the lastest one
-        startSampleIdx = {}
-        for prn, satellite in self.satelliteDict.items():
-            diff = satellite.tracking.absoluteSample - latestSample
-            idx = np.argsort(np.abs(diff))
-            startSampleIdx[prn] = np.min(idx[:2])
-        
-        return startSampleIdx, latestSample
-
-    # -------------------------------------------------------------------------
 
     def computeReceiverPosition(self, pseudoranges, satpos):
         nbMeasurements = len(pseudoranges)
@@ -319,140 +309,83 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.receiverClockError.append(x[3])
 
         return
+    
+    # -------------------------------------------------------------------------
+
+    def updateDatabase(self):
+        """
+        TODO
+        """
+
+        # Update channel
+
+        # Commit
+        self.database.commit()
+
+        
+        return 
 
     # -------------------------------------------------------------------------
 
-    @staticmethod
-    def correctEarthRotation(traveltime, X_sat):
-        """
-        E_R_CORR  Returns rotated satellite ECEF coordinates due to Earth
-        rotation during signal travel time
-
-        X_sat_rot = e_r_corr(traveltime, X_sat);
-
-          Inputs:
-              travelTime  - signal travel time
-              X_sat       - satellite's ECEF coordinates
-
-          Outputs:
-              X_sat_rot   - rotated satellite's coordinates (ECEF)
-
-        Written by Kai Borre
-        Copyright (c) by Kai Borre
-        """
-
-        # --- Find rotation angle --------------------------------------------------
-        omegatau = EARTH_ROTATION_RATE * traveltime
-
-        # --- Make a rotation matrix -----------------------------------------------
-        R3 = np.array([[np.cos(omegatau), np.sin(omegatau), 0.0],
-                       [-np.sin(omegatau), np.cos(omegatau), 0.0],
-                       [0.0, 0.0, 1.0]])
-
-        # --- Do the rotation ------------------------------------------------------
-        X_sat_rot = R3.dot(X_sat)
+    def addChannelDatabase(self, channel:ChannelAbstract):
         
-        return X_sat_rot
+        mdict = {
+            "id"           : self.channelCounter,
+            "physical_id"  : channel.cid, 
+            "system"       : channel.gnssSignal.getSystem(),
+            "satellite_id" : channel.svid,
+            "signal"       : channel.gnssSignal.signalType,
+            "start_time"   : time.time(),
+            "start_sample" : self.sampleCounter
+        }
+
+        self.database.addData("channel", mdict)
+
+        return
 
     # -------------------------------------------------------------------------
 
-    def saveSatellites(self, outfile):
-        with open(outfile , 'wb') as f:
-            pickle.dump(self.satelliteDict, f, pickle.HIGHEST_PROTOCOL)
+    def addAcquisitionDatabase(self, channel:ChannelAbstract):
+        mdict = channel.acquisition.getDatabaseDict()
+
+        # Add the mandatory values
+        mdict["channel_id"]   = channel.dbid
+        mdict["time"]         = time.time()
+        mdict["times_sample"] = self.sampleCounter
+
+        self.database.addData("acquisition", mdict)
         return
 
-    def loadSatellites(self, infile):
-        with open(infile, 'rb') as f:
-                self.satelliteDict = pickle.load(f)
-        return 
+    # -------------------------------------------------------------------------
 
-    def saveChannels(self, outfile):
-        with open(outfile , 'wb') as f:
-            pickle.dump(self.channels, f, pickle.HIGHEST_PROTOCOL)
+    def addTrackingDatabase(self, channel:ChannelAbstract):
+        
+        mdict = channel.tracking.getDatabaseDict()
+
+        # Add the mandatory values
+        mdict["channel_id"]   = channel.dbid
+        mdict["time"]         = time.time()
+        mdict["times_sample"] = self.sampleCounter
+
+        self.database.addData("tracking", mdict)
+
         return
 
-    def loadChannels(self, infile):
-        with open(infile, 'rb') as f:
-                self.channels = pickle.load(f)
-        return 
+    # -------------------------------------------------------------------------
 
-
-
-    # END OF CLASS
-
-
-# -------------------------------------------------------------------------
-
-    def computeGNSSMeasurements_(self, sampleCounter):
-
-        # Check if satellite ready for measurement
-        prnList = []
-        for prn, satellite in self.satelliteDict.items():
-            if not satellite.isSatelliteReady():
-                continue
-            prnList.append(prn)
+    def addDecodingDatabase(self, channel:ChannelAbstract):
         
-        if len(prnList) < 5:
-            # Not enough satellites
-            return
-        
-        # sampleCounter = 292310000
+        mdict = channel.decoding.getDatabaseDict()
 
-        # Retrieve transmitted time
-        samplingFrequency = self.rfSignal.samplingFrequency
-        samplesPerCode = self.gnssSignal.getSamplesPerCode(samplingFrequency)
-        transmittedTime = np.zeros(len(prnList))
-        satellitesPositions = np.zeros((len(prnList), 3))
-        satellitesClocks = np.zeros(len(prnList))
-        idx = 0
-        for prn in prnList:
-            satellite = self.satelliteDict[prn]
-            navMessage = satellite.navMessage[self.gnssSignal.signalType]
-            lastDSPMeasurement = satellite.dspEpochs[self.gnssSignal.signalType].getLastMeasurement()
+        # Add the mandatory values
+        mdict["channel_id"]   = channel.dbid
+        mdict["time"]         = time.time()
+        mdict["times_sample"] = self.sampleCounter
 
-            # Get the last TOW
-            tow = navMessage.getTow()
-
-            # Get sample index of subframe
-            sampleSubframe = navMessage.getSampleTOW()
-
-            print(sampleSubframe)
-
-            # Find difference between last TOW and last code tracked
-            diffTowCode = lastDSPMeasurement.sample - sampleSubframe
-
-            # Find difference between current sample and last code tracked
-            diffCurrentCode = sampleCounter - lastDSPMeasurement.sample
-
-            # Find the code phase
-            # codePhase = diffCurrentCode / samplesPerCode
-
-            # Build transmitted time 
-            transmittedTime[idx] = tow + (diffTowCode + diffCurrentCode) / samplingFrequency
-
-            satellitesPositions[idx, :], satellitesClocks[idx] = satellite.computePosition(transmittedTime[idx])
-
-            idx += 1 
-        
-        # Estimated received time
-        if not self.isClockInitialised:
-            # The largest value is the one that was received first
-            # We add an average travel time to obtain a more realistic initial value
-            self.receiverClock = np.min(transmittedTime) + (AVG_TRAVEL_TIME_MS/1e3)
-        else:
-            self.receiverClock += 1 / self.measurementFrequency
-        
-        # Compute pseudoranges
-        pseudoranges = (self.receiverClock - transmittedTime) * SPEED_OF_LIGHT
-
-        # Correct pseudoranges
-        idx = 0
-        for prn in prnList:
-            satellite = self.satelliteDict[prn]
-            pseudoranges += (satellitesClocks[idx] + satellite.getTGD()) * SPEED_OF_LIGHT
-            idx += 1
-
-        # Compute receiver position
-        self.computeReceiverPosition(pseudoranges, satellitesPositions)
+        self.database.addData("decoding", mdict)
 
         return
+
+    # -------------------------------------------------------------------------
+
+

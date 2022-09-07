@@ -4,15 +4,13 @@ from enum import Enum
 import numpy as np
 
 import core.signal.ca as ca
+from core.utils.enumerations import GNSSSystems, GNSSSignalType
 
-class SignalType(Enum):
-    GPS_L1_CA = 0
-    
-    def __str__(self):
-        return str(self.name).replace("_", " ")
+
+# =============================================================================
 
 class GNSSSignal:
-    def __init__(self, configfile, signalType:SignalType):
+    def __init__(self, configfile, signalType:GNSSSignalType):
 
         if not os.path.exists(configfile):
             raise ValueError(f"File '{configfile}' does not exist.")
@@ -33,9 +31,11 @@ class GNSSSignal:
         self.codeMs     = int(self.codeFrequency / self.codeBits / 1e3)
 
         return
+    
+    # -------------------------------------------------------------------------
 
     def getCode(self, prn, samplingFrequency=None):
-        if self.signalType == SignalType.GPS_L1_CA:
+        if self.signalType == GNSSSignalType.GPS_L1_CA:
             code = ca.code(prn, 0, 0, 1, self.codeBits)
         else:
             raise ValueError(f"Signal type {self.signalType} does not exist.")
@@ -45,6 +45,8 @@ class GNSSSignal:
             code = self.getUpsampledCode(code, samplingFrequency)
 
         return code
+
+    # -------------------------------------------------------------------------
 
     def getUpsampledCode(self, code, samplingFrequency):
         ts = 1/samplingFrequency     # Sampling period
@@ -60,6 +62,20 @@ class GNSSSignal:
         codeUpsampled = code[idx]
 
         return codeUpsampled
+    
+    # -------------------------------------------------------------------------
 
     def getSamplesPerCode(self, samplingFrequency):
         return round(samplingFrequency / (self.codeFrequency / self.codeBits))
+    
+    # -------------------------------------------------------------------------
+
+    def getSystem(self):
+
+        if self.signalType is GNSSSignalType.GPS_L1_CA:
+            return GNSSSystems.GPS
+        
+        # TODO Do the other signals
+
+# =============================================================================
+

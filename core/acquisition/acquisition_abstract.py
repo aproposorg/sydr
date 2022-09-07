@@ -68,5 +68,9 @@ class AcquisitionAbstract(ABC):
     def run(self):
         pass
 
+    @abstractmethod
+    def getDatabaseDict(self):
+        pass
+
     # END OF CLASS
 

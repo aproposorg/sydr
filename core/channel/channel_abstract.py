@@ -65,6 +65,7 @@ class ChannelAbstract(ABC):
         self.state        = ChannelState.IDLE
         self.timeInSamples= timeInSamples
         self.samplesSinceFirstTOW = -1
+        self.dbid = -1
 
         self.codeSinceLastTOW = 0
 
@@ -183,9 +184,10 @@ class ChannelAbstract(ABC):
 
     # -------------------------------------------------------------------------
 
-    def setSatellite(self, svid):
+    def setSatellite(self, svid, dbid):
         # Update the configuration
         self.svid = svid
+        self.dbid = dbid
 
         # Update the methods
         self.acquisition.setSatellite(svid)

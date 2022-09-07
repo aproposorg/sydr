@@ -140,5 +140,9 @@ class TrackingAbstract(ABC):
     def getPrompt(self):
         pass
 
+    @abstractmethod
+    def getDatabaseDict(self):
+        pass
+
     # END OF CLASS
 

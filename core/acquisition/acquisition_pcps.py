@@ -7,6 +7,8 @@
 # =============================================================================
 # PACKAGES
 import configparser
+import pickle
+import sqlite3
 import numpy as np
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
@@ -188,6 +190,28 @@ class Acquisition(AcquisitionAbstract):
         self.idxEstimatedCode = int(idx[1])
 
         return
+
+    # -------------------------------------------------------------------------
+
+    def getDatabaseDict(self):
+        """
+        Contains the information to be save in the database in the form of a 
+        dictionnary. The key is the column name.
+
+        Returns:
+            mdict (Dict): Information to be saved.
+
+        """
+        
+        mdict = {
+            "frequency"      : self.estimatedFrequency,
+            "code"           : self.estimatedCode,
+            "frequency_idx"  : self.idxEstimatedFrequency,
+            "code_idx"       : self.idxEstimatedCode,
+            "correlation_map": self.correlationMap
+        }
+
+        return mdict
     
     # END OF CLASS
 

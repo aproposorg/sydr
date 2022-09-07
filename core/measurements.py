@@ -1,8 +1,6 @@
 import numpy as np
-from core.acquisition.acquisition_pcps import Acquisition
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
-from core.channel.channel_l1ca import ChannelL1CA
-from core.signal.gnsssignal import SignalType
+from core.utils.enumerations import GNSSSignalType
 
 class DSPmeasurement():
     idx : int
@@ -30,13 +28,13 @@ class TrackingMeasurement(DSPmeasurement):
 
 class DSPEpochs():
     satelliteID     : int
-    signalID        : SignalType
+    signalID        : GNSSSignalType
     time            : list
     samples         : list
     state           : list
     dspMeasurements : list
 
-    def __init__(self, satelliteID, signalID:SignalType):
+    def __init__(self, satelliteID, signalID:GNSSSignalType):
         self.satelliteID = satelliteID
         self.signalID = signalID
         self.time = []
@@ -110,12 +108,12 @@ class GNSSmeasurements():
 
 class GNSSEpochs():
     satelliteID     : int
-    signalID        : SignalType
+    signalID        : GNSSSignalType
     time            : list
     state           : list
     gnssMeasurements : GNSSmeasurements
 
-    def __init__(self, satelliteID, signalID:SignalType):
+    def __init__(self, satelliteID, signalID:GNSSSignalType):
         self.satelliteID = satelliteID
         self.signalID = signalID
         self.time = []

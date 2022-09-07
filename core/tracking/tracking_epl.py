@@ -179,6 +179,33 @@ class Tracking(TrackingAbstract):
 
     def getPrompt(self):
         return self.correlatorResults[2], self.correlatorResults[3]
+
+    # -------------------------------------------------------------------------
+
+    def getDatabaseDict(self):
+        """
+        Contains the information to be save in the database in the form of a 
+        dictionnary. The key is the column name.
+
+        Returns:
+            mdict (Dict): Information to be saved.
+
+        """
+        
+        mdict = {
+            "i_early"           : self.correlatorResults[0],
+            "q_early"           : self.correlatorResults[1],
+            "i_prompt"          : self.correlatorResults[2],
+            "q_prompt"          : self.correlatorResults[3],
+            "i_late"            : self.correlatorResults[4],
+            "q_late"            : self.correlatorResults[5],
+            "dll"               : self.dll,
+            "pll"               : self.pll,
+            "carrier_frequency" : self.carrierFrequency,
+            "code_frequency"    : self.codeFrequency
+        }
+
+        return mdict
     
     # -------------------------------------------------------------------------
     # END OF CLASS

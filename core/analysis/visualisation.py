@@ -17,7 +17,7 @@ from core.receiver.receiver_abstract import ReceiverAbstract
 
 from core.signal.rfsignal import RFSignal
 from core.satellite.satellite import Satellite
-from core.signal.gnsssignal import SignalType
+from core.utils.enumerations import GNSSSignalType
 from core.channel.channel_abstract import ChannelState
 
 class Visualisation:
@@ -46,7 +46,7 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
-    def run(self, signalType:SignalType):
+    def run(self, signalType:GNSSSignalType):
 
         for prn, sat in self.satelliteDict.items():
             self.plotSatelliteDSP(sat, signalType)
@@ -173,7 +173,7 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
-    def plotSatelliteDSP(self, satellite:Satellite, signalType:SignalType):
+    def plotSatelliteDSP(self, satellite:Satellite, signalType:GNSSSignalType):
 
         # Acquisition
         acqLayout = self.getAcquisitionLayout(satellite, signalType)
@@ -198,7 +198,7 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
-    def getAcquisitionLayout(self, satellite:Satellite, signalType: SignalType):
+    def getAcquisitionLayout(self, satellite:Satellite, signalType: GNSSSignalType):
         """
         TODO
         """
@@ -293,7 +293,7 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
-    def getTrackingLayout(self, satellite:Satellite, signalType: SignalType):
+    def getTrackingLayout(self, satellite:Satellite, signalType: GNSSSignalType):
         """
         TODO
         """
@@ -423,7 +423,7 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
-    def getDecodingLayout(self, satellite:Satellite, signalType: SignalType):
+    def getDecodingLayout(self, satellite:Satellite, signalType: GNSSSignalType):
 
         tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
             'pan', 'wheel_zoom', 'box_zoom,reset']
