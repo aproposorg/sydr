@@ -42,6 +42,10 @@ class NavigationMessageAbstract(ABC):
     @abstractmethod
     def run(self):
         return
+
+    @abstractmethod
+    def getDatabaseDict(self):
+        pass
     
     # -------------------------------------------------------------------------
 

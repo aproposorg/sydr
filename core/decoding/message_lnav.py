@@ -56,12 +56,14 @@ class LNAV(NavigationMessageAbstract):
         self.isTOWDecoded         = False
         self.isEphemerisDecoded   = False
         self.isFirstBitFound      = False
-        self.isNewBitFound        = False 
+        self.isNewBitFound        = False
+        self.isNewSubframeFound   = False 
         self.isFirstSubframeFound = False
         
         # Data
         self.tow = 0
         self.ephemeris = BRDCEphemeris()
+        self.lastSubframeID = -1 
 
         pass
 
@@ -191,6 +193,7 @@ class LNAV(NavigationMessageAbstract):
         subframe = ''.join([str(i) for i in subframe])
 
         subframeID = self.bin2dec(subframe[49:52])
+        self.lastSubframeID = subframeID
 
         eph = self.ephemeris
         # Identify the subframe
@@ -257,6 +260,7 @@ class LNAV(NavigationMessageAbstract):
         if eph.checkFlags():
             self.isEphemerisDecoded = True
         
+        self.isNewSubframeFound = True
         self.idxLastSubframe = idxSubframe
 
         # Actualize TOW
@@ -269,9 +273,12 @@ class LNAV(NavigationMessageAbstract):
 
         self.tow  = self.bin2dec(subframe[30:47]) * 6 
         self.tow -= 6
+        eph.tow = self.tow
+        
+        # Correct TOW to actual state
+        # TODO Should we make a function instead since this is not the pure TOW contained in the message
         self.tow += self.bitsLastSubframe * self.MS_IN_NAV_BIT * 1e-3
 
-        eph.tow = self.tow
         self.TOWInSamples = self.bitsSamples[idxSubframe]
         self.isTOWDecoded = True
 
@@ -285,20 +292,23 @@ class LNAV(NavigationMessageAbstract):
     
     # -------------------------------------------------------------------------
 
-    def getSampleSubframe(self):
+    def getDatabaseDict(self):
         """
-        Get the sample number of the last TOW.
+        Contains the information to be save in the database in the form of a 
+        dictionnary. The key is the column name.
+
+        Returns:
+            mdict (Dict): Information to be saved.
+
         """
-        return self.bitsSamples[self.idxLastSubframe]
+        
+        mdict = {
+            "tow"        : self.ephemeris.tow, 
+            "suframe_id" : self.lastSubframeID,
+            "bits"       : self.bits[self.idxLastSubframe : self.idxLastSubframe + self.SUBFRAME_BITS]
+        }
+
+        return mdict
+
 
     # -------------------------------------------------------------------------
-
-    # def getCodeSubframe(self):
-    #     """
-    #     Get the index of the code of the last subframe.
-    #     """
-
-    #     return self.idxCode[self.idxLastSubframe]
-
-
-    # # -------------------------------------------------------------------------
