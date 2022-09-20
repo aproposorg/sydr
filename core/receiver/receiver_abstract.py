@@ -1,7 +1,8 @@
 
-
-
 from abc import ABC, abstractmethod
+import numpy as np
+
+from core.utils.constants import EARTH_ROTATION_RATE
 
 class ReceiverAbstract(ABC):
 

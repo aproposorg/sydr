@@ -6,6 +6,9 @@
 # References: 
 # =============================================================================
 # PACKAGES
+import copy
+import pickle
+from datetime import datetime
 import math
 import time
 import numpy as np
@@ -13,17 +16,23 @@ import configparser
 
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
 from core.channel.channel_l1ca import ChannelL1CA
+from core.measurements import GNSSPosition, GNSSmeasurements
 from core.receiver.receiver_abstract import ReceiverAbstract
 from core.record.database import DatabaseHandler
 from core.signal.gnsssignal import GNSSSignal
-from core.utils.enumerations import GNSSSignalType
+from core.utils.clock import Clock
+from core.utils.coordinate import Coordinate
+from core.utils.enumerations import GNSSMeasurementType, GNSSSignalType, GNSSSystems
 from core.signal.rfsignal import RFSignal
 from core.satellite.satellite import Satellite
 from core.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
+from core.utils.time import Time
 
 # =============================================================================
 
 class ReceiverGPSL1CA(ReceiverAbstract):
+
+    database : DatabaseHandler
 
     def __init__(self, receiverConfigFile, gnssSignal:GNSSSignal, rfSignal:RFSignal):
         super().__init__()
@@ -37,6 +46,10 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.outfolder   = config.get   ('DEFAULT', 'outfolder')
         self.nbChannels  = config.getint('DEFAULT', 'nb_channels')
         self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
+        
+        self.isBRDCEphemerisAssited = config.getboolean('AGNSS', 'broadcast_ephemeris')
+        self.isClockAssisted        = config.getboolean('AGNSS', 'clock_assited')
+        self.clockAssistedValue     = datetime.strptime(config.get('AGNSS', 'clock_assisted_value'), ("%Y-%m-%d %H:%M:%S.%f"))
 
         self.channels = []
         self.channelsStates = [ChannelState.IDLE] *  self.nbChannels
@@ -45,17 +58,18 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.isClockInitialised = False
 
         self.sampleCounter = 0
-        self.receiverClock = 0.0
+        self.receiverClock = Clock()
+        if self.isClockAssisted:
+            self.receiverClock.absoluteTime.setDatetime(self.clockAssistedValue)
         self.receiverClockError = []
         self.measurementTimeList = []
-        self.receiverPosition = []
+        self.receiverPosition = GNSSPosition()
 
-        self.measurementFrequency = 2  # In Hz
+        self.measurementFrequency = 10  # In Hz
         self.measurementPeriod = 1 / self.measurementFrequency
+        self.nextMeasurementTime = Time()
 
         self.rfSignal = rfSignal
-
-        self.database = DatabaseHandler(f"{self.outfolder}/{self.name}.db", overwrite=True)
 
         return
 
@@ -75,7 +89,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Initialise satellite structure
         self.satelliteDict = {}
         for svid in satelliteList:
-            self.satelliteDict[svid] = Satellite(svid, signalDict)
+            self.satelliteDict[svid] = Satellite(GNSSSystems.GPS, svid)
 
         # Loop through the file contents
         # TODO Load by chunck of data instead of ms per ms
@@ -85,7 +99,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         for msProcessed in range(self.msToProcess):
             rfData = self.rfSignal.readFile(timeLength=msPerLoop, keep_open=True)
             self.sampleCounter += samplesInMs
-            self.receiverClock += msPerLoop * 1e-3
+            self.receiverClock.addTime(msPerLoop * 1e-3)
 
             if rfData.size < samplesInMs:
                 raise EOFError("EOF encountered earlier than expected in file.")
@@ -98,16 +112,21 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
             # Compute measurements based on receiver time
             # For measurement frequency of 1 Hz, that's every round second.
-            if not self.isClockInitialised:
+            if not self.receiverClock.isInitialised:
                 # First time we run it to estimate receiver clock error
-                self.computeGNSSMeasurements(receivedTime = 0)
-            elif self.receiverClock >= self.nextMeasurementTime:
-                self.computeGNSSMeasurements(receivedTime=self.receiverClock)
+                self.computeGNSSMeasurements()
+            elif self.receiverClock.absoluteTime >= self.nextMeasurementTime:
+                self.computeGNSSMeasurements()
 
             # Update the database
-            self.updateDatabase()
+            if int(self.sampleCounter % 1e7) == 0:
+                self.updateDatabase()
 
             msProcessed += 1
+
+        # Update the last measurements
+        self.updateDatabase()
+        
         return
 
     # -------------------------------------------------------------------------
@@ -129,11 +148,12 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 self.addChannelDatabase(chan)
                 print(f"Channel {chan.cid} started with satellite G{svid}.")
 
-                self.channelCounter += 1     
+                self.channelCounter += 1
+
+                self.updateDatabase()     
                 
             chan.run(rfData)
-
-            self.updateDatabase()
+        
         return
 
     # -------------------------------------------------------------------------
@@ -171,7 +191,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
                 if chan.decoding.isNewSubframeFound:
                     self.addDecodingDatabase(chan)
-                    self.isNewSubframeFound = False
+                    chan.decoding.isNewSubframeFound = False
 
                 # Check if ephemeris decoded
                 if chan.isEphemerisDecoded:
@@ -188,13 +208,13 @@ class ReceiverGPSL1CA(ReceiverAbstract):
     
     # -------------------------------------------------------------------------
 
-    def computeGNSSMeasurements(self, receivedTime=0):
+    def computeGNSSMeasurements(self):
 
         # Check if channels ready for measurements
         prnList = []
         selectedChannels = []
         for chan in self.channels:
-            if chan.isTOWDecoded and chan.isEphemerisDecoded:
+            if chan.isTOWDecoded and (chan.isEphemerisDecoded or self.isBRDCEphemerisAssited):
                 prnList.append(chan.svid)
                 selectedChannels.append(chan)
 
@@ -215,26 +235,30 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 earliestChannel = chan
         
         # Received time
-        if not self.isClockInitialised:
+        if not self.receiverClock.isInitialised:
+            if self.isClockAssisted:
+                week = self.receiverClock.absoluteTime.getGPSWeek()
+            else:
+                week = earliestChannel.week
             receivedTime = earliestChannel.tow + AVG_TRAVEL_TIME_MS / 1e3
-            self.receiverClock = receivedTime
-            self.isClockInitialised = True
-            self.nextMeasurementTime = math.ceil(receivedTime)
+            self.receiverClock.absoluteTime.setGPSTime(week, receivedTime)
+            self.receiverClock.isInitialised = True
+            self.nextMeasurementTime.setGPSTime(week, math.ceil(receivedTime))
             tow = earliestChannel.tow
         else:
             # Compute the residual time to have a "round" received time
-            timeResidual = receivedTime - self.nextMeasurementTime
-            receivedTime = self.receiverClock - timeResidual
-            self.nextMeasurementTime = receivedTime + self.measurementPeriod
+            week =  self.receiverClock.absoluteTime.getGPSWeek()
+            timeResidual = (self.receiverClock.absoluteTime - self.nextMeasurementTime).total_seconds()
+            receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
+            self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), math.ceil(receivedTime + self.measurementPeriod))
             tow = earliestChannel.tow + earliestChannel.getTimeSinceTOW() / 1e3 - timeResidual
         
-        satellitesPositions = np.zeros((len(prnList), 3))
-        satellitesClocks = np.zeros(len(prnList))
-        pseudoranges = np.zeros(len(prnList))
-        correctedPseudoranges = np.zeros(len(prnList))
         idx = 0
+        gnssMeasurementsList = []
         for chan in selectedChannels:
             satellite = self.satelliteDict[chan.svid]
+            if self.isBRDCEphemerisAssited:
+                satellite.addBRDCEphemeris(self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid))
 
             # Compute the time of transmission
             relativeTime = (earliestChannel.getTimeSinceTOW() - chan.getTimeSinceTOW()) * 1e-3
@@ -242,22 +266,50 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
             # Compute pseudoranges
             # TODO add remaining phase
-            pseudoranges[idx] = (receivedTime - transmitTime) * SPEED_OF_LIGHT
+            pseudoranges = (receivedTime - transmitTime) * SPEED_OF_LIGHT
 
             # Compute satellite positions and clock errors
-            satellitesPositions[idx, :], satellitesClocks[idx] = satellite.computePosition(transmitTime)
+            satellitePosition, satelliteClock = satellite.computePosition(transmitTime)
 
             # Apply corrections
             # TODO Ionosphere, troposhere ...
-            correctedPseudoranges[idx] = pseudoranges[idx]
-            correctedPseudoranges[idx] += satellitesClocks[idx] * SPEED_OF_LIGHT # Satellite clock error
-            correctedPseudoranges[idx] += satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
+            correctedPseudoranges  = pseudoranges
+            correctedPseudoranges += satelliteClock * SPEED_OF_LIGHT # Satellite clock error
+            correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
+
+            # Pseudorange
+            gnssMeasurements = GNSSmeasurements()
+            gnssMeasurements.channel  = chan
+            gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
+            gnssMeasurements.mtype    = GNSSMeasurementType.PSEUDORANGE
+            gnssMeasurements.value    = correctedPseudoranges
+            gnssMeasurements.rawValue = pseudoranges
+            gnssMeasurements.residual = 0.0
+            gnssMeasurements.enabled  = True
+
+            gnssMeasurementsList.append(gnssMeasurements)
             
             idx += 1
         
-        self.computeReceiverPosition(correctedPseudoranges, satellitesPositions)
-        correctedPseudoranges -= self.receiverClockError[-1]
-        self.receiverClock -= self.receiverClockError[-1] / SPEED_OF_LIGHT
+        state = self.computeReceiverPosition(receivedTime, gnssMeasurementsList)
+
+        self.receiverPosition.time = Time.fromGPSTime(week, receivedTime)
+        self.receiverPosition.coordinate.setCoordinates(state[0], state[1], state[2])
+        self.receiverPosition.clockError = state[3]
+        self.receiverPosition.id += 1
+
+        # Correct after minimisation
+        for meas in gnssMeasurementsList:
+            if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
+                meas.value -= self.receiverPosition.clockError
+            else:
+                # TODO Adapt to other measurement types
+                pass
+            if meas.enabled:
+                self.receiverPosition.measurements.append(meas)
+        
+        self.receiverClock.absoluteTime.applyCorrection(-self.receiverPosition.clockError / SPEED_OF_LIGHT)
+        self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
 
         self.measurementTimeList.append(receivedTime)
 
@@ -265,8 +317,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
     # -------------------------------------------------------------------------
 
-    def computeReceiverPosition(self, pseudoranges, satpos):
-        nbMeasurements = len(pseudoranges)
+    def computeReceiverPosition(self, time, measurements):
+        nbMeasurements = len(measurements)
         G = np.zeros((nbMeasurements, 4))
         y = np.zeros(nbMeasurements)
         dX = np.zeros(4)
@@ -279,22 +331,34 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             if np.linalg.norm(dX) < 1e-6:
                 break
             # Make matrices
-            for idx in range(nbMeasurements):
-                if idx == 0:
-                    _satpos = satpos[idx, :]
+            idx = 0
+            for meas in measurements:
+                if not meas.enabled:
+                    continue
+                if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
+                    travelTime = meas.value / SPEED_OF_LIGHT
+    	            
+                    transmitTime = time - travelTime
+                    satellite = self.satelliteDict[meas.channel.svid]
+                    satpos, satclock = satellite.computePosition(transmitTime)
+                    satpos = self.correctEarthRotation(travelTime, np.transpose(satpos))
+                    
+                    # Geometric range
+                    p = np.sqrt((x[0] - satpos[0])**2 + (x[1] - satpos[1])**2 + (x[2] - satpos[2])**2)
+
+                    # Observation vector
+                    y[idx] = meas.value - p - x[3]
+
+                    # Design matrix
+                    G[idx, 0] = (x[0] - satpos[0]) / p
+                    G[idx, 1] = (x[1] - satpos[1]) / p
+                    G[idx, 2] = (x[2] - satpos[2]) / p
+                    G[idx, 3] = 1
                 else:
-                    p = np.sqrt((x[0] - satpos[idx, 0])**2 + (x[1] - satpos[idx, 1])**2 + (x[2] - satpos[idx, 2])**2)
-                    travelTime = p / SPEED_OF_LIGHT
-                    _satpos = self.correctEarthRotation(travelTime, np.transpose(satpos[idx, :]))
-                
-                p = np.sqrt((x[0] - _satpos[0])**2 + (x[1] - _satpos[1])**2 + (x[2] - _satpos[2])**2)
+                    # TODO Adapt to other measurement types
+                    continue
 
-                G[idx, 0] = (x[0] - satpos[idx, 0]) / p
-                G[idx, 1] = (x[1] - satpos[idx, 1]) / p
-                G[idx, 2] = (x[2] - satpos[idx, 2]) / p
-                G[idx, 3] = 1
-
-                y[idx] = pseudoranges[idx] - p - x[3]
+                idx += 1 
             
             # Least Squares
             N = np.transpose(G).dot(G)
@@ -305,10 +369,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             #print(v)
             #print(dX)
         
-        self.receiverPosition.append(x[0:3])
-        self.receiverClockError.append(x[3])
-
-        return
+        return x
     
     # -------------------------------------------------------------------------
 
@@ -322,7 +383,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Commit
         self.database.commit()
 
-        
         return 
 
     # -------------------------------------------------------------------------
@@ -351,7 +411,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["times_sample"] = self.sampleCounter
+        mdict["time_sample"] = self.sampleCounter - channel.unprocessedSamples
 
         self.database.addData("acquisition", mdict)
         return
@@ -365,7 +425,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["times_sample"] = self.sampleCounter
+        mdict["time_sample"] = self.sampleCounter - channel.unprocessedSamples
 
         self.database.addData("tracking", mdict)
 
@@ -380,12 +440,62 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["times_sample"] = self.sampleCounter
+        mdict["time_sample"]  = self.sampleCounter - channel.unprocessedSamples
 
         self.database.addData("decoding", mdict)
 
         return
 
     # -------------------------------------------------------------------------
+
+    def addPositionDatabase(self, position:GNSSPosition, measurements):
+        
+        posdict = {}
+
+        # Position
+        posdict["id"]            = position.id
+        posdict["time"]          = time.time()
+        posdict["time_sample"]   = self.sampleCounter
+        posdict["time_receiver"] = position.time.datetime
+        posdict["x"]             = position.coordinate.x
+        posdict["y"]             = position.coordinate.y
+        posdict["z"]             = position.coordinate.z
+        posdict["clock"]         = position.clockError
+        # posdict["sigma_x"]       = positon.sigma_x
+        # posdict["sigma_y"]       = positon.sigma_y
+        # posdict["sigma_z"]       = positon.sigma_z
+        # posdict["sigma_clock"]   = positon.sigma_clock
+        # posdict["gdop"]          = positon.gdop
+        # posdict["pdop"]          = positon.pdop
+        # posdict["hdop"]          = positon.hdop
+
+        self.database.addData("position", posdict)
+
+        # Measurements
+        for meas in measurements:
+            measdict = {}
+            measdict["channel_id"]   = meas.channel.dbid
+            measdict["time"]         = time.time()
+            measdict["time_sample"]  = self.sampleCounter
+            measdict["position_id"]  = position.id
+            measdict["enabled"]      = meas.enabled
+            measdict["type"]         = meas.mtype
+            measdict["value"]        = meas.value
+            measdict["raw_value"]    = meas.rawValue
+            measdict["residual"]     = meas.residual
+
+            self.database.addData("measurement", measdict)
+
+        return
+
+    # -------------------------------------------------------------------------
+
+    def saveSatellites(self, outfile):
+        with open(outfile , 'wb') as f:
+            pickle.dump(self.satelliteDict, f, pickle.HIGHEST_PROTOCOL)
+        return
+
+    # -------------------------------------------------------------------------
+
 
 

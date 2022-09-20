@@ -5,14 +5,15 @@ from core.channel.channel_abstract import ChannelState
 
 import core.utils.constants as constants
 from core.satellite.ephemeris import BRDCEphemeris
-from core.utils.enumerations import GNSSSignalType
+from core.utils.enumerations import GNSSSignalType, GNSSSystems
 from core.measurements import DSPEpochs, DSPmeasurement
 from core.decoding.message_abstract import NavigationMessageAbstract
 from core.decoding.message_lnav import LNAV
 
 class Satellite(ABC):
 
-    satelliteID : int
+    system      : GNSSSystems
+    svid        : int
     dspEpochs   : Dict[GNSSSignalType, DSPmeasurement]
     gnssEpochs  : dict
     ephemeris   : list
@@ -27,9 +28,10 @@ class Satellite(ABC):
     lastPosition : np.array
     lastBRDCEphemeris : BRDCEphemeris
 
-    def __init__(self, svid, signals):
-
-        self.satelliteID = svid
+    def __init__(self, system:GNSSSystems, svid:int):
+        
+        self.system = system
+        self.svid = svid
         self.dspEpochs   = {}
         self.gnssEpochs  = {}
         self.navMessages  = {}
@@ -183,7 +185,7 @@ class Satellite(ABC):
 
         # Check if signal exist, otherwise initialize
         if signal not in self.dspEpochs:
-            self.dspEpochs[signal] = DSPEpochs(self.satelliteID, signal)
+            self.dspEpochs[signal] = DSPEpochs(self.svid, signal)
         
         if state == ChannelState.ACQUIRING:
             self.dspEpochs[signal].addAcquisition(msProcessed, samplesProcessed, chan)

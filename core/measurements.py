@@ -1,6 +1,8 @@
 import numpy as np
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
-from core.utils.enumerations import GNSSSignalType
+from core.utils.coordinate import Coordinate
+from core.utils.enumerations import GNSSMeasurementType, GNSSSignalType
+from core.utils.time import Time
 
 class DSPmeasurement():
     idx : int
@@ -100,17 +102,28 @@ class DSPEpochs():
 
 class GNSSmeasurements():
 
-    time        : float
-    pseudorange : float
-    doppler     : float 
-    cn0         : float
-    phase       : float
+    time           : Time
+    channel        : ChannelAbstract
+    positionID     : int
+    enabled        : bool
+    
+    # measurements
+    mtype          : GNSSMeasurementType 
+    value          : float
+    rawValue       : float
+    residual       : float
+
+    def __init__(self):
+        return
+    
+    
+# =============================================================================
 
 class GNSSEpochs():
-    satelliteID     : int
-    signalID        : GNSSSignalType
-    time            : list
-    state           : list
+    satelliteID      : int
+    signalID         : GNSSSignalType
+    time             : list
+    state            : list
     gnssMeasurements : GNSSmeasurements
 
     def __init__(self, satelliteID, signalID:GNSSSignalType):
@@ -120,6 +133,29 @@ class GNSSEpochs():
         self.state = []
         self.dspMeasurements = []
         return
+
+# =============================================================================
+
+class GNSSPosition():
+
+    id           : int
+    time         : Time
+    coordinate   : Coordinate
+    clockError   : float
+    measurements : list
+
+    def __init__(self):
+        self.id = -1
+        self.time = Time()
+        self.coordinate = Coordinate()
+        self.measurements = []
+        return
+
+# =============================================================================
+
+
+
+
 
 
 

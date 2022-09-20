@@ -46,6 +46,12 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
+    def setDatabase(self, database):
+        self.database = database
+        return
+
+    # -------------------------------------------------------------------------
+
     def run(self, signalType:GNSSSignalType):
 
         for prn, sat in self.satelliteDict.items():
@@ -73,8 +79,22 @@ class Visualisation:
                   "Up [m]",
                   "Recevier clock bias [s]"]
         
-        recpos = np.array(self.receiver.receiverPosition)
-        recclk = np.array(self.receiver.receiverClockError)
+        # Retrieve from database
+        positionList = self.receiver.database.fetchPositions()
+
+        recpos = []
+        recclk = []
+        time = []
+        for position in positionList:
+            time.append(position.time.datetime)
+            recpos.append(position.coordinate.vecpos())
+            recclk.append(position.clockError)
+
+        #recpos = np.array(recpos)
+        recclk = np.array(recclk)
+        
+        # recpos = np.array(self.receiver.receiverPosition)
+        # recclk = np.array(self.receiver.receiverClockError)
         refpos = pm.ecef2geodetic( \
             self.referencePosition[0], \
             self.referencePosition[1], \
@@ -89,7 +109,7 @@ class Visualisation:
         enu = np.array(enu)
         llh = np.array(llh)
 
-        time = self.receiver.measurementTimeList
+        #time = self.receiver.measurementTimeList
 
         fig = make_subplots(6, 2,\
                 start_cell="top-left",
@@ -191,7 +211,7 @@ class Visualisation:
         tabs = Tabs(tabs=[acqTab, trackTab])
 
         # Save file
-        output_file(f'{self.outfolder}dsp_analysis_G{satellite.satelliteID}.html', title=f'DSP analysis G{satellite.satelliteID}')
+        output_file(f'{self.outfolder}dsp_analysis_G{satellite.svid}.html', title=f'DSP analysis G{satellite.svid}')
         save(tabs)
 
         return
@@ -261,7 +281,7 @@ class Visualisation:
         samplesPerCode = round(self.rfSignal.samplingFrequency / (gnssSignal.codeFrequency / gnssSignal.codeBits))
         dfResults = pd.DataFrame({
             'Parameters' : ['PRN', 'Signal', 'Metric', 'Doppler [Hz]', 'Code sample', 'Code phase (bits)'],
-            'Values' : [f'G{satellite.satelliteID}', f'{gnssSignal.signalType}', f'{dsp.acquisitionMetric:>6.2}',\
+            'Values' : [f'G{satellite.svid}', f'{gnssSignal.signalType}', f'{dsp.acquisitionMetric:>6.2}',\
                 f'{dsp.dopplerFrequency}', f'{dsp.codeShift}', \
                 f'{dsp.codeShift * gnssSignal.codeBits / samplesPerCode:>8.2f}']
         })

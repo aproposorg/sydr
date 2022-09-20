@@ -79,6 +79,7 @@ class ChannelAbstract(ABC):
         self.isEphemerisDecoded = False
 
         self.tow = 0
+        self.week = 0
 
         return
     
@@ -163,6 +164,7 @@ class ChannelAbstract(ABC):
         # TODO Add condition if a new message is available
         if not self.isEphemerisDecoded and self.decoding.isEphemerisDecoded:
             self.isEphemerisDecoded = True
+            self.week = self.decoding.weekNumber
 
         if self.decoding.isTOWDecoded and self.tow != self.decoding.tow:
             self.isTOWDecoded = True

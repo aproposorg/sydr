@@ -209,6 +209,7 @@ class LNAV(NavigationMessageAbstract):
             eph.af1           = self.twosComp2dec(subframe[248:264]) * 2 ** (- 43)
             eph.af0           = self.twosComp2dec(subframe[270:292]) * 2 ** (- 31)
             eph.subframe1Flag = True
+            self.weekNumber   = eph.weekNumber
         elif subframeID == 2:
             # It contains first part of ephemeris parameters
             eph.iode          = self.bin2dec(subframe[60:68]) # TODO Check IODE consistency
@@ -286,7 +287,7 @@ class LNAV(NavigationMessageAbstract):
         #     self.doy = gnsscal.gpswd2yrdoy(self.weekNumber, \
         #                                     int(self.tow / constants.SECONDS_PER_DAY))
         
-        print(f"Subframe {subframeID} decoded for satellite G{self.svid}.") 
+        print(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).") 
 
         return
     
