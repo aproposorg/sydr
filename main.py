@@ -16,7 +16,7 @@ rfSignal = RFSignal(rfConfigFile)
 gnssSignals = {}
 gnssSignals[GNSSSignalType.GPS_L1_CA] = GNSSSignal('./config/signals/GPS_L1_CA.ini', GNSSSignalType.GPS_L1_CA)
 
-receiver = ReceiverGPSL1CA(receiverConfigFile, gnssSignals[GNSSSignalType.GPS_L1_CA], rfSignal)
+receiver = ReceiverGPSL1CA(receiverConfigFile, rfSignal)
 
 # Setup database
 receiver.database = DatabaseHandler(f".results/REC1.db", overwrite=True)

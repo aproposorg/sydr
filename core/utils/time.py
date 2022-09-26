@@ -1,5 +1,5 @@
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import sqlite3
 from gps_time import GPSTime
 
@@ -46,9 +46,6 @@ class Time(object):
         return self.datetime <= other.datetime
 
     def __eq__(self, other):
-        return self.datetime == other.datetime
-
-    def __add(self, other):
         return self.datetime == other.datetime
 
     @classmethod

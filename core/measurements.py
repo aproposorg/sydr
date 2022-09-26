@@ -115,24 +115,6 @@ class GNSSmeasurements():
 
     def __init__(self):
         return
-    
-    
-# =============================================================================
-
-class GNSSEpochs():
-    satelliteID      : int
-    signalID         : GNSSSignalType
-    time             : list
-    state            : list
-    gnssMeasurements : GNSSmeasurements
-
-    def __init__(self, satelliteID, signalID:GNSSSignalType):
-        self.satelliteID = satelliteID
-        self.signalID = signalID
-        self.time = []
-        self.state = []
-        self.dspMeasurements = []
-        return
 
 # =============================================================================
 

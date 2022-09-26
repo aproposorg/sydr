@@ -31,21 +31,36 @@ from core.utils.time import Time
 # =============================================================================
 
 class ReceiverGPSL1CA(ReceiverAbstract):
+    """
+    Implementation of receiver for GPS L1 C/A signals. 
+    """
+
+    name        : str # Name of the receiver (for display purposes)
+    nbChannels  : int # Total number of "physical" channels
+    msToProcess : int # Number of millisecond to be processed
 
     database : DatabaseHandler
 
-    def __init__(self, receiverConfigFile, gnssSignal:GNSSSignal, rfSignal:RFSignal):
-        super().__init__()
+    def __init__(self, configFilePath, rfSignal:RFSignal):
+        """
+        Class constructor.
 
-        self.gnssSignal = gnssSignal
+        Args: 
+            configFilePath (str): Path to receiver '.ini' file. 
+            rfSignal (RFSignal) : RF signal object with raw data.
+        """
+        super().__init__()
         
         config = configparser.ConfigParser()
-        config.read(receiverConfigFile)
+        config.read(configFilePath)
 
         self.name        = config.get   ('DEFAULT', 'name')
-        self.outfolder   = config.get   ('DEFAULT', 'outfolder')
         self.nbChannels  = config.getint('DEFAULT', 'nb_channels')
         self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
+
+        # TODO Only work for one mono-frequency receiver
+        if config.getboolean('SIGNAL', 'GPS_L1_CA_enabled', fallback=False):
+            self.gnssSignal  = GNSSSignal(config.get('SIGNAL', 'GPS_L1_CA_path'), GNSSSignalType.GPS_L1_CA)
         
         self.isBRDCEphemerisAssited = config.getboolean('AGNSS', 'broadcast_ephemeris')
         self.isClockAssisted        = config.getboolean('AGNSS', 'clock_assited')
@@ -65,7 +80,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.measurementTimeList = []
         self.receiverPosition = GNSSPosition()
 
-        self.measurementFrequency = 10  # In Hz
+        self.measurementFrequency = 100  # In Hz
         self.measurementPeriod = 1 / self.measurementFrequency
         self.nextMeasurementTime = Time()
 
@@ -76,11 +91,13 @@ class ReceiverGPSL1CA(ReceiverAbstract):
     # -------------------------------------------------------------------------
     
     def run(self, satelliteList):
+        """
+        Start the processing.
 
-        # TEMPORARY solution TODO change
-        signalDict = {}
-        signalDict[GNSSSignalType.GPS_L1_CA] = self.gnssSignal
-        self.satelliteList = satelliteList
+        Args:
+            satelliteList (list): List of satellite to look for
+
+        """
 
         # Initialise the channels
         for idx in range(min(self.nbChannels, len(satelliteList))):

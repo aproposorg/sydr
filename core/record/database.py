@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from distutils.log import error
 import os
 import sqlite3
@@ -84,14 +84,12 @@ class DatabaseHandler:
                         # We use sqlite3.Binary to ;ake it fit in the BLOB
                         # Reference: https://stackoverflow.com/questions/198692/can-i-pickle-a-python-dictionary-into-a-sqlite3-text-field
                         val = sqlite3.Binary(pickle.dumps(val, pickle.HIGHEST_PROTOCOL))
-                        #data[key] = val
 
                     # Build SQL string
                     columns += f"{key},"
                     qmarks += f"?,"
                     values.append(val)
                 insertList.append(values)
-                #sqlstr = f"INSERT INTO {table} ({columns[:-1]}) VALUES ({values[:-1]});"
                 sqlstr = f"INSERT INTO {table} ({columns[:-1]}) VALUES ({qmarks[:-1]});"
                 self.cursor.executemany(sqlstr, insertList)
         self.connection.commit()
@@ -365,6 +363,18 @@ class DatabaseHandler:
 
     # -------------------------------------------------------------------------
 
+    def fetchMeasurements(self):
+
+        str = f"SELECT * FROM measurements;"
+        fetchedData = self.cursor.execute(str).fetchall()
+
+        for meas in fetchedData:
+            print
+
+        return
+
+    # -------------------------------------------------------------------------
+
     def fetchPositions(self):
 
         str = f"SELECT * FROM position;"
@@ -389,6 +399,6 @@ class DatabaseHandler:
     # -------------------------------------------------------------------------
     
 if __name__=="__main__":
-    db = DatabaseHandler('test.db', overwrite=True)
-    db.addColumn("acquisition", {"test" : "Integer"})
-    db.commit()
+    db = DatabaseHandler('./.results/REC1.db', overwrite=False)
+
+    db.fetchMeasurements()

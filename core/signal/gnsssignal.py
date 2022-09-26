@@ -1,24 +1,30 @@
 import configparser
 import os
-from enum import Enum
 import numpy as np
 
 import core.signal.ca as ca
 from core.utils.enumerations import GNSSSystems, GNSSSignalType
 
-
 # =============================================================================
 
 class GNSSSignal:
-    def __init__(self, configfile, signalType:GNSSSignalType):
+    """
+    Class for GNSS signal parameters.
+    """
 
-        if not os.path.exists(configfile):
-            raise ValueError(f"File '{configfile}' does not exist.")
+    def __init__(self, configFilePath, signalType:GNSSSignalType):
+        """
+        Class constructor.
+
+        Args:
+            configFilePath (str): Path to receiver '.ini' file. 
+            signalType (GNSSSignalType): Type of GNSS signals, see enumeration definition.
+        """
 
         config = configparser.ConfigParser()
-        config.read(configfile)
+        config.read(configFilePath)
         
-        self.configFile    = configfile
+        self.configFile    = configFilePath
         self.config        = config
         self.signalType    = signalType
 
@@ -35,6 +41,20 @@ class GNSSSignal:
     # -------------------------------------------------------------------------
 
     def getCode(self, prn, samplingFrequency=None):
+        """
+        Return satellite PRN code. If a sampling frequency is provided, the
+        code returned code will be upsampled to the frequency. 
+
+        Args:
+            samplingFrequency (float, optional): Sampling frequency of the code
+
+        Returns:
+            code (ndarray): array of PRN code.
+
+        Raises:
+            ValueError: If self.signalType not recognised. 
+        """
+
         if self.signalType == GNSSSignalType.GPS_L1_CA:
             code = ca.code(prn, 0, 0, 1, self.codeBits)
         else:
@@ -48,7 +68,17 @@ class GNSSSignal:
 
     # -------------------------------------------------------------------------
 
-    def getUpsampledCode(self, code, samplingFrequency):
+    def getUpsampledCode(self, code, samplingFrequency:float):
+        """
+        Return upsampled version of code given a sampling frequency.
+
+        Args:
+            code (ndarray): Code to upsample.
+            samplingFrequency (float): Sampling frequency of the code
+
+        Returns:
+            codeUpsampled (ndarray): Code upsampled.
+        """
         ts = 1/samplingFrequency     # Sampling period
         tc = 1/self.codeFrequency    # C/A code period
         
@@ -65,12 +95,25 @@ class GNSSSignal:
     
     # -------------------------------------------------------------------------
 
-    def getSamplesPerCode(self, samplingFrequency):
+    def getSamplesPerCode(self, samplingFrequency:float):
+        """
+        Return the number of samples per code given a sampling frequency.
+
+        Args:
+            samplingFrequency (float): Sampling frequency of the code.
+
+        """
         return round(samplingFrequency / (self.codeFrequency / self.codeBits))
     
     # -------------------------------------------------------------------------
 
     def getSystem(self):
+        """
+        Return the system of the signal.
+
+        Returns:
+            GNSSSystems
+        """
 
         if self.signalType is GNSSSignalType.GPS_L1_CA:
             return GNSSSystems.GPS

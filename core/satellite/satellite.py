@@ -15,7 +15,6 @@ class Satellite(ABC):
     system      : GNSSSystems
     svid        : int
     dspEpochs   : Dict[GNSSSignalType, DSPmeasurement]
-    gnssEpochs  : dict
     ephemeris   : list
     navMessage  : dict
 
@@ -33,7 +32,6 @@ class Satellite(ABC):
         self.system = system
         self.svid = svid
         self.dspEpochs   = {}
-        self.gnssEpochs  = {}
         self.navMessages  = {}
 
         self.isTOWDecoded = False

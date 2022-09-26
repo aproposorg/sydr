@@ -497,6 +497,14 @@ class Visualisation:
 
     # -------------------------------------------------------------------------
 
+    def plotMeasurements(self):
+
+        measurementList = self.receiver.database.fetchPositions()
+
+        return
+
+    # -------------------------------------------------------------------------
+
     def importSatellites(self, picklefile):
         with open(picklefile, 'rb') as f:
                 self.satelliteDict = pickle.load(f)
