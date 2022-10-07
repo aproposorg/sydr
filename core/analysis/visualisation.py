@@ -11,10 +11,9 @@ from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import pymap3d as pm
+
 from core.utils.constants import SPEED_OF_LIGHT
-
 from core.receiver.receiver_abstract import ReceiverAbstract
-
 from core.signal.rfsignal import RFSignal
 from core.satellite.satellite import Satellite
 from core.utils.enumerations import GNSSSignalType

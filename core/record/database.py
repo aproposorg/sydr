@@ -363,15 +363,44 @@ class DatabaseHandler:
 
     # -------------------------------------------------------------------------
 
-    def fetchMeasurements(self):
-
-        str = f"SELECT * FROM measurements;"
+    def fetchMeasurements(self, channelID=None, mtype=None):
+        if channelID is None:
+            str = f"SELECT * FROM measurement;"
+        else:
+            str = f"SELECT * FROM measurement WHERE channel_id={channelID} AND type='{mtype}';"
+        
         fetchedData = self.cursor.execute(str).fetchall()
+        dataList = self._unpackData(fetchedData)
+        
+        return dataList
 
-        for meas in fetchedData:
-            print
+    # -------------------------------------------------------------------------
 
-        return
+    def fetchTracking(self, channelID=None):
+
+        if channelID is None:
+            str = f"SELECT * FROM tracking;"
+        else:
+            str = f"SELECT * FROM tracking WHERE channel_id={channelID};"
+        
+        fetchedData = self.cursor.execute(str).fetchall()
+        dataList = self._unpackData(fetchedData)
+
+        return dataList
+
+    # -------------------------------------------------------------------------
+
+    def fetchAcquisition(self, channelID=None):
+
+        if channelID is None:
+            str = f"SELECT * FROM acquisition;"
+        else:
+            str = f"SELECT * FROM acquisition WHERE channel_id={channelID};"
+        
+        fetchedData = self.cursor.execute(str).fetchall()
+        dataList = self._unpackData(fetchedData)
+
+        return dataList
 
     # -------------------------------------------------------------------------
 
@@ -397,6 +426,53 @@ class DatabaseHandler:
         return positionList
 
     # -------------------------------------------------------------------------
+
+    def fetchTable(self, tableName):
+
+        str = f"SELECT * FROM {tableName};"
+        fetchedData = self.cursor.execute(str).fetchall()
+        columnNames = list(map(lambda x: x[0], self.cursor.description))
+
+        dataList = []
+        for data in fetchedData:
+            dataDict = {}
+            idx = 0
+            for name in columnNames:
+                dataDict[name] = data[idx]
+                idx += 1
+            
+            dataList.append(dataDict)
+
+        return dataList
+
+    # -------------------------------------------------------------------------
+
+    def sqlRequest(self, request):
+
+        fetchedData = self.cursor.execute(request).fetchall()
+
+        dataList = self._unpackData(fetchedData)
+
+        return dataList
+
+    # -------------------------------------------------------------------------
+
+    def _unpackData(self, fetchedData):
+        columnNames = list(map(lambda x: x[0], self.cursor.description))
+        dataList = []
+        for data in fetchedData:
+            dataDict = {}
+            idx = 0
+            for name in columnNames:
+                if isinstance(data[idx], bytes):
+                    element = pickle.loads(data[idx])
+                else:
+                    element = data[idx]
+                dataDict[name] = element
+                idx += 1
+            
+            dataList.append(dataDict)
+        return dataList
     
 if __name__=="__main__":
     db = DatabaseHandler('./.results/REC1.db', overwrite=False)

@@ -80,7 +80,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.measurementTimeList = []
         self.receiverPosition = GNSSPosition()
 
-        self.measurementFrequency = 100  # In Hz
+        self.measurementFrequency = 10  # In Hz
         self.measurementPeriod = 1 / self.measurementFrequency
         self.nextMeasurementTime = Time()
 
@@ -98,6 +98,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             satelliteList (list): List of satellite to look for
 
         """
+        self.satelliteList = satelliteList
 
         # Initialise the channels
         for idx in range(min(self.nbChannels, len(satelliteList))):
@@ -267,7 +268,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             week =  self.receiverClock.absoluteTime.getGPSWeek()
             timeResidual = (self.receiverClock.absoluteTime - self.nextMeasurementTime).total_seconds()
             receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
-            self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), math.ceil(receivedTime + self.measurementPeriod))
+            self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), receivedTime + self.measurementPeriod)
             tow = earliestChannel.tow + earliestChannel.getTimeSinceTOW() / 1e3 - timeResidual
         
         idx = 0
@@ -303,7 +304,17 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             gnssMeasurements.rawValue = pseudoranges
             gnssMeasurements.residual = 0.0
             gnssMeasurements.enabled  = True
+            gnssMeasurementsList.append(gnssMeasurements)
 
+            # Doppler
+            gnssMeasurements = GNSSmeasurements()
+            gnssMeasurements.channel  = chan
+            gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
+            gnssMeasurements.mtype    = GNSSMeasurementType.DOPPLER
+            gnssMeasurements.value    = chan.tracking.carrierFrequency
+            gnssMeasurements.rawValue = 0.0
+            gnssMeasurements.residual = 0.0
+            gnssMeasurements.enabled  = False
             gnssMeasurementsList.append(gnssMeasurements)
             
             idx += 1
@@ -386,6 +397,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             #print(v)
             #print(dX)
         
+        print(x)
+        
         return x
     
     # -------------------------------------------------------------------------
@@ -428,7 +441,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["time_sample"] = self.sampleCounter - channel.unprocessedSamples
+        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
 
         self.database.addData("acquisition", mdict)
         return
@@ -442,7 +455,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["time_sample"] = self.sampleCounter - channel.unprocessedSamples
+        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
 
         self.database.addData("tracking", mdict)
 
@@ -457,7 +470,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Add the mandatory values
         mdict["channel_id"]   = channel.dbid
         mdict["time"]         = time.time()
-        mdict["time_sample"]  = self.sampleCounter - channel.unprocessedSamples
+        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
 
         self.database.addData("decoding", mdict)
 
