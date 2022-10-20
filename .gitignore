@@ -4,5 +4,6 @@
 __pycache__/
 .results/
 .venv/
+.scripts/
 scalene_profile.json
 speedscope_profile.txt

@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from http.client import REQUESTED_RANGE_NOT_SATISFIABLE
 import numpy as np
 import configparser
@@ -77,7 +78,7 @@ class VisualisationV2:
         navigationTab = self._getNavigationTab()
         mainTabs.append(('Navigation', navigationTab))
 
-        mainTabs.save('test.html', embed=True)
+        mainTabs.save(f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html", embed=True)
 
         return
 

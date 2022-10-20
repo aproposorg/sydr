@@ -24,15 +24,9 @@ receiver.database = DatabaseHandler(f".results/REC1.db", overwrite=True)
 receiver.database.importRinexNav('/mnt/c/Users/vmangr/Documents/Datasets/2021_11_30-TAU_Roof_Antenna_Tallysman/data/BRDC00IGS_R_20213340000_01D_MN.rnx')
 
 # Run the processing
-receiver.run([2,3,4,6,9,29])
-receiver.saveSatellites('./.results/dump_satellites.pkl')
+receiver.run([2,3,4,6,9])
 
-# # Extract visuals
-# visual = Visualisation(benchmarkConfigFile, rfSignal, gnssSignals)
-# visual.importSatellites('./.results/dump_satellites.pkl')
-# visual.receiver = receiver
-# visual.run(GNSSSignalType.GPS_L1_CA)
-
+# Extract visuals
 visual = VisualisationV2(benchmarkConfigFile, rfSignal)
 visual.setDatabase(DatabaseHandler(f".results/REC1.db"))
 visual.setConfig(receiverConfigFile)
