@@ -122,6 +122,7 @@ class GNSSPosition():
 
     id           : int
     time         : Time
+    timeSample   : int
     coordinate   : Coordinate
     clockError   : float
     measurements : list
@@ -129,6 +130,7 @@ class GNSSPosition():
     def __init__(self):
         self.id = -1
         self.time = Time()
+        self.timeSample = -1
         self.coordinate = Coordinate()
         self.measurements = []
         return

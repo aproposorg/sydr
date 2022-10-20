@@ -7,19 +7,19 @@ import pandas as pd
 from bokeh.plotting import figure
 from bokeh.layouts import layout
 from bokeh.models import Div, ColumnDataSource, HoverTool, PrintfTickFormatter, Range1d
-from bokeh.models.widgets import DataTable, TableColumn, Tabs, Panel
+from bokeh.models.widgets import DataTable, TableColumn
 import holoviews as hv
-from core.channel.channel_abstract import ChannelState
+import pymap3d as pm
+import plotly.graph_objects as go
+
 from core.signal.gnsssignal import GNSSSignal
-
-from core.utils.enumerations import GNSSMeasurementType, GNSSSignalType
-
-hv.extension("bokeh")
-pn.extension(sizing_mode="stretch_width")
-
+from core.utils.enumerations import GNSSSignalType
 from core.record.database import DatabaseHandler
 from core.receiver.receiver_abstract import ReceiverAbstract
 from core.signal.rfsignal import RFSignal
+
+hv.extension("bokeh")
+pn.extension(sizing_mode="stretch_width")
 
 class VisualisationV2:
 
@@ -70,8 +70,12 @@ class VisualisationV2:
         mainTabs = pn.Tabs()
 
         # Measurement Tab
-        measurementTab = self._prepareMeasurementsTab()
+        measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
+
+        # Navigation Tab
+        navigationTab = self._getNavigationTab()
+        mainTabs.append(('Navigation', navigationTab))
 
         mainTabs.save('test.html', embed=True)
 
@@ -79,7 +83,7 @@ class VisualisationV2:
 
     # -------------------------------------------------------------------------
 
-    def _prepareMeasurementsTab(self):
+    def _getMeasurementsTab(self):
 
         # Fetch satellite list
         channelList = self.database.fetchTable('channel')
@@ -95,12 +99,12 @@ class VisualisationV2:
 
             acqLayout   = self._getAcquisitionLayout(channelID)
             trackLayout = self._getTrackingLayout(channelID)
-            measLayout  = self._getMeasurementLayout(channelID)
+            measLayout  = self._getGNSSMeasurementLayout(channelID)
             
             return pn.Tabs(
                 ('Acquisition', acqLayout),
                 ('Tracking', trackLayout),
-                ('Measurement', measLayout)
+                ('GNSS Measurements', measLayout)
             )
         layout = pn.Column(selections, tabs)
 
@@ -337,7 +341,9 @@ class VisualisationV2:
         
         return trackLayout
 
-    def _getMeasurementLayout(self, channelID):
+    # -------------------------------------------------------------------------
+
+    def _getGNSSMeasurementLayout(self, channelID):
 
         # Parameters 
         # TODO Move to config file
@@ -468,7 +474,167 @@ class VisualisationV2:
 
         return measLayout
     
-    
+    # -------------------------------------------------------------------------
+
+    def _getNavigationTab(self):
+
+        # Map
+        mapLayout = self._getMapLayout()
+
+        # Position
+        positionLayout = self._getPositionLayout()
+        
+        layout = pn.Column(mapLayout, positionLayout)
+
+        return layout
+
+    # -------------------------------------------------------------------------
+
+    def _getMapLayout(self):
+
+        # Retrieve from database
+        positionList = self.database.fetchPositions()
+
+        refpos = pm.ecef2geodetic( \
+            self.referencePosition[0], \
+            self.referencePosition[1], \
+            self.referencePosition[2], deg=True)
+
+        llh = []
+        for position in positionList:
+            recpos = position.coordinate.vecpos()
+            llh.append(pm.ecef2geodetic(recpos[0], recpos[1], recpos[2], ell=None, deg=True))
+        llh = np.array(llh)
+
+        fig = go.Figure(go.Scattermapbox(lat=llh[:,0], lon=llh[:,1], mode='markers'))
+        fig.update_layout(
+            margin ={'l':0,'t':0,'b':0,'r':0},
+            mapbox = {
+                'center': {'lon': refpos[1], 'lat': refpos[0]},
+                'style': "open-street-map",
+                'zoom': 15})
+
+        return fig
+
+    # -------------------------------------------------------------------------
+
+    def _getPositionLayout(self):
+        """
+        TODO
+        """
+
+        # Parameters 
+        # TODO Move to config file
+        titleFontSize = '16pt'
+        tickFontSize = '16pt'
+        axisFontSize = '16pt'
+        lineWidth = 2
+
+        # Bokeh definitions
+        tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
+            'pan', 'wheel_zoom', 'box_zoom,reset', 'save']
+
+        # Retrieve from database
+        positionList = self.database.fetchPositions()
+
+        recpos = []
+        recclk = []
+        time = []
+        timeSample = []
+        for position in positionList:
+            timeSample.append(position.timeSample / self.samplingFrequency)
+            time.append(position.time.datetime)
+            recpos.append(position.coordinate.vecpos())
+            recclk.append(position.clockError)
+        recclk = np.array(recclk)
+        
+        refpos = pm.ecef2geodetic( \
+            self.referencePosition[0], \
+            self.referencePosition[1], \
+            self.referencePosition[2], deg=True)
+        
+        # Convert to ENU
+        enu = []
+        llh = []
+        for coord in recpos:
+            enu.append(pm.ecef2enu(coord[0], coord[1], coord[2], refpos[0], refpos[1], refpos[2]))
+            llh.append(pm.ecef2geodetic(coord[0], coord[1], coord[2], ell=None, deg=True))
+        enu = np.array(enu)
+        llh = np.array(llh)
+
+        # create a column data source for the plots to share
+        # This is to share the lasso selection
+        source = ColumnDataSource(data=dict(time=time, timeSample=timeSample, east=enu[:,0], north=enu[:,1], up=enu[:,2], latitude=llh[:,0], longitude=llh[:,1], altitude=llh[:,2]))
+
+        # East/North plot
+        height=800
+        width=800
+        figEN = figure(
+            title="East / North", \
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools)
+        figEN.scatter(x='east', y='north', source=source, size=30, marker='dot')
+        figEN.yaxis.axis_label = "North [m]"
+        figEN.xaxis.axis_label = "East [m]"
+        
+        # East
+        height=300
+        width=1000
+        figEast = figure(
+            title="East", \
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools,
+            y_range=Range1d(-50, 50))
+        figEast.line(x='timeSample', y='east', source=source, line_width=lineWidth)
+        figEast.scatter(x='timeSample', y='east', source=source, marker='dot')
+        figEast.yaxis.axis_label = "East [m]"
+        figEast.xaxis.axis_label = "Time [s]"
+        figEast.title.text_font_size = titleFontSize
+        figEast.xaxis.major_label_text_font_size = tickFontSize
+        figEast.xaxis.axis_label_text_font_size = axisFontSize
+        figEast.yaxis.major_label_text_font_size = tickFontSize
+        figEast.yaxis.axis_label_text_font_size = axisFontSize
+
+        # North
+        figNorth = figure(
+            title="North",\
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools,
+            y_range=Range1d(-50, 50))
+        figNorth.line(x='timeSample', y='north', source=source, line_width=lineWidth)
+        figNorth.scatter(x='timeSample', y='north', source=source, marker='dot')
+        figNorth.yaxis.axis_label = "North [m]"
+        figNorth.xaxis.axis_label = "Time [s]"
+        figNorth.title.text_font_size = titleFontSize
+        figNorth.xaxis.major_label_text_font_size = tickFontSize
+        figNorth.xaxis.axis_label_text_font_size = axisFontSize
+        figNorth.yaxis.major_label_text_font_size = tickFontSize
+        figNorth.yaxis.axis_label_text_font_size = axisFontSize
+
+        # Up
+        figUp = figure(
+            title="Up",\
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools,
+            y_range=Range1d(-50, 50))
+        figUp.line(x='timeSample', y='up', source=source, line_width=lineWidth)
+        figUp.scatter(x='timeSample', y='up', source=source, marker='dot')
+        figUp.yaxis.axis_label = "Up [m]"
+        figUp.xaxis.axis_label = "Time [s]"
+        figUp.title.text_font_size = titleFontSize
+        figUp.xaxis.major_label_text_font_size = tickFontSize
+        figUp.xaxis.axis_label_text_font_size = axisFontSize
+        figUp.yaxis.major_label_text_font_size = tickFontSize
+        figUp.yaxis.axis_label_text_font_size = axisFontSize
+
+        positionLayout = layout([
+                              [figEN],\
+                              [figEast],
+                              [figNorth],
+                              [figUp]])
+
+
+        return positionLayout
 
 
 

@@ -413,6 +413,7 @@ class DatabaseHandler:
         for data in fetchedData:
             position              = GNSSPosition()
             position.id           = data[0]
+            position.timeSample   = data[2]
             if len(data[3]) < 20:
                 position.time = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S")))
             else:
