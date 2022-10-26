@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 from abc import ABC, abstractmethod
+import logging
 import numpy as np
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
@@ -30,7 +31,7 @@ class AcquisitionAbstract(ABC):
 
         self.rfSignal   = rfSignal
         self.gnssSignal = gnssSignal
-
+        
         return
 
     # -------------------------------------------------------------------------

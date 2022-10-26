@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 import configparser
+import logging
 import pickle
 import sqlite3
 import numpy as np
@@ -74,12 +75,12 @@ class Acquisition(AcquisitionAbstract):
         self.correlationMap = self.PCPS(rfData)
 
         # Analyse results
-        results = self.twoCorrelationPeakComparison(self.correlationMap)
-
-        self.estimatedFrequency   = self.rfSignal.interFrequency + self.estimatedDoppler 
+        self.twoCorrelationPeakComparison(self.correlationMap)
 
         if self.acquisitionMetric > self.metricThreshold:
             self.isAcquired = True
+        
+        logging.getLogger(__name__).debug(f"svid={self.svid}, freq={self.estimatedDoppler: .1f}, code={self.estimatedCode:.1f}, threshold={self.acquisitionMetric:.2f}")
 
         return
 
@@ -188,6 +189,7 @@ class Acquisition(AcquisitionAbstract):
         self.acquisitionMetric = acquisitionMetric
         self.idxEstimatedFrequency = int(idx[0])
         self.idxEstimatedCode = int(idx[1])
+        self.estimatedFrequency = self.rfSignal.interFrequency + self.estimatedDoppler # if IF is used
 
         return
 

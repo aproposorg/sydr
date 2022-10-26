@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 import configparser
+import logging
 import numpy as np
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
@@ -106,6 +107,9 @@ class Tracking(TrackingAbstract):
 
         self.codePhaseStep = self.codeFrequency / self.rfSignal.samplingFrequency
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
+        
+        # it will create a log of lines in the logfile if uncommented
+        #logging.getLogger(__name__).debug(f"svid={self.svid}, iprompt={iPrompt: 10.2f}, qprompt={iPrompt: 10.2f}, DLL={self.dll: 5.3f}, PLL={self.dll: 5.3f}")
 
         return
 

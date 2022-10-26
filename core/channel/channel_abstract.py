@@ -82,8 +82,6 @@ class ChannelAbstract(ABC):
         self.tow = 0
         self.week = 0
 
-        self.logger = logging.getLogger(f"receiver")
-
         return
     
     # -------------------------------------------------------------------------

@@ -66,9 +66,6 @@ class LNAV(NavigationMessageAbstract):
         self.ephemeris = BRDCEphemeris()
         self.lastSubframeID = -1 
 
-        # Set logger
-        self.logger = logging.getLogger(f"receiver.decoding")
-
         pass
 
 # -----------------------------------------------------------------------------
@@ -292,7 +289,7 @@ class LNAV(NavigationMessageAbstract):
         #                                     int(self.tow / constants.SECONDS_PER_DAY))
         
         #print(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).") 
-        self.logger.info(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).")
+        logging.getLogger(__name__).info(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).")
 
         return
     

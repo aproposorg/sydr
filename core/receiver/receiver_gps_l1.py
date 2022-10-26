@@ -18,6 +18,7 @@ import configparser
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
 from core.channel.channel_l1ca import ChannelL1CA
 from core.measurements import GNSSPosition, GNSSmeasurements
+from core.navigation.lse import LeastSquareEstimation
 from core.receiver.receiver_abstract import ReceiverAbstract
 from core.record.database import DatabaseHandler
 from core.signal.gnsssignal import GNSSSignal
@@ -55,9 +56,20 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         config = configparser.ConfigParser()
         config.read(configFilePath)
 
+        # DEFAULT
         self.name        = config.get   ('DEFAULT', 'name')
         self.nbChannels  = config.getint('DEFAULT', 'nb_channels')
         self.msToProcess = config.getint('DEFAULT', 'ms_to_process')
+        self.outfolder   = config.get   ('DEFAULT', 'outfolder')
+        
+        self.approxPosition = [\
+            config.getfloat('DEFAULT', 'approx_pos_x'),\
+            config.getfloat('DEFAULT', 'approx_pos_y'),
+            config.getfloat('DEFAULT', 'approx_pos_z')]
+        
+        # Navigation technique
+        # TODO Add selection between LSE, Kalman, etc...
+        self.navigation = LeastSquareEstimation()
 
         # TODO Only work for one mono-frequency receiver
         if config.getboolean('SIGNAL', 'GPS_L1_CA_enabled', fallback=False):
@@ -67,6 +79,13 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.isClockAssisted        = config.getboolean('AGNSS', 'clock_assited')
         self.clockAssistedValue     = datetime.strptime(config.get('AGNSS', 'clock_assisted_value'), ("%Y-%m-%d %H:%M:%S.%f"))
 
+        # MEASUREMENTS
+        # GNSS measurements used and produced
+        self.measurementsEnabled = {}
+        self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE] = config.getboolean('MEASUREMENTS', 'pseudorange')
+        self.measurementsEnabled[GNSSMeasurementType.DOPPLER]     = config.getboolean('MEASUREMENTS', 'doppler')
+
+        # Channel parameters
         self.channels = []
         self.channelsStates = [ChannelState.IDLE] *  self.nbChannels
         self.channelCounter = 0
@@ -86,30 +105,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         self.rfSignal = rfSignal
 
-        self._initLogger()
-
         return
-
-    # -------------------------------------------------------------------------
-
-    def _initLogger(self):
-
-        self.logger = logging.getLogger("receiver")
-
-        formatter = logging.Formatter("%(asctime)s|%(levelname)s|%(name)s|%(message)s")
-        
-        shandler  = logging.StreamHandler()
-        shandler.setFormatter(formatter)
-        self.logger.addHandler(shandler)
-        
-        fhandler  = logging.FileHandler("receiver.log", mode="w")
-        fhandler.setFormatter(formatter)
-        self.logger.addHandler(fhandler)
-        
-        self.logger.setLevel(logging.DEBUG)
-
-        return
-
 
     # -------------------------------------------------------------------------
     
@@ -187,7 +183,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 chan.setSatellite(svid, self.channelCounter)
 
                 self.addChannelDatabase(chan)
-                self.logger.info(f"Channel {chan.cid} started with satellite G{svid}.")
+                logging.getLogger(__name__).info(f"Channel {chan.cid} started with satellite G{svid}.")
 
                 self.channelCounter += 1
 
@@ -216,7 +212,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     self.addAcquisitionDatabase(chan)
                     satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                     chan.switchState(ChannelState.TRACKING)
-                    self.logger.info(f"Channel {chan.cid} found satellite G{svid}, tracking started.")
+                    logging.getLogger(__name__).info(f"Channel {chan.cid} found satellite G{svid}, tracking started.")
                     #print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
                 else:
                     # Buffer not full (most probably)
@@ -320,74 +316,65 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
 
             # Pseudorange
-            gnssMeasurements = GNSSmeasurements()
-            gnssMeasurements.channel  = chan
-            gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
-            gnssMeasurements.mtype    = GNSSMeasurementType.PSEUDORANGE
-            gnssMeasurements.value    = correctedPseudoranges
-            gnssMeasurements.rawValue = pseudoranges
-            gnssMeasurements.residual = 0.0
-            gnssMeasurements.enabled  = True
-            gnssMeasurementsList.append(gnssMeasurements)
+            if self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE]:
+                gnssMeasurements = GNSSmeasurements()
+                gnssMeasurements.channel  = chan
+                gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
+                gnssMeasurements.mtype    = GNSSMeasurementType.PSEUDORANGE
+                gnssMeasurements.value    = correctedPseudoranges
+                gnssMeasurements.rawValue = pseudoranges
+                gnssMeasurements.residual = 0.0
+                gnssMeasurements.enabled  = True
+                gnssMeasurementsList.append(gnssMeasurements)
 
             # Doppler
-            gnssMeasurements = GNSSmeasurements()
-            gnssMeasurements.channel  = chan
-            gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
-            gnssMeasurements.mtype    = GNSSMeasurementType.DOPPLER
-            gnssMeasurements.value    = chan.tracking.carrierFrequency
-            gnssMeasurements.rawValue = 0.0
-            gnssMeasurements.residual = 0.0
-            gnssMeasurements.enabled  = False
-            gnssMeasurementsList.append(gnssMeasurements)
+            if self.measurementsEnabled[GNSSMeasurementType.DOPPLER]:
+                gnssMeasurements = GNSSmeasurements()
+                gnssMeasurements.channel  = chan
+                gnssMeasurements.time     = Time.fromGPSTime(week, receivedTime)
+                gnssMeasurements.mtype    = GNSSMeasurementType.DOPPLER
+                gnssMeasurements.value    = chan.tracking.carrierFrequency
+                gnssMeasurements.rawValue = 0.0
+                gnssMeasurements.residual = 0.0
+                gnssMeasurements.enabled  = False
+                gnssMeasurementsList.append(gnssMeasurements)
             
             idx += 1
         
-        state = self.computeReceiverPosition(receivedTime, gnssMeasurementsList)
+        # Compute position and measurements
+        self.computeReceiverPosition(receivedTime, gnssMeasurementsList)
 
+        # Update the receiver position
         self.receiverPosition.time = Time.fromGPSTime(week, receivedTime)
-        self.receiverPosition.coordinate.setCoordinates(state[0], state[1], state[2])
-        self.receiverPosition.clockError = state[3]
+        self.receiverPosition.coordinate.setCoordinates(self.navigation.x[0], self.navigation.x[1], self.navigation.x[2])
+        self.receiverPosition.clockError = self.navigation.x[3]
         self.receiverPosition.id += 1
 
-        self.logger.info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
-
-        # Correct after minimisation
-        for meas in gnssMeasurementsList:
-            if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
-                meas.value -= self.receiverPosition.clockError
-            else:
-                # TODO Adapt to other measurement types
-                pass
-            if meas.enabled:
-                self.receiverPosition.measurements.append(meas)
-            
-            self.logger.debug(f"CID {meas.channel.cid} {meas.mtype:11} {meas.value:13.4f} (residual: {meas.residual:.4f}, enabled: {meas.enabled})")
-        
+        # Update receiver clock
         self.receiverClock.absoluteTime.applyCorrection(-self.receiverPosition.clockError / SPEED_OF_LIGHT)
-        self.logger.debug(f"Position       : ({self.receiverPosition.coordinate.x:12.4f} {self.receiverPosition.coordinate.y:12.4f} {self.receiverPosition.coordinate.z:12.4f})")
-        self.logger.debug(f"Clock error    : {self.receiverPosition.clockError:12.4f}")
-        self.logger.debug(f"Receiver clock : {self.receiverClock.absoluteTime.gpsTime}")
 
         self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
         self.measurementTimeList.append(receivedTime)
+        
+        logging.getLogger(__name__).info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
+        logging.getLogger(__name__).debug(f"Position       : ({self.receiverPosition.coordinate.x:12.4f} {self.receiverPosition.coordinate.y:12.4f} {self.receiverPosition.coordinate.z:12.4f})")
+        logging.getLogger(__name__).debug(f"Clock error    : {self.receiverPosition.clockError:12.4f}")
+        logging.getLogger(__name__).debug(f"Receiver clock : ({self.receiverClock.absoluteTime.gpsTime.week_number} {receivedTime} {self.receiverClock.absoluteTime.gpsTime.femtoseconds})")
 
         return
 
     # -------------------------------------------------------------------------
 
     def computeReceiverPosition(self, time, measurements):
+        
         nbMeasurements = len(measurements)
         G = np.zeros((nbMeasurements, 4))
         y = np.zeros(nbMeasurements)
-        dX = np.zeros(4)
-        dX[:4] = [1.0, 1.0, 1.0, 1.0]
-        #x = np.zeros(4)
-        #x = np.array([2794767.59, 1236088.19, 5579632.92, 0])
-        x = np.array([2793000.0, 1235000.0, 5578000.0, 0])
-        v = []
+        self.navigation.setState(self.approxPosition, 0.0)
         for i in range(10):
-            if np.linalg.norm(dX) < 1e-6:
+            x = self.navigation.x
+
+            if np.linalg.norm(self.navigation.dX) < 1e-6:
                 break
             # Make matrices
             idx = 0
@@ -420,15 +407,27 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 idx += 1 
             
             # Least Squares
-            N = np.transpose(G).dot(G)
-            C = np.transpose(G).dot(y)
-            dX = np.linalg.inv(N).dot(C)
-            x = x + dX # Update solution
-            v = G.dot(dX) - y
-            #print(v)
-            #print(dX)
+            self.navigation.setDesignMatrix(G)
+            self.navigation.setObservationVector(y)
+            self.navigation.compute()
 
-        return x
+        # Correct after minimisation
+        idx = 0
+        for meas in measurements:
+            meas.residual = self.navigation.v[idx]
+            if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
+                meas.value -= self.navigation.x[3]
+            else:
+                # TODO Adapt to other measurement types
+                pass
+            if meas.enabled:
+                self.receiverPosition.measurements.append(meas)
+            
+            logging.getLogger(__name__).debug(f"CID {meas.channel.cid} {meas.mtype:11} {meas.value:13.4f} (residual: {meas.residual: .4f}, enabled: {meas.enabled})")
+
+            idx += 1
+
+        return
     
     # -------------------------------------------------------------------------
 
