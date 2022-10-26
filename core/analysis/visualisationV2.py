@@ -70,7 +70,7 @@ class VisualisationV2:
     def run(self):
         mainTabs = pn.Tabs()
 
-        # Measurement Tab
+        # Measurement Tab   
         measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
 

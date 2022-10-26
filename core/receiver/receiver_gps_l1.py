@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 import copy
+import logging
 import pickle
 from datetime import datetime
 import math
@@ -71,7 +72,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.channelCounter = 0
 
         self.isClockInitialised = False
-
         self.sampleCounter = 0
         self.receiverClock = Clock()
         if self.isClockAssisted:
@@ -86,7 +86,30 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         self.rfSignal = rfSignal
 
+        self._initLogger()
+
         return
+
+    # -------------------------------------------------------------------------
+
+    def _initLogger(self):
+
+        self.logger = logging.getLogger("receiver")
+
+        formatter = logging.Formatter("%(asctime)s|%(levelname)s|%(name)s|%(message)s")
+        
+        shandler  = logging.StreamHandler()
+        shandler.setFormatter(formatter)
+        self.logger.addHandler(shandler)
+        
+        fhandler  = logging.FileHandler("receiver.log", mode="w")
+        fhandler.setFormatter(formatter)
+        self.logger.addHandler(fhandler)
+        
+        self.logger.setLevel(logging.DEBUG)
+
+        return
+
 
     # -------------------------------------------------------------------------
     
@@ -164,7 +187,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 chan.setSatellite(svid, self.channelCounter)
 
                 self.addChannelDatabase(chan)
-                print(f"Channel {chan.cid} started with satellite G{svid}.")
+                self.logger.info(f"Channel {chan.cid} started with satellite G{svid}.")
 
                 self.channelCounter += 1
 
@@ -193,7 +216,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     self.addAcquisitionDatabase(chan)
                     satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                     chan.switchState(ChannelState.TRACKING)
-                    print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
+                    self.logger.info(f"Channel {chan.cid} found satellite G{svid}, tracking started.")
+                    #print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
                 else:
                     # Buffer not full (most probably)
                     pass
@@ -227,7 +251,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
     # -------------------------------------------------------------------------
 
     def computeGNSSMeasurements(self):
-
+        
         # Check if channels ready for measurements
         prnList = []
         selectedChannels = []
@@ -326,6 +350,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.receiverPosition.clockError = state[3]
         self.receiverPosition.id += 1
 
+        self.logger.info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
+
         # Correct after minimisation
         for meas in gnssMeasurementsList:
             if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
@@ -335,10 +361,15 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 pass
             if meas.enabled:
                 self.receiverPosition.measurements.append(meas)
+            
+            self.logger.debug(f"CID {meas.channel.cid} {meas.mtype:11} {meas.value:13.4f} (residual: {meas.residual:.4f}, enabled: {meas.enabled})")
         
         self.receiverClock.absoluteTime.applyCorrection(-self.receiverPosition.clockError / SPEED_OF_LIGHT)
-        self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
+        self.logger.debug(f"Position       : ({self.receiverPosition.coordinate.x:12.4f} {self.receiverPosition.coordinate.y:12.4f} {self.receiverPosition.coordinate.z:12.4f})")
+        self.logger.debug(f"Clock error    : {self.receiverPosition.clockError:12.4f}")
+        self.logger.debug(f"Receiver clock : {self.receiverClock.absoluteTime.gpsTime}")
 
+        self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
         self.measurementTimeList.append(receivedTime)
 
         return
@@ -396,9 +427,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             v = G.dot(dX) - y
             #print(v)
             #print(dX)
-        
-        print(x)
-        
+
         return x
     
     # -------------------------------------------------------------------------

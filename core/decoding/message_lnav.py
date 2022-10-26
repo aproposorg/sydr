@@ -1,4 +1,5 @@
 
+import logging
 import numpy as np
 
 from core.satellite.ephemeris import BRDCEphemeris
@@ -64,6 +65,9 @@ class LNAV(NavigationMessageAbstract):
         self.tow = 0
         self.ephemeris = BRDCEphemeris()
         self.lastSubframeID = -1 
+
+        # Set logger
+        self.logger = logging.getLogger(f"receiver.decoding")
 
         pass
 
@@ -287,7 +291,8 @@ class LNAV(NavigationMessageAbstract):
         #     self.doy = gnsscal.gpswd2yrdoy(self.weekNumber, \
         #                                     int(self.tow / constants.SECONDS_PER_DAY))
         
-        print(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).") 
+        #print(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).") 
+        self.logger.info(f"Subframe {subframeID} decoded for satellite G{self.svid} (TOW = {eph.tow}).")
 
         return
     

@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 from abc import ABC, abstractmethod
+import logging
 from typing import List
 
 from core.acquisition.acquisition_abstract import AcquisitionAbstract
@@ -80,6 +81,8 @@ class ChannelAbstract(ABC):
 
         self.tow = 0
         self.week = 0
+
+        self.logger = logging.getLogger(f"receiver")
 
         return
     
