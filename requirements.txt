@@ -6,6 +6,7 @@ certifi==2022.9.24
 charset-normalizer==2.1.1
 colorcet==3.0.1
 enlighten==1.11.1
+exceptiongroup==1.0.0
 gps-time==2.8.8
 greenlet==1.1.3
 holoviews==1.15.0
@@ -28,7 +29,7 @@ py==1.11.0
 pyct==0.4.8
 pymap3d==2.9.1
 pyparsing==3.0.9
-pytest==7.1.3
+pytest==7.2.0
 python-dateutil==2.8.2
 pytz==2022.2.1
 pyviz-comms==2.2.1
