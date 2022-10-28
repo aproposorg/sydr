@@ -1,5 +1,6 @@
 from datetime import datetime
 from distutils.log import error
+import logging
 import os
 import sqlite3
 import numpy as np
@@ -33,6 +34,8 @@ class DatabaseHandler:
 
         # Initialise database content
         self._initialise()
+
+        logging.getLogger(__name__).info(f"Database initialized.")
 
         return
     
@@ -308,6 +311,8 @@ class DatabaseHandler:
 
         # Debug
         # self.fetchBRDC(Time.fromGPSTime(2186, 180000), "GPS", 2)
+
+        logging.getLogger(__name__).info(f"Navigation RINEX files imported into database.")
         
         return
     

@@ -28,6 +28,10 @@ class Coordinate():
         self.vx = vx 
         self.vy = vy
         self.vz = vz
+
+        self.xPrecison = np.NaN
+        self.yPrecison = np.NaN
+        self.zPrecison = np.NaN
         
         return
 

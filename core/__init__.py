@@ -1,4 +1,5 @@
 
+from .version import __version__
 
 # Logging section
 # import logging

@@ -12,14 +12,17 @@ import pickle
 from datetime import datetime
 import math
 import time
+from turtle import color
 import numpy as np
 import configparser
+from enlighten import Manager
+from termcolor import colored
 
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
 from core.channel.channel_l1ca import ChannelL1CA
 from core.measurements import GNSSPosition, GNSSmeasurements
 from core.navigation.lse import LeastSquareEstimation
-from core.receiver.receiver_abstract import ReceiverAbstract
+from core.receiver.receiver_abstract import ReceiverAbstract, ReceiverState
 from core.record.database import DatabaseHandler
 from core.signal.gnsssignal import GNSSSignal
 from core.utils.clock import Clock
@@ -29,6 +32,22 @@ from core.signal.rfsignal import RFSignal
 from core.satellite.satellite import Satellite
 from core.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
 from core.utils.time import Time
+
+#{sf1} {sf2} {sf3} {sf4} {sf5}
+CHANNEL_BAR_FORMAT = u'{desc} |{prn}| [{state:^10} {tow} SUBFRAMES:{sf1}{sf2}{sf3}{sf4}{sf5}] {percentage:3.0f}%|{bar}| ' + \
+                     u'{count:{len_total}d}/{total:d} ' + \
+                     u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
+
+RECEIVER_BAR_FORMAT = u'{desc}{desc_pad}[{state:^10}] {percentage:3.0f}%|{bar}| ' + \
+                      u'{count:{len_total}d}/{total:d} ' + \
+                      u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
+
+RECEIVER_STATUS_FORMAT = u'{receiver} {fill} ' + \
+                         u'X: {x:12.4f} (\u03C3: {sx: .4f}) ' + \
+                         u'Y: {y:12.4f} (\u03C3: {sy: .4f}) ' + \
+                         u'Z: {z:12.4f} (\u03C3: {sy: .4f}) ' + \
+                         u'{fill}{datetime} (GPS Time: {gpstime})'
+
 
 # =============================================================================
 
@@ -79,6 +98,13 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.isClockAssisted        = config.getboolean('AGNSS', 'clock_assited')
         self.clockAssistedValue     = datetime.strptime(config.get('AGNSS', 'clock_assisted_value'), ("%Y-%m-%d %H:%M:%S.%f"))
 
+        # SATELLITES
+        self.satelliteList = list(map(int, config.get('SATELLITES', 'include_prn').split(',')))
+
+        self.satelliteDict = {}
+        for svid in self.satelliteList:
+            self.satelliteDict[svid] = Satellite(GNSSSystems.GPS, svid)
+
         # MEASUREMENTS
         # GNSS measurements used and produced
         self.measurementsEnabled = {}
@@ -105,28 +131,40 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         self.rfSignal = rfSignal
 
+        self.receiverState = ReceiverState.IDLE
+
+        logging.getLogger(__name__).info(f"Receiver {self.name} initialized.")
         return
 
     # -------------------------------------------------------------------------
     
-    def run(self, satelliteList):
+    def run(self, manager:Manager):
         """
         Start the processing.
-
-        Args:
-            satelliteList (list): List of satellite to look for
-
         """
-        self.satelliteList = satelliteList
+        logging.getLogger(__name__).info(f"Processing in receiver {self.name} started.")
 
-        # Initialise the channels
-        for idx in range(min(self.nbChannels, len(satelliteList))):
-            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0))
+        self.receiverState = ReceiverState.INIT
+
+        # Create GUI interface
+        clock = self.receiverClock.absoluteTime
+        statusBar   = manager.status_bar(status_format=RECEIVER_STATUS_FORMAT,
+                                    color='bold_white_on_steelblue4',
+                                    receiver=self.name,
+                                    datetime=str(clock.datetime)[:-3],
+                                    gpstime=f"{clock.gpsTime.week_number} {clock.gpsTime.seconds + clock.gpsTime.femtoseconds/1e15:.3f}",
+                                    x = self.receiverPosition.coordinate.x,
+                                    y = self.receiverPosition.coordinate.y,
+                                    z = self.receiverPosition.coordinate.z,
+                                    sx = self.receiverPosition.coordinate.xPrecison,
+                                    sy = self.receiverPosition.coordinate.yPrecison,
+                                    sz = self.receiverPosition.coordinate.zPrecison)
         
-        # Initialise satellite structure
-        self.satelliteDict = {}
-        for svid in satelliteList:
-            self.satelliteDict[svid] = Satellite(GNSSSystems.GPS, svid)
+        progressBar = manager.counter(total=self.msToProcess, desc=f'Processing', unit='ms', color='springgreen3', \
+            min_delta=0.5, state=f"{self.receiverState}", bar_format=RECEIVER_BAR_FORMAT)
+        
+        # Initialisation 
+        self._initChannels(manager)
 
         # Loop through the file contents
         # TODO Load by chunck of data instead of ms per ms
@@ -134,25 +172,27 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         samplesInMs = int(msPerLoop * self.rfSignal.samplingFrequency * 1e-3)
         rfData = np.empty(samplesInMs)
         for msProcessed in range(self.msToProcess):
+            # Read in file
             rfData = self.rfSignal.readFile(timeLength=msPerLoop, keep_open=True)
             self.sampleCounter += samplesInMs
             self.receiverClock.addTime(msPerLoop * 1e-3)
 
             if rfData.size < samplesInMs:
-                raise EOFError("EOF encountered earlier than expected in file.")
+                logging.getLogger(__name__).error("EOF encountered earlier than expected in I/Q file.")
+                raise EOFError("EOF encountered earlier than expected in I/Q file.")
 
             # Run the channels
-            self.runChannels(rfData)
+            self._runChannels(rfData)
 
             # Handle channels results
-            self.processChannels(msProcessed, self.sampleCounter)
+            self._processChannels(msProcessed, self.sampleCounter)
 
             # Compute measurements based on receiver time
-            # For measurement frequency of 1 Hz, that's every round second.
             if not self.receiverClock.isInitialised:
                 # First time we run it to estimate receiver clock error
                 self.computeGNSSMeasurements()
             elif self.receiverClock.absoluteTime >= self.nextMeasurementTime:
+                # For measurement frequency of 1 Hz, that's every round second.
                 self.computeGNSSMeasurements()
 
             # Update the database
@@ -161,6 +201,14 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
             msProcessed += 1
 
+            # Update GUI
+            progressBar.update(state=f"{self.receiverState}")
+            statusBar.update(datetime=str(clock.datetime)[:-3], 
+                gpstime=f"{clock.gpsTime.week_number} {clock.gpsTime.seconds + clock.gpsTime.femtoseconds/1e15:.3f}",
+                x = self.receiverPosition.coordinate.x, sx = self.receiverPosition.coordinate.xPrecison,
+                y = self.receiverPosition.coordinate.y, sy = self.receiverPosition.coordinate.yPrecison,
+                z = self.receiverPosition.coordinate.z, sz = self.receiverPosition.coordinate.zPrecison)
+        
         # Update the last measurements
         self.updateDatabase()
         
@@ -168,11 +216,36 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
     # -------------------------------------------------------------------------
 
-    def runChannels(self, rfData):
+    def _initChannels(self, manager:Manager):
+
+        # Initialise the channels
+        self.channelsPB = []
+        for idx in range(min(self.nbChannels, len(self.satelliteList))):
+            # Create channel
+            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0))
+            
+            # Create GUI
+            _tow = colored(" TOW ", 'white', 'on_red')
+            _sf1 = colored("1", 'white', 'on_red')
+            _sf2 = colored("2", 'white', 'on_red')
+            _sf3 = colored("3", 'white', 'on_red')
+            _sf4 = colored("4", 'white', 'on_red')
+            _sf5 = colored("5", 'white', 'on_red')
+            counter = manager.counter(total=self.msToProcess, desc=f"    Channel {idx}", \
+                leave=False, unit='ms', color='lightseagreen', min_delta=0.5,
+                state=f"{self.channels[idx].state}", bar_format=CHANNEL_BAR_FORMAT, prn='G00', \
+                tow=_tow, sf1=_sf1, sf2=_sf2, sf3=_sf3, sf4=_sf4, sf5=_sf5)
+            self.channelsPB.append(counter)
+
+        return
+
+    # -------------------------------------------------------------------------
+
+    def _runChannels(self, rfData):
         for chan in self.channels:
-            if chan.getState() == ChannelState.OFF:
+            if chan.state == ChannelState.OFF:
                 continue
-            elif chan.getState() == ChannelState.IDLE:
+            elif chan.state == ChannelState.IDLE:
                 # Give a new satellite from list
                 if not self.satelliteList:
                     # List empty, disable channel
@@ -183,36 +256,46 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 chan.setSatellite(svid, self.channelCounter)
 
                 self.addChannelDatabase(chan)
-                logging.getLogger(__name__).info(f"Channel {chan.cid} started with satellite G{svid}.")
+                logging.getLogger(__name__).info(f"CID {chan.cid} started with satellite G{svid}.")
 
                 self.channelCounter += 1
 
-                self.updateDatabase()     
-                
+                self.updateDatabase() 
+            
+            # Run channels
             chan.run(rfData)
-        
+
+            # GUI
+            _tow = colored(f" TOW: {chan.tow:6.0f}", 'white', 'on_green' if chan.isTOWDecoded else 'on_red')
+            _sf1 = colored("1", 'white', 'on_green' if chan.decoding.subframes[1] else 'on_red')
+            _sf2 = colored("2", 'white', 'on_green' if chan.decoding.subframes[2] else 'on_red')
+            _sf3 = colored("3", 'white', 'on_green' if chan.decoding.subframes[3] else 'on_red')
+            _sf4 = colored("4", 'white', 'on_green' if chan.decoding.subframes[4] else 'on_red')
+            _sf5 = colored("5", 'white', 'on_green' if chan.decoding.subframes[5] else 'on_red')
+            self.channelsPB[chan.cid].update(state=f"{chan.state}", prn=f'G{chan.svid:02d}', tow=_tow,\
+                sf1=_sf1, sf2=_sf2, sf3=_sf3, sf4=_sf4, sf5=_sf5)
         return
 
     # -------------------------------------------------------------------------
 
-    def processChannels(self, msProcessed, sampleCounter):
+    def _processChannels(self, msProcessed, sampleCounter):
         for chan in self.channels:
             svid    = chan.svid
-            state   = chan.getState()
+            state   = chan.state
             satellite = self.satelliteDict[svid]
             if state == ChannelState.OFF:
                 continue
             elif state == ChannelState.IDLE:
                 # Signal was not aquired
                 satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
-                print(f"Channel {chan.cid} could not acquire satellite G{svid}.")    
+                logging.getLogger(__name__).info(f"CID {chan.cid} could not acquire satellite G{svid}.")    
                 pass
             elif state == ChannelState.ACQUIRING:
                 if chan.isAcquired:
                     self.addAcquisitionDatabase(chan)
                     satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
                     chan.switchState(ChannelState.TRACKING)
-                    logging.getLogger(__name__).info(f"Channel {chan.cid} found satellite G{svid}, tracking started.")
+                    logging.getLogger(__name__).info(f"CID {chan.cid} found satellite G{svid}, tracking started.")
                     #print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
                 else:
                     # Buffer not full (most probably)
@@ -238,10 +321,10 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                         satellite.addBRDCEphemeris(chan.decoding.ephemeris)
                  
             else:
+                logging.getLogger(__name__).error("EOF encountered earlier than expected in I/Q file.")
                 raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
             
             self.channelsStates[chan.cid] = state
-
         return
     
     # -------------------------------------------------------------------------
@@ -262,7 +345,9 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         
         if len(prnList) < 5:
             # Not enough satellites
+            self.receiverState = ReceiverState.INIT
             return
+        self.receiverState = ReceiverState.NAVIGATION
 
         # Find earliest signal
         maxTOW = -1
@@ -345,8 +430,11 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.computeReceiverPosition(receivedTime, gnssMeasurementsList)
 
         # Update the receiver position
+        state = self.navigation.x
+        statePrecision = self.navigation.getStatePrecision()
         self.receiverPosition.time = Time.fromGPSTime(week, receivedTime)
-        self.receiverPosition.coordinate.setCoordinates(self.navigation.x[0], self.navigation.x[1], self.navigation.x[2])
+        self.receiverPosition.coordinate.setCoordinates(state[0], state[1], state[2])
+        self.receiverPosition.coordinate.setPrecision(statePrecision[0], statePrecision[1], statePrecision[2])
         self.receiverPosition.clockError = self.navigation.x[3]
         self.receiverPosition.id += 1
 
@@ -356,10 +444,11 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
         self.measurementTimeList.append(receivedTime)
         
+        coord = self.receiverPosition.coordinate
         logging.getLogger(__name__).info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
-        logging.getLogger(__name__).debug(f"Position       : ({self.receiverPosition.coordinate.x:12.4f} {self.receiverPosition.coordinate.y:12.4f} {self.receiverPosition.coordinate.z:12.4f})")
-        logging.getLogger(__name__).debug(f"Clock error    : {self.receiverPosition.clockError:12.4f}")
-        logging.getLogger(__name__).debug(f"Receiver clock : ({self.receiverClock.absoluteTime.gpsTime.week_number} {receivedTime} {self.receiverClock.absoluteTime.gpsTime.femtoseconds})")
+        logging.getLogger(__name__).debug(f"Position=({coord.x:12.4f} {coord.y:12.4f} {coord.z:12.4f}), precision=({coord.xPrecison:8.4f} {coord.yPrecison:8.4f} {coord.zPrecison:8.4f})")
+        logging.getLogger(__name__).debug(f"Clock error={self.receiverPosition.clockError: 12.4f}")
+        logging.getLogger(__name__).debug(f"Receiver clock : ({self.receiverClock.absoluteTime.gpsTime.week_number} {self.receiverClock.absoluteTime.gpsTime.seconds} {self.receiverClock.absoluteTime.gpsTime.femtoseconds})")
 
         return
 
@@ -369,6 +458,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         
         nbMeasurements = len(measurements)
         G = np.zeros((nbMeasurements, 4))
+        W = np.zeros((nbMeasurements, nbMeasurements))
+        Ql = np.zeros((nbMeasurements, nbMeasurements))
         y = np.zeros(nbMeasurements)
         self.navigation.setState(self.approxPosition, 0.0)
         for i in range(10):
@@ -400,6 +491,11 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     G[idx, 1] = (x[1] - satpos[1]) / p
                     G[idx, 2] = (x[2] - satpos[2]) / p
                     G[idx, 3] = 1
+
+                    # Weight matrix
+                    # TODO Implement sigma for each measurements
+                    _SIGMA_PSEUDORANGE = 1.0
+                    Ql[idx, idx] = _SIGMA_PSEUDORANGE
                 else:
                     # TODO Adapt to other measurement types
                     continue
@@ -407,8 +503,11 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 idx += 1 
             
             # Least Squares
-            self.navigation.setDesignMatrix(G)
-            self.navigation.setObservationVector(y)
+            self.navigation.G = G
+            self.navigation.y = y
+            self.navigation.W = W
+            self.navigation.Ql = Ql
+
             self.navigation.compute()
 
         # Correct after minimisation

@@ -1,10 +1,26 @@
 
 from abc import ABC, abstractmethod
+from enum import Enum, unique
 import numpy as np
 
 from core.utils.constants import EARTH_ROTATION_RATE
 
+# =============================================================================
+@unique
+class ReceiverState(Enum):
+    OFF        = 0
+    IDLE       = 1
+    INIT       = 2
+    NAVIGATION = 3
+
+    def __str__(self):
+        return str(self.name)
+
+# =============================================================================
+
 class ReceiverAbstract(ABC):
+
+    receiverState : ReceiverState
 
     def __init__(self):
         return

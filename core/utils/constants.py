@@ -45,3 +45,7 @@ TROPO_METEO_VAR_T0  = [    0.0,    7.00,   11.00,   15.00,   14.50] # [K]
 TROPO_METEO_VAR_E0  = [    0.0,    8.85,    7.24,    5.36,    3.39] # [mbar]
 TROPO_METEO_VAR_B0  = [    0.0, 0.25e-3, 0.32e-3, 0.81e-3, 0.62e-3] # [K/m]
 TROPO_METEO_VAR_L0  = [    0.0,    0.33,    0.46,    0.74,    0.30]
+
+
+# DISPLAY
+UNI_SIGMA = '\u03C3'

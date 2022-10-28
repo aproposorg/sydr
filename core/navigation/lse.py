@@ -18,10 +18,22 @@ class LeastSquareEstimation:
 
     # Precision
     Qx : np.array # State precision
+    Ql : np.array # Measurement precision
+    Qv : np.array # Residuals precision
 
     # -------------------------------------------------------------------------
 
     def __init__(self):
+
+        self.G = []
+        self.W = []
+        self.y = []
+        self.N = []
+        self.C = []
+        self.x = []
+        self.v = []
+        self.Qx = []
+        self.Ql = []
 
         self._resetdX()
         
@@ -38,26 +50,21 @@ class LeastSquareEstimation:
         self.x = self.x + dX             # Update state
         self.v = self.G.dot(dX) - self.y # Update residuals
 
+        self.Qx = np.linalg.inv(N) 
+        self.Qv = self.Ql - self.G.dot(self.Qx).dot(np.transpose(self.G))
+        self.Ql = self.Ql - self.Qv
+
         return
 
     # -------------------------------------------------------------------------
+    
     def _resetdX(self):
         self.dX = np.zeros(4)
         self.dX[:4] = [1.0, 1.0, 1.0, 1.0]
         return
 
     # -------------------------------------------------------------------------
-    
-    def setDesignMatrix(self, matrix):
-        self.G = matrix
 
-    # -------------------------------------------------------------------------
-
-    def setWeigthMatrix(self, matrix):
-        self.W = matrix
-
-    # -------------------------------------------------------------------------
-    
     def setState(self, position, clock):
         self.x = []
         self.x.extend(position)
@@ -66,10 +73,10 @@ class LeastSquareEstimation:
 
     # -------------------------------------------------------------------------
 
-    def setObservationVector(self, matrix):
-        self.y = matrix
+    def getStatePrecision(self):
+        statePrecision = np.sqrt(np.diag(self.Qx))
+        return statePrecision
 
-    # -------------------------------------------------------------------------
 
 
     

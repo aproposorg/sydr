@@ -178,7 +178,7 @@ class Satellite(ABC):
     # ------------------------------------------------------------ 
 
     def addDSPMeasurement(self, msProcessed, samplesProcessed, chan):
-        state      = chan.getState()
+        state      = chan.state
         signal     = chan.gnssSignal.signalType
 
         # Check if signal exist, otherwise initialize

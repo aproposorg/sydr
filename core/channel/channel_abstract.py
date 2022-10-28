@@ -34,6 +34,9 @@ class ChannelState(Enum):
     ACQUIRING     = 2
     TRACKING      = 3
 
+    def __str__(self):
+        return str(self.name)
+
 # =============================================================================
 class ChannelAbstract(ABC):
     cid    : int  # Channel ID
@@ -207,11 +210,6 @@ class ChannelAbstract(ABC):
     def switchState(self, newState):
         self.state = newState
         return
-
-    # -------------------------------------------------------------------------
-    
-    def getState(self):
-        return self.state
 
     # -------------------------------------------------------------------------
 

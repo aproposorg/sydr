@@ -1,6 +1,7 @@
 
 from datetime import datetime
 from http.client import REQUESTED_RANGE_NOT_SATISFIABLE
+import logging
 import numpy as np
 import configparser
 import panel as pn
@@ -48,6 +49,8 @@ class VisualisationV2:
         # TODO Move to config
         self.samplingFrequency = 10e6
 
+        logging.getLogger(__name__).info(f"VisualisationV2 initialized.")
+
         pass
 
     # -------------------------------------------------------------------------
@@ -78,7 +81,10 @@ class VisualisationV2:
         navigationTab = self._getNavigationTab()
         mainTabs.append(('Navigation', navigationTab))
 
-        mainTabs.save(f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html", embed=True)
+        _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        mainTabs.save(_filepath, embed=True)
+
+        logging.getLogger(__name__).info(f"HTML report created and saved at [{_filepath}].")
 
         return
 
@@ -381,7 +387,6 @@ class VisualisationV2:
 
         # Doppler
         dataList = self.database.fetchMeasurements(channelID, "DOPPLER")
-        size = len(dataList)
         doppler = np.full(size, np.nan)
         dopplerNoise = np.full(size, np.nan)
         idx = 0 

@@ -36,6 +36,8 @@ class LNAV(NavigationMessageAbstract):
     isNewBitFound       : bool # Track if a new bit is available to be decoded.
     isFirstSubframeFound: bool # Track if at least one subframe has been found.
 
+    subframes : dict
+
 # -----------------------------------------------------------------------------
 
     def __init__(self):
@@ -65,6 +67,8 @@ class LNAV(NavigationMessageAbstract):
         self.tow = 0
         self.ephemeris = BRDCEphemeris()
         self.lastSubframeID = -1 
+
+        self.subframes = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0} # Contains the IODE of the lastest subframe received
 
         pass
 
@@ -258,6 +262,8 @@ class LNAV(NavigationMessageAbstract):
             pass
         else: 
             print(f"Unrecognised suframe ID {subframeID} found for satellite G{self.svid}")
+        
+        self.subframes[subframeID] = 1
 
         if eph.checkFlags():
             self.isEphemerisDecoded = True
@@ -272,10 +278,10 @@ class LNAV(NavigationMessageAbstract):
         # -> So we remove 6 seconds to have the TOW of the current subframe
         # - Also need to realign the TOW to the current process time 
         # -> account for all the bits since last subframe was decoded
-
-        self.tow  = self.bin2dec(subframe[30:47]) * 6 
-        self.tow -= 6
-        eph.tow = self.tow
+        tow  = self.bin2dec(subframe[30:47]) * 6 
+        tow -= 6
+        self.tow = tow
+        eph.tow  = self.tow
         
         # Correct TOW to actual state
         # TODO Should we make a function instead since this is not the pure TOW contained in the message
