@@ -9,6 +9,8 @@
 from abc import ABC, abstractmethod
 import logging
 from typing import List
+import multiprocessing
+from queue import Empty
 
 from core.acquisition.acquisition_abstract import AcquisitionAbstract
 from core.signal.gnsssignal import GNSSSignal
@@ -18,6 +20,8 @@ from core.tracking.tracking_abstract import TrackingAbstract
 from enum import Enum, unique
 
 from core.utils.circularbuffer import CircularBuffer
+
+TIMEOUT = 120 # Seconds
 
 # =============================================================================
 class ChannelConfig:
@@ -38,7 +42,7 @@ class ChannelState(Enum):
         return str(self.name)
 
 # =============================================================================
-class ChannelAbstract(ABC):
+class ChannelAbstract(ABC, multiprocessing.Process):
     cid    : int  # Channel ID
     svid   : int  # Satellite ID
 
@@ -54,6 +58,11 @@ class ChannelAbstract(ABC):
     buffer                 : CircularBuffer
     currentSample          : int
     unprocessedSamples     : int
+    
+    # Multiprocessing
+    rfQueue                : multiprocessing.Queue
+    event                  : multiprocessing.Event
+    daemon                 : bool # Start as a daemon process (see multiprocessing documentation)
 
     iPrompt : List
 
@@ -62,7 +71,16 @@ class ChannelAbstract(ABC):
     isEphemerisDecoded : bool
 
     @abstractmethod
-    def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal, timeInSamples:int):
+    def __init__(self, cid:int, rfSignal:RFSignal, gnssSignal:GNSSSignal, timeInSamples:int, \
+        queue:multiprocessing.Queue, event:multiprocessing.Event, pipe):
+        
+        # For multiprocessing inheritance
+        super(multiprocessing.Process, self).__init__()
+        self.daemon = True
+        self.rfQueue = queue 
+        self.event = event
+        self.pipe = pipe
+        
         self.cid          = cid
         self.gnssSignal   = gnssSignal
         self.rfSignal     = rfSignal
@@ -89,15 +107,42 @@ class ChannelAbstract(ABC):
     
     # -------------------------------------------------------------------------
 
-    def run(self, rfData):
+    def run(self):
         
-        self.buffer.shift(rfData)
+        while True:
+            try:
+                rfData = self.rfQueue.get(timeout=TIMEOUT)
+            except Empty:
+                logging.getLogger(__name__).debug(f"CID {self.cid} did not received data for {TIMEOUT} seconds, closing thread")
+                return
+            
+            if rfData is None:
+                logging.getLogger(__name__).debug(f"CID {self.cid} SIGTERM received, closing thread")
+                break
+            # else:
+            #     logging.getLogger(__name__).debug(f"CID {self.cid} received RF Data {rfData}")
+            
+            # Load the data in the buffer
+            self.buffer.shift(rfData)
+            self.unprocessedSamples += len(rfData)
 
-        if not self.buffer.isFull():
-            return
-        
-        self.unprocessedSamples += len(rfData)
+            # Wait for a full buffer, to be sure we can do acquisition at least
+            if self.buffer.isFull():
+                #logging.getLogger(__name__).debug(f"CID {self.cid} buffer full, processing enabled")
+                self._processData()
 
+            self.event.set()
+            self.pipe[0].send(self)
+
+        logging.getLogger(__name__).debug(f"CID {self.cid} Exiting run") 
+        return
+
+    # -------------------------------------------------------------------------
+
+    def _processData(self):
+
+        # Check channel state
+        logging.getLogger(__name__).debug(f"CID {self.cid} is in {self.state} state")
         if self.state == ChannelState.IDLE:
             print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
         elif self.state == ChannelState.ACQUIRING:
@@ -106,17 +151,25 @@ class ChannelAbstract(ABC):
             self.isAcquired = self.acquisition.isAcquired
 
             if self.isAcquired:
+                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
                 frequency, code = self.acquisition.getEstimation()
                 self.tracking.setInitialValues(frequency)
                 samplesRequired = self.tracking.getSamplesRequired()
+
+                # Switching state to tracking for next loop
+                self.switchState(ChannelState.TRACKING)
 
                 # We take double the amount required to be sure one full code will fit
                 self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
                 self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
             else:
+                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
                 self.switchState(ChannelState.IDLE)
             
         elif self.state == ChannelState.TRACKING:
+            if self.isAcquired:
+                # Reset the flag, otherwise we log acquisition each loop
+                self.isAcquired = False
             # Track
             self.doTracking()
 
@@ -203,12 +256,14 @@ class ChannelAbstract(ABC):
         # Set state to acquisition
         self.switchState(ChannelState.ACQUIRING)
 
+        logging.getLogger(__name__).debug(f"CID {self.cid} started with satellite G{self.svid}.")
+
         return
 
     # -------------------------------------------------------------------------
 
-    def switchState(self, newState):
-        self.state = newState
+    def switchState(self, state:ChannelState):
+        self.state = state
         return
 
     # -------------------------------------------------------------------------

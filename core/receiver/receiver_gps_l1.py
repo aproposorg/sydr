@@ -6,7 +6,6 @@
 # References: 
 # =============================================================================
 # PACKAGES
-import copy
 import logging
 import pickle
 from datetime import datetime
@@ -17,6 +16,7 @@ import numpy as np
 import configparser
 from enlighten import Manager
 from termcolor import colored
+import multiprocessing
 
 from core.channel.channel_abstract import ChannelAbstract, ChannelState
 from core.channel.channel_l1ca import ChannelL1CA
@@ -113,7 +113,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         # Channel parameters
         self.channels = []
-        self.channelsStates = [ChannelState.IDLE] *  self.nbChannels
         self.channelCounter = 0
 
         self.isClockInitialised = False
@@ -211,6 +210,12 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         
         # Update the last measurements
         self.updateDatabase()
+
+        # Close all the channel threads
+        for chan in self.channels:
+            chan.rfQueue.put("SIGTERM")
+        for chan in self.channels:
+            chan.join()
         
         return
 
@@ -221,8 +226,14 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Initialise the channels
         self.channelsPB = []
         for idx in range(min(self.nbChannels, len(self.satelliteList))):
+            
+            # Create object for communication between processes
+            _queue = multiprocessing.Queue() # The queue is for giving data to the channels
+            _event = multiprocessing.Event() # The event is for informing the main process that the data has been processed
+            _pipe  = multiprocessing.Pipe()  # The pipe is to send back the results from the threads. Pipe is a tuple of two connection (in, out)
+            
             # Create channel
-            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0))
+            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0, _queue, _event, _pipe))
             
             # Create GUI
             _tow = colored(" TOW ", 'white', 'on_red')
@@ -255,15 +266,15 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 # Set the satellite parameters in the channel
                 chan.setSatellite(svid, self.channelCounter)
 
-                self.addChannelDatabase(chan)
-                logging.getLogger(__name__).info(f"CID {chan.cid} started with satellite G{svid}.")
+                # State the channel
+                chan.start()
 
                 self.channelCounter += 1
-
+                self.addChannelDatabase(chan)
                 self.updateDatabase() 
             
             # Run channels
-            chan.run(rfData)
+            chan.rfQueue.put(rfData)
 
             # GUI
             _tow = colored(f" TOW: {chan.tow:6.0f}", 'white', 'on_green' if chan.isTOWDecoded else 'on_red')
@@ -280,6 +291,12 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
     def _processChannels(self, msProcessed, sampleCounter):
         for chan in self.channels:
+            # Wait for thread signal that it has finished his processing
+            chan.event.wait()
+            chan.event.clear()
+
+            chan = chan.pipe[1].recv()
+
             svid    = chan.svid
             state   = chan.state
             satellite = self.satelliteDict[svid]
@@ -291,16 +308,17 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 logging.getLogger(__name__).info(f"CID {chan.cid} could not acquire satellite G{svid}.")    
                 pass
             elif state == ChannelState.ACQUIRING:
+                # Nothing to do, we just pass
+                pass
+            elif state == ChannelState.TRACKING:
+                # Check if just switched from acquiring 
                 if chan.isAcquired:
                     self.addAcquisitionDatabase(chan)
                     satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
-                    chan.switchState(ChannelState.TRACKING)
                     logging.getLogger(__name__).info(f"CID {chan.cid} found satellite G{svid}, tracking started.")
-                    #print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
-                else:
-                    # Buffer not full (most probably)
                     pass
-            elif state == ChannelState.TRACKING:
+
+                # Process tracking measurements
                 self.addTrackingDatabase(chan)
 
                 # Signal is being tracked
@@ -323,8 +341,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             else:
                 logging.getLogger(__name__).error("EOF encountered earlier than expected in I/Q file.")
                 raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
-            
-            self.channelsStates[chan.cid] = state
         return
     
     # -------------------------------------------------------------------------

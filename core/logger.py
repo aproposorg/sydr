@@ -24,7 +24,7 @@ def configureLogger(filepath):
 
     logger = logging.getLogger(__name__)
 
-    coloredlogs.install(level='DEBUG', logger=logger, fmt=LOG_FORMAT, \
+    coloredlogs.install(logger=logger, fmt=LOG_FORMAT, \
         milliseconds=True, level_styles=LEVEL_STYLE, field_styles=FIELD_STYLE) 
     
     logging.getLogger(__name__).info(f"SYDR program initialized, version {__version__}")
