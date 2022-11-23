@@ -11,7 +11,6 @@ import pickle
 from datetime import datetime
 import math
 import time
-from turtle import color
 import numpy as np
 import configparser
 from enlighten import Manager

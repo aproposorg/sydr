@@ -132,7 +132,8 @@ class ChannelAbstract(ABC, multiprocessing.Process):
                 self._processData()
 
             self.event.set()
-            self.pipe[0].send(self)
+            self.pipe[0].send(self.acquisition.getDatabaseDict())
+            
 
         logging.getLogger(__name__).debug(f"CID {self.cid} Exiting run") 
         return
@@ -143,33 +144,17 @@ class ChannelAbstract(ABC, multiprocessing.Process):
 
         # Check channel state
         logging.getLogger(__name__).debug(f"CID {self.cid} is in {self.state} state")
+
         if self.state == ChannelState.IDLE:
             print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
+            self.send({})
+
         elif self.state == ChannelState.ACQUIRING:
-            buffer = self.buffer.getBuffer()
-            self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
-            self.isAcquired = self.acquisition.isAcquired
-
-            if self.isAcquired:
-                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
-                frequency, code = self.acquisition.getEstimation()
-                self.tracking.setInitialValues(frequency)
-                samplesRequired = self.tracking.getSamplesRequired()
-
-                # Switching state to tracking for next loop
-                self.switchState(ChannelState.TRACKING)
-
-                # We take double the amount required to be sure one full code will fit
-                self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
-                self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
-            else:
-                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
-                self.switchState(ChannelState.IDLE)
+            self.doAcquisition()
             
         elif self.state == ChannelState.TRACKING:
             if self.isAcquired:
-                # Reset the flag, otherwise we log acquisition each loop
-                self.isAcquired = False
+                self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
             # Track
             self.doTracking()
 
@@ -177,6 +162,34 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             self.doDecoding()
         else:
             raise ValueError(f"Channel state {self.state} is not valid.")
+
+        return
+
+    # -------------------------------------------------------------------------
+
+    def doAcquisition(self):
+
+        buffer = self.buffer.getBuffer()
+        self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
+        self.isAcquired = self.acquisition.isAcquired
+
+        if self.isAcquired:
+            logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
+            frequency, code = self.acquisition.getEstimation()
+            self.tracking.setInitialValues(frequency)
+            samplesRequired = self.tracking.getSamplesRequired()
+
+            # Switching state to tracking for next loop
+            self.switchState(ChannelState.TRACKING)
+
+            # We take double the amount required to be sure one full code will fit
+            self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
+            self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
+
+        else:
+            logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
+            self.switchState(ChannelState.IDLE)
+            self.send({})
 
         return
 
@@ -227,6 +240,19 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             self.isTOWDecoded = True
             self.tow = self.decoding.tow
             self.codeSinceLastTOW = 0
+
+        return
+
+    # -------------------------------------------------------------------------
+
+    def send(self, dictToSend: dict):
+        """
+        Send a packet to main program through a defined pipe.
+        """
+        
+        _packet = (self.cid, self.state, dictToSend)
+        
+        self.pipe[0].send(_packet)
 
         return
 
