@@ -197,19 +197,17 @@ class Tracking(TrackingAbstract):
             mdict (Dict): Information to be saved.
 
         """
-        
-        mdict = {
-            "i_early"           : self.correlatorResults[0],
-            "q_early"           : self.correlatorResults[1],
-            "i_prompt"          : self.correlatorResults[2],
-            "q_prompt"          : self.correlatorResults[3],
-            "i_late"            : self.correlatorResults[4],
-            "q_late"            : self.correlatorResults[5],
-            "dll"               : self.dll,
-            "pll"               : self.pll,
-            "carrier_frequency" : self.carrierFrequency,
-            "code_frequency"    : self.codeFrequency
-        }
+        mdict = super().getDatabaseDict()
+        mdict["i_early"]           = self.correlatorResults[0],
+        mdict["q_early"]           = self.correlatorResults[1],
+        mdict["i_prompt"]          = self.correlatorResults[2],
+        mdict["q_prompt"]          = self.correlatorResults[3],
+        mdict["i_late"]            = self.correlatorResults[4],
+        mdict["q_late"]            = self.correlatorResults[5],
+        mdict["dll"]               = self.dll,
+        mdict["pll"]               = self.pll,
+        mdict["carrier_frequency"] = self.carrierFrequency,
+        mdict["code_frequency"]    = self.codeFrequency
 
         return mdict
     

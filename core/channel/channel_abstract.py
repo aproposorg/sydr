@@ -6,17 +6,19 @@
 # References: 
 # =============================================================================
 # PACKAGES
-from abc import ABC, abstractmethod
+
 import logging
-from typing import List
 import multiprocessing
+import numpy as np
+from typing import List
+from abc import ABC, abstractmethod
 from queue import Empty
 
 from core.acquisition.acquisition_abstract import AcquisitionAbstract
+from core.tracking.tracking_abstract import TrackingAbstract, TrackingFlags
 from core.signal.gnsssignal import GNSSSignal
 from core.decoding.message_abstract import NavigationMessageAbstract
 from core.signal.rfsignal import RFSignal
-from core.tracking.tracking_abstract import TrackingAbstract
 from enum import Enum, unique
 
 from core.utils.circularbuffer import CircularBuffer
@@ -42,11 +44,24 @@ class ChannelState(Enum):
         return str(self.name)
 
 # =============================================================================
+@unique
+class ChannelCommunication(Enum):
+    END_OF_PIPE        = 0
+    CHANNEL_UPDATE     = 1
+    ACQUISITION_UPDATE = 2
+    TRACKING_UPDATE    = 3
+    DECODING_UPDATE    = 4
+
+    def __str__(self):
+        return str(self.name)
+
+# =============================================================================
 class ChannelAbstract(ABC, multiprocessing.Process):
     cid    : int  # Channel ID
     svid   : int  # Satellite ID
 
     state                  : ChannelState
+    trackingFlags          : TrackingFlags
     acquisition            : AcquisitionAbstract
     tracking               : TrackingAbstract
     decoding               : NavigationMessageAbstract
@@ -85,6 +100,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
         self.gnssSignal   = gnssSignal
         self.rfSignal     = rfSignal
         self.state        = ChannelState.IDLE
+        self.trackingFlags= TrackingFlags.UNKNOWN
         self.timeInSamples= timeInSamples
         self.samplesSinceFirstTOW = -1
         self.dbid = -1
@@ -123,19 +139,18 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             #     logging.getLogger(__name__).debug(f"CID {self.cid} received RF Data {rfData}")
             
             # Load the data in the buffer
-            self.buffer.shift(rfData)
-            self.unprocessedSamples += len(rfData)
+            self._updateBuffer(rfData)
 
-            # Wait for a full buffer, to be sure we can do acquisition at least
-            if self.buffer.isFull():
-                #logging.getLogger(__name__).debug(f"CID {self.cid} buffer full, processing enabled")
-                self._processData()
+            # Process the data according to the current channel state
+            self._processData()
 
+            # Signal the main thread that processing is done.
             self.event.set()
-            self.pipe[0].send(self.acquisition.getDatabaseDict())
-            
+
+            self.send(ChannelCommunication.END_OF_PIPE)
 
         logging.getLogger(__name__).debug(f"CID {self.cid} Exiting run") 
+
         return
 
     # -------------------------------------------------------------------------
@@ -169,27 +184,32 @@ class ChannelAbstract(ABC, multiprocessing.Process):
 
     def doAcquisition(self):
 
-        buffer = self.buffer.getBuffer()
-        self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
-        self.isAcquired = self.acquisition.isAcquired
+        if self.buffer.isFull():
+            #logging.getLogger(__name__).debug(f"CID {self.cid} buffer full, processing enabled")
 
-        if self.isAcquired:
-            logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
-            frequency, code = self.acquisition.getEstimation()
-            self.tracking.setInitialValues(frequency)
-            samplesRequired = self.tracking.getSamplesRequired()
+            buffer = self.buffer.getBuffer()
+            self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
+            self.isAcquired = self.acquisition.isAcquired
 
-            # Switching state to tracking for next loop
-            self.switchState(ChannelState.TRACKING)
+            if self.isAcquired:
+                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
+                frequency, code = self.acquisition.getEstimation()
+                self.tracking.setInitialValues(frequency)
+                samplesRequired = self.tracking.getSamplesRequired()
 
-            # We take double the amount required to be sure one full code will fit
-            self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
-            self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
+                # Switching state to tracking for next loop
+                self.switchState(ChannelState.TRACKING)
 
-        else:
-            logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
-            self.switchState(ChannelState.IDLE)
-            self.send({})
+                # We take double the amount required to be sure one full code will fit
+                self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
+                self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
+
+            else:
+                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
+                self.switchState(ChannelState.IDLE)
+        
+        # Send to main program
+        self.send(ChannelCommunication.ACQUISITION_UPDATE, self.acquisition.getDatabaseDict())
 
         return
 
@@ -217,6 +237,10 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             # Update for next loop
             samplesRequired = self.tracking.getSamplesRequired()
             buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
+
+            # Send to main program
+            self.send(ChannelCommunication.TRACKING_UPDATE, self.tracking.getDatabaseDict())
+
         return
 
     # -------------------------------------------------------------------------
@@ -241,16 +265,30 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             self.tow = self.decoding.tow
             self.codeSinceLastTOW = 0
 
+        if self.decoding.isNewSubframeFound:
+            self.send(ChannelCommunication.DECODING_UPDATE, self.decoding.getDatabaseDict())
+            self.decoding.isNewSubframeFound = False
+
         return
 
     # -------------------------------------------------------------------------
 
-    def send(self, dictToSend: dict):
+    def send(self, commType:ChannelCommunication, dictToSend: dict = None):
         """
         Send a packet to main program through a defined pipe.
         """
-        
-        _packet = (self.cid, self.state, dictToSend)
+        if commType == ChannelCommunication.END_OF_PIPE:
+            _packet = (commType)
+        elif commType == ChannelCommunication.CHANNEL_UPDATE:
+            _packet = (commType, self.state, self.trackingFlags, self.week, self.tow, self.getTimeSinceTOW())
+        elif commType == ChannelCommunication.ACQUISITION_UPDATE \
+            or commType == ChannelCommunication.TRACKING_UPDATE \
+            or commType == ChannelCommunication.DECODING_UPDATE :
+
+            dictToSend["unprocessed_samples"] = self.unprocessedSamples
+            _packet = (commType, dictToSend)
+        else:
+            raise ValueError(f"Channel communication {commType} is not valid.")
         
         self.pipe[0].send(_packet)
 
@@ -292,6 +330,19 @@ class ChannelAbstract(ABC, multiprocessing.Process):
         self.state = state
         return
 
+    # -------------------------------------------------------------------------
+
+    def _updateBuffer(self, data:np.array):
+        """
+        Update buffer with new data, shift the previous data and update the 
+        required variables.
+        """
+
+        self.buffer.shift(data)
+        self.unprocessedSamples += len(data)
+
+        return
+    
     # -------------------------------------------------------------------------
 
     def getAcquisitionEstimation(self):

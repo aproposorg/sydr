@@ -20,8 +20,9 @@ class AcquisitionAbstract(ABC):
     
     correlationMap    : np.array
     frequencyBins     : np.array
+
     idxEstimatedFrequency : float
-    idxEstimatedCode : float
+    idxEstimatedCode      : float
 
     @abstractmethod
     def __init__(self, rfSignal:RFSignal, gnssSignal:GNSSSignal):
@@ -31,6 +32,13 @@ class AcquisitionAbstract(ABC):
 
         self.rfSignal   = rfSignal
         self.gnssSignal = gnssSignal
+
+        # Initialise
+        self.estimatedCode         = np.nan
+        self.estimatedFrequency    = np.nan
+        self.idxEstimatedCode      = np.nan
+        self.idxEstimatedFrequency = np.nan
+        self.correlationMap        = np.array([])
         
         return
 
@@ -71,7 +79,10 @@ class AcquisitionAbstract(ABC):
 
     @abstractmethod
     def getDatabaseDict(self):
-        pass
+        mdict = {
+            "type" : "acquisition"
+        }
+        return mdict
 
     # END OF CLASS
 
