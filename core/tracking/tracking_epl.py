@@ -198,15 +198,15 @@ class Tracking(TrackingAbstract):
 
         """
         mdict = super().getDatabaseDict()
-        mdict["i_early"]           = self.correlatorResults[0],
-        mdict["q_early"]           = self.correlatorResults[1],
-        mdict["i_prompt"]          = self.correlatorResults[2],
-        mdict["q_prompt"]          = self.correlatorResults[3],
-        mdict["i_late"]            = self.correlatorResults[4],
-        mdict["q_late"]            = self.correlatorResults[5],
-        mdict["dll"]               = self.dll,
-        mdict["pll"]               = self.pll,
-        mdict["carrier_frequency"] = self.carrierFrequency,
+        mdict["i_early"]           = self.correlatorResults[0]
+        mdict["q_early"]           = self.correlatorResults[1]
+        mdict["i_prompt"]          = self.correlatorResults[2]
+        mdict["q_prompt"]          = self.correlatorResults[3]
+        mdict["i_late"]            = self.correlatorResults[4]
+        mdict["q_late"]            = self.correlatorResults[5]
+        mdict["dll"]               = self.dll
+        mdict["pll"]               = self.pll
+        mdict["carrier_frequency"] = self.carrierFrequency
         mdict["code_frequency"]    = self.codeFrequency
 
         return mdict

@@ -8,6 +8,7 @@
 # PACKAGES
 import multiprocessing
 import numpy as np
+from logging import Logger
 from core.signal.gnsssignal import GNSSSignal
 from core.decoding.message_lnav import LNAV
 from core.signal.rfsignal import RFSignal
@@ -25,6 +26,8 @@ class ChannelL1CA(ChannelAbstract):
         self.acquisition = Acquisition(self.rfSignal, self.gnssSignal)
         self.tracking    = Tracking(self.rfSignal, self.gnssSignal)
         self.decoding    = LNAV()
+
+        self.subframeFlags = [False, False, False, False, False]
 
         self.dataRequiredAcquisition = int(self.gnssSignal.codeMs * \
             self.acquisition.nonCohIntegration * \

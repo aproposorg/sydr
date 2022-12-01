@@ -13,6 +13,7 @@ import numpy as np
 from typing import List
 from abc import ABC, abstractmethod
 from queue import Empty
+from logging import Logger
 
 from core.acquisition.acquisition_abstract import AcquisitionAbstract
 from core.tracking.tracking_abstract import TrackingAbstract, TrackingFlags
@@ -22,6 +23,7 @@ from core.signal.rfsignal import RFSignal
 from enum import Enum, unique
 
 from core.utils.circularbuffer import CircularBuffer
+import core.logger as logger
 
 TIMEOUT = 120 # Seconds
 
@@ -54,6 +56,22 @@ class ChannelCommunication(Enum):
 
     def __str__(self):
         return str(self.name)
+
+# =============================================================================
+
+class ChannelStatus():
+
+    def __init__(self):
+
+        self.cid = 0
+        self.svid = 0
+        self.state = ChannelState.IDLE
+        self.trackingFlags = TrackingFlags.UNKNOWN
+        self.week = 0
+        self.tow = 0
+        self.timeSinceTOW = 0
+        
+        return
 
 # =============================================================================
 class ChannelAbstract(ABC, multiprocessing.Process):
@@ -101,11 +119,13 @@ class ChannelAbstract(ABC, multiprocessing.Process):
         self.rfSignal     = rfSignal
         self.state        = ChannelState.IDLE
         self.trackingFlags= TrackingFlags.UNKNOWN
+        self.subframeFlags = []
         self.timeInSamples= timeInSamples
         self.samplesSinceFirstTOW = -1
         self.dbid = -1
 
         self.codeSinceLastTOW = 0
+        self.timeSinceLastTOW = 0
 
         self.currentSample = 0
         self.unprocessedSamples = 0
@@ -116,8 +136,18 @@ class ChannelAbstract(ABC, multiprocessing.Process):
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
 
-        self.tow = 0
-        self.week = 0
+        self.tow = np.nan
+        self.week = np.nan
+
+        # create logger with 'spam_application'
+        logger = logging.getLogger(f'CID{self.cid}')
+        logger.setLevel(logging.DEBUG)
+        # create file handler which logs even debug messages
+        fh = logging.FileHandler(f'./.results/log_CID{self.cid}.log')
+        fh.setLevel(logging.DEBUG)
+        logger.addHandler(fh)
+
+        self.logger = logger
 
         return
     
@@ -129,14 +159,14 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             try:
                 rfData = self.rfQueue.get(timeout=TIMEOUT)
             except Empty:
-                logging.getLogger(__name__).debug(f"CID {self.cid} did not received data for {TIMEOUT} seconds, closing thread")
+                self.logger.debug(f"CID {self.cid} did not received data for {TIMEOUT} seconds, closing thread")
                 return
             
             if rfData is None:
-                logging.getLogger(__name__).debug(f"CID {self.cid} SIGTERM received, closing thread")
+                self.logger.debug(f"CID {self.cid} SIGTERM received, closing thread")
                 break
             # else:
-            #     logging.getLogger(__name__).debug(f"CID {self.cid} received RF Data {rfData}")
+            #    self.logger.debug(f"CID {self.cid} received RF Data {rfData}")
             
             # Load the data in the buffer
             self._updateBuffer(rfData)
@@ -147,9 +177,10 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             # Signal the main thread that processing is done.
             self.event.set()
 
+            self.send(ChannelCommunication.CHANNEL_UPDATE)
             self.send(ChannelCommunication.END_OF_PIPE)
 
-        logging.getLogger(__name__).debug(f"CID {self.cid} Exiting run") 
+        self.logger.debug(f"CID {self.cid} Exiting run") 
 
         return
 
@@ -158,7 +189,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
     def _processData(self):
 
         # Check channel state
-        logging.getLogger(__name__).debug(f"CID {self.cid} is in {self.state} state")
+        #self.logger.debug(f"CID {self.cid} is in {self.state} state")
 
         if self.state == ChannelState.IDLE:
             print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
@@ -192,7 +223,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             self.isAcquired = self.acquisition.isAcquired
 
             if self.isAcquired:
-                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} acquired")
+                self.logger.debug(f"CID {self.cid} satellite G{self.svid} acquired")
                 frequency, code = self.acquisition.getEstimation()
                 self.tracking.setInitialValues(frequency)
                 samplesRequired = self.tracking.getSamplesRequired()
@@ -205,11 +236,11 @@ class ChannelAbstract(ABC, multiprocessing.Process):
                 self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
 
             else:
-                logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
+                self.logger.debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
                 self.switchState(ChannelState.IDLE)
         
-        # Send to main program
-        self.send(ChannelCommunication.ACQUISITION_UPDATE, self.acquisition.getDatabaseDict())
+            # Send to main program
+            self.send(ChannelCommunication.ACQUISITION_UPDATE, self.acquisition.getDatabaseDict())
 
         return
 
@@ -285,7 +316,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             or commType == ChannelCommunication.TRACKING_UPDATE \
             or commType == ChannelCommunication.DECODING_UPDATE :
 
-            dictToSend["unprocessed_samples"] = self.unprocessedSamples
+            dictToSend["unprocessed_samples"] = int(self.unprocessedSamples)
             _packet = (commType, dictToSend)
         else:
             raise ValueError(f"Channel communication {commType} is not valid.")
@@ -320,7 +351,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
         # Set state to acquisition
         self.switchState(ChannelState.ACQUIRING)
 
-        logging.getLogger(__name__).debug(f"CID {self.cid} started with satellite G{self.svid}.")
+        self.logger.debug(f"CID {self.cid} started with satellite G{self.svid}.")
 
         return
 
