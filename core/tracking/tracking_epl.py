@@ -69,6 +69,8 @@ class Tracking(TrackingAbstract):
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
         
         self.correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.pll = 0.0
+        self.dll = 0.0
 
         self.time = np.arange(0, self.samplesRequired+2) / self.rfSignal.samplingFrequency
 
@@ -109,7 +111,7 @@ class Tracking(TrackingAbstract):
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
         
         # it will create a log of lines in the logfile if uncommented
-        #logging.getLogger(__name__).debug(f"svid={self.svid}, iprompt={iPrompt: 10.2f}, qprompt={iPrompt: 10.2f}, DLL={self.dll: 5.3f}, PLL={self.dll: 5.3f}")
+        logging.getLogger(__name__).debug(f"svid={self.svid}, iprompt={iPrompt: 10.2f}, qprompt={iPrompt: 10.2f}, DLL={self.dll: 5.3f}, PLL={self.dll: 5.3f}")
 
         return
 
@@ -195,19 +197,17 @@ class Tracking(TrackingAbstract):
             mdict (Dict): Information to be saved.
 
         """
-        
-        mdict = {
-            "i_early"           : self.correlatorResults[0],
-            "q_early"           : self.correlatorResults[1],
-            "i_prompt"          : self.correlatorResults[2],
-            "q_prompt"          : self.correlatorResults[3],
-            "i_late"            : self.correlatorResults[4],
-            "q_late"            : self.correlatorResults[5],
-            "dll"               : self.dll,
-            "pll"               : self.pll,
-            "carrier_frequency" : self.carrierFrequency,
-            "code_frequency"    : self.codeFrequency
-        }
+        mdict = super().getDatabaseDict()
+        mdict["i_early"]           = self.correlatorResults[0]
+        mdict["q_early"]           = self.correlatorResults[1]
+        mdict["i_prompt"]          = self.correlatorResults[2]
+        mdict["q_prompt"]          = self.correlatorResults[3]
+        mdict["i_late"]            = self.correlatorResults[4]
+        mdict["q_late"]            = self.correlatorResults[5]
+        mdict["dll"]               = self.dll
+        mdict["pll"]               = self.pll
+        mdict["carrier_frequency"] = self.carrierFrequency
+        mdict["code_frequency"]    = self.codeFrequency
 
         return mdict
     

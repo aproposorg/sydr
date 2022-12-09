@@ -67,6 +67,7 @@ class LNAV(NavigationMessageAbstract):
         self.tow = 0
         self.ephemeris = BRDCEphemeris()
         self.lastSubframeID = -1 
+        self.lastSubframeBits = None
 
         self.subframes = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0} # Contains the IODE of the lastest subframe received
 
@@ -199,6 +200,7 @@ class LNAV(NavigationMessageAbstract):
 
         subframeID = self.bin2dec(subframe[49:52])
         self.lastSubframeID = subframeID
+        self.lastSubframeBits = subframe
 
         eph = self.ephemeris
         # Identify the subframe
@@ -313,8 +315,9 @@ class LNAV(NavigationMessageAbstract):
         
         mdict = {
             "tow"        : self.ephemeris.tow, 
-            "suframe_id" : self.lastSubframeID,
-            "bits"       : self.bits[self.idxLastSubframe : self.idxLastSubframe + self.SUBFRAME_BITS]
+            "subframe_id" : self.lastSubframeID,
+            #"bits"       : self.bits[self.idxLastSubframe : self.idxLastSubframe + self.SUBFRAME_BITS]
+            "bits"       : self.lastSubframeBits
         }
 
         return mdict

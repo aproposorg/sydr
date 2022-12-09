@@ -6,19 +6,18 @@
 # References: 
 # =============================================================================
 # PACKAGES
-import copy
 import logging
 import pickle
 from datetime import datetime
 import math
 import time
-from turtle import color
 import numpy as np
 import configparser
 from enlighten import Manager
 from termcolor import colored
+import multiprocessing
 
-from core.channel.channel_abstract import ChannelAbstract, ChannelState
+from core.channel.channel_abstract import ChannelAbstract, ChannelState, ChannelCommunication
 from core.channel.channel_l1ca import ChannelL1CA
 from core.measurements import GNSSPosition, GNSSmeasurements
 from core.navigation.lse import LeastSquareEstimation
@@ -113,7 +112,6 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         # Channel parameters
         self.channels = []
-        self.channelsStates = [ChannelState.IDLE] *  self.nbChannels
         self.channelCounter = 0
 
         self.isClockInitialised = False
@@ -211,6 +209,12 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         
         # Update the last measurements
         self.updateDatabase()
+
+        # Close all the channel threads
+        for chan in self.channels:
+            chan.rfQueue.put("SIGTERM")
+        for chan in self.channels:
+            chan.join()
         
         return
 
@@ -221,8 +225,14 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Initialise the channels
         self.channelsPB = []
         for idx in range(min(self.nbChannels, len(self.satelliteList))):
+            
+            # Create object for communication between processes
+            _queue = multiprocessing.Queue() # The queue is for giving data to the channels
+            _event = multiprocessing.Event() # The event is for informing the main process that the data has been processed
+            _pipe  = multiprocessing.Pipe()  # The pipe is to send back the results from the threads. Pipe is a tuple of two connection (in, out)
+
             # Create channel
-            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0))
+            self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0, _queue, _event, _pipe))
             
             # Create GUI
             _tow = colored(" TOW ", 'white', 'on_red')
@@ -255,76 +265,70 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 # Set the satellite parameters in the channel
                 chan.setSatellite(svid, self.channelCounter)
 
-                self.addChannelDatabase(chan)
-                logging.getLogger(__name__).info(f"CID {chan.cid} started with satellite G{svid}.")
+                # State the channel
+                chan.start()
 
                 self.channelCounter += 1
-
+                self.addChannelDatabase(chan)
                 self.updateDatabase() 
             
             # Run channels
-            chan.run(rfData)
+            chan.rfQueue.put(rfData)
 
-            # GUI
-            _tow = colored(f" TOW: {chan.tow:6.0f}", 'white', 'on_green' if chan.isTOWDecoded else 'on_red')
-            _sf1 = colored("1", 'white', 'on_green' if chan.decoding.subframes[1] else 'on_red')
-            _sf2 = colored("2", 'white', 'on_green' if chan.decoding.subframes[2] else 'on_red')
-            _sf3 = colored("3", 'white', 'on_green' if chan.decoding.subframes[3] else 'on_red')
-            _sf4 = colored("4", 'white', 'on_green' if chan.decoding.subframes[4] else 'on_red')
-            _sf5 = colored("5", 'white', 'on_green' if chan.decoding.subframes[5] else 'on_red')
-            self.channelsPB[chan.cid].update(state=f"{chan.state}", prn=f'G{chan.svid:02d}', tow=_tow,\
-                sf1=_sf1, sf2=_sf2, sf3=_sf3, sf4=_sf4, sf5=_sf5)
+            self.updateChannelGUI(chan)
         return
 
     # -------------------------------------------------------------------------
 
     def _processChannels(self, msProcessed, sampleCounter):
         for chan in self.channels:
-            svid    = chan.svid
-            state   = chan.state
-            satellite = self.satelliteDict[svid]
-            if state == ChannelState.OFF:
-                continue
-            elif state == ChannelState.IDLE:
-                # Signal was not aquired
-                satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
-                logging.getLogger(__name__).info(f"CID {chan.cid} could not acquire satellite G{svid}.")    
-                pass
-            elif state == ChannelState.ACQUIRING:
-                if chan.isAcquired:
-                    self.addAcquisitionDatabase(chan)
-                    satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
-                    chan.switchState(ChannelState.TRACKING)
-                    logging.getLogger(__name__).info(f"CID {chan.cid} found satellite G{svid}, tracking started.")
-                    #print(f"Channel {chan.cid} found satellite G{svid}, tracking started.")    
-                else:
-                    # Buffer not full (most probably)
-                    pass
-            elif state == ChannelState.TRACKING:
-                self.addTrackingDatabase(chan)
+            while True:
+                channelPacket = chan.pipe[1].recv()
+                if channelPacket == ChannelCommunication.END_OF_PIPE:
+                    break
+                commType = channelPacket[0]
+                if commType == ChannelCommunication.ACQUISITION_UPDATE:
+                    logging.getLogger(__name__).info(f"CID {chan.cid} found satellite G{chan.svid}, tracking started.")
+                    self.addAcquisitionDatabase(chan.cid, channelPacket[1])
+                    continue
+                elif commType == ChannelCommunication.TRACKING_UPDATE:
+                    self.addTrackingDatabase(chan.cid, channelPacket[1])
+                    continue
+                elif commType == ChannelCommunication.DECODING_UPDATE:
+                    satellite = self.satelliteDict[chan.svid]
+                    satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'])
+                    chan.subframeFlags[channelPacket[1]['subframe_id']-1] = True
+                    self.addDecodingDatabase(chan.cid, channelPacket[1])
+                    continue
+                elif commType == ChannelCommunication.CHANNEL_UPDATE:
+                    chan.state            = channelPacket[1]
+                    chan.trackingFlags    = channelPacket[2]
+                    chan.week             = channelPacket[3]
+                    chan.tow              = channelPacket[4]
+                    chan.timeSinceLastTOW = channelPacket[5]
+                    if not np.isnan(chan.tow):
+                        chan.isTOWDecoded = True
+                    logging.getLogger(__name__).debug(f"CID {chan.cid} update : {channelPacket[1]} {channelPacket[2]} {channelPacket[3]} {channelPacket[4]} {channelPacket[5]}")  
+                
+                # satellite = self.satelliteDict[chan.svid]
+                # if chan.state == ChannelState.OFF:
+                #     continue
+                # elif chan.state == ChannelState.IDLE:
+                #     # Signal was not aquired
+                #     logging.getLogger(__name__).info(f"CID {chan.cid} could not acquire satellite G{chan.svid}.")    
+                #     pass
+                # elif chan.state == ChannelState.ACQUIRING:
+                #     # Nothing to do, we just pass
+                #     pass
+                # elif chan.state == ChannelState.TRACKING:
+                #     # Check if just switched from acquiring 
+                #     if chan.isAcquired:
+                #         pass
+                # else:
+                #     logging.getLogger(__name__).error(f"State {chan.state} in channel {chan.cid} is not a valid state.")
+                #     raise ValueError(f"State {chan.state} in channel {chan.cid} is not a valid state.")
 
-                # Signal is being tracked
-                satellite.addDSPMeasurement(msProcessed, sampleCounter, chan)
-
-                # Add navigation message
-                # TODO This pass a reference, maybe be it should be done only at init? 
-                satellite.addNavMessage(chan.decoding)
-
-                if chan.decoding.isNewSubframeFound:
-                    self.addDecodingDatabase(chan)
-                    chan.decoding.isNewSubframeFound = False
-
-                # Check if ephemeris decoded
-                if chan.isEphemerisDecoded:
-                    # Check if already saved
-                    if chan.decoding.ephemeris != satellite.getLastBRDCEphemeris():
-                        satellite.addBRDCEphemeris(chan.decoding.ephemeris)
-                 
-            else:
-                logging.getLogger(__name__).error("EOF encountered earlier than expected in I/Q file.")
-                raise ValueError(f"State {state} in channel {chan.cid} is not a valid state.")
-            
-            self.channelsStates[chan.cid] = state
+        #logging.getLogger(__name__).debug("Channels processed")
         return
     
     # -------------------------------------------------------------------------
@@ -335,7 +339,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         prnList = []
         selectedChannels = []
         for chan in self.channels:
-            if chan.isTOWDecoded and (chan.isEphemerisDecoded or self.isBRDCEphemerisAssited):
+            satellite = self.satelliteDict[chan.svid]
+            if chan.isTOWDecoded and (satellite.isEphemerisDecoded or self.isBRDCEphemerisAssited):
                 prnList.append(chan.svid)
                 selectedChannels.append(chan)
 
@@ -353,8 +358,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         maxTOW = -1
         for chan in selectedChannels:
             # This assumes all the channels were given the same number of samples to process
-            if maxTOW < chan.getTimeSinceTOW():
-                maxTOW = chan.getTimeSinceTOW()
+            if maxTOW < chan.timeSinceLastTOW:
+                maxTOW = chan.timeSinceLastTOW
                 earliestChannel = chan
         
         # Received time
@@ -374,7 +379,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             timeResidual = (self.receiverClock.absoluteTime - self.nextMeasurementTime).total_seconds()
             receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
             self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), receivedTime + self.measurementPeriod)
-            tow = earliestChannel.tow + earliestChannel.getTimeSinceTOW() / 1e3 - timeResidual
+            tow = earliestChannel.tow + earliestChannel.timeSinceLastTOW / 1e3 - timeResidual
         
         idx = 0
         gnssMeasurementsList = []
@@ -384,7 +389,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 satellite.addBRDCEphemeris(self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid))
 
             # Compute the time of transmission
-            relativeTime = (earliestChannel.getTimeSinceTOW() - chan.getTimeSinceTOW()) * 1e-3
+            relativeTime = (earliestChannel.timeSinceLastTOW - chan.timeSinceLastTOW) * 1e-3
             transmitTime = tow - relativeTime
 
             # Compute pseudoranges
@@ -544,6 +549,19 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
     # -------------------------------------------------------------------------
 
+    def addDSPToDatabase(self, channelID:int, results:dict):
+
+        # Add the mandatory values
+        results["channel_id"]   = channelID
+        results["time"]         = time.time()
+        results["time_sample"]  = float(self.sampleCounter - results["unprocessedSamples"])
+
+        self.database.addData("acquisition", results)
+
+        return
+
+    # -------------------------------------------------------------------------
+
     def addChannelDatabase(self, channel:ChannelAbstract):
         
         mdict = {
@@ -562,44 +580,39 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
     # -------------------------------------------------------------------------
 
-    def addAcquisitionDatabase(self, channel:ChannelAbstract):
-        mdict = channel.acquisition.getDatabaseDict()
+    def addAcquisitionDatabase(self, channelID:int, results:dict):
 
         # Add the mandatory values
-        mdict["channel_id"]   = channel.dbid
-        mdict["time"]         = time.time()
-        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
+        results["channel_id"]   = channelID
+        results["time"]         = time.time()
+        results["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
 
-        self.database.addData("acquisition", mdict)
+        self.database.addData("acquisition", results)
         return
 
     # -------------------------------------------------------------------------
 
-    def addTrackingDatabase(self, channel:ChannelAbstract):
-        
-        mdict = channel.tracking.getDatabaseDict()
+    def addTrackingDatabase(self, channelID:int, results:dict):
 
         # Add the mandatory values
-        mdict["channel_id"]   = channel.dbid
-        mdict["time"]         = time.time()
-        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
+        results["channel_id"]   = channelID
+        results["time"]         = time.time()
+        results["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
 
-        self.database.addData("tracking", mdict)
+        self.database.addData("tracking", results)
 
         return
 
     # -------------------------------------------------------------------------
 
-    def addDecodingDatabase(self, channel:ChannelAbstract):
-        
-        mdict = channel.decoding.getDatabaseDict()
+    def addDecodingDatabase(self, channelID:int, results:dict):
 
         # Add the mandatory values
-        mdict["channel_id"]   = channel.dbid
-        mdict["time"]         = time.time()
-        mdict["time_sample"]  = float(self.sampleCounter - channel.unprocessedSamples)
+        results["channel_id"]   = channelID
+        results["time"]         = time.time()
+        results["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
 
-        self.database.addData("decoding", mdict)
+        self.database.addData("decoding", results)
 
         return
 
@@ -652,7 +665,22 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             pickle.dump(self.satelliteDict, f, pickle.HIGHEST_PROTOCOL)
         return
 
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # GUI
+
+    def updateChannelGUI(self, chan:ChannelAbstract):
+        _tow = colored(f" TOW: {chan.tow:6.0f}", 'white', 'on_green' if chan.isTOWDecoded else 'on_red')
+        _sf1 = colored("1", 'white', 'on_green' if chan.subframeFlags[0] else 'on_red')
+        _sf2 = colored("2", 'white', 'on_green' if chan.subframeFlags[1] else 'on_red')
+        _sf3 = colored("3", 'white', 'on_green' if chan.subframeFlags[2] else 'on_red')
+        _sf4 = colored("4", 'white', 'on_green' if chan.subframeFlags[3] else 'on_red')
+        _sf5 = colored("5", 'white', 'on_green' if chan.subframeFlags[4] else 'on_red')
+        self.channelsPB[chan.cid].update(state=f"{chan.state}", prn=f'G{chan.svid:02d}', tow=_tow,\
+            sf1=_sf1, sf2=_sf2, sf3=_sf3, sf4=_sf4, sf5=_sf5)
+        
+
+        return
+
 
 
 

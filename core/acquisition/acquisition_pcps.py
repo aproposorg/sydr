@@ -205,13 +205,12 @@ class Acquisition(AcquisitionAbstract):
 
         """
         
-        mdict = {
-            "frequency"      : self.estimatedFrequency,
-            "code"           : self.estimatedCode,
-            "frequency_idx"  : self.idxEstimatedFrequency,
-            "code_idx"       : self.idxEstimatedCode,
-            "correlation_map": self.correlationMap
-        }
+        mdict = super().getDatabaseDict()
+        mdict["frequency"]      = self.estimatedFrequency
+        mdict["code"]           = self.estimatedCode
+        mdict["frequency_idx"]  = self.idxEstimatedFrequency
+        mdict["code_idx"]       = self.idxEstimatedCode
+        mdict["correlation_map"]= self.correlationMap
 
         return mdict
     

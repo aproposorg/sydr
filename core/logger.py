@@ -19,15 +19,12 @@ LEVEL_STYLE = {
     'critical': {'bold': True, 'color': 'red'}
 }
 
-def configureLogger(filepath):
+def configureLogger(name, filepath):
     fileConfig(filepath)
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(name)
 
-    coloredlogs.install(level='DEBUG', logger=logger, fmt=LOG_FORMAT, \
-        milliseconds=True, level_styles=LEVEL_STYLE, field_styles=FIELD_STYLE) 
+    coloredlogs.install(logger=logger, fmt=LOG_FORMAT, \
+        milliseconds=True, level_styles=LEVEL_STYLE, field_styles=FIELD_STYLE, level='info') 
     
-    logging.getLogger(__name__).info(f"SYDR program initialized, version {__version__}")
-
-
-    
+    logging.getLogger(name).info(f"SYDR program initialized, version {__version__}")

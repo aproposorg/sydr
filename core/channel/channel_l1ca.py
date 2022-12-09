@@ -6,7 +6,9 @@
 # References: 
 # =============================================================================
 # PACKAGES
+import multiprocessing
 import numpy as np
+from logging import Logger
 from core.signal.gnsssignal import GNSSSignal
 from core.decoding.message_lnav import LNAV
 from core.signal.rfsignal import RFSignal
@@ -17,12 +19,15 @@ from core.utils.circularbuffer import CircularBuffer
 # =============================================================================
 
 class ChannelL1CA(ChannelAbstract):
-    def __init__(self, cid:int, gnssSignal:GNSSSignal, rfSignal:RFSignal, timeInSamples):
-        super().__init__(cid, rfSignal, gnssSignal, timeInSamples)
+    def __init__(self, cid:int, gnssSignal:GNSSSignal, rfSignal:RFSignal, timeInSamples:int, \
+        queue:multiprocessing.Queue, event:multiprocessing.Event, pipe):
+        super().__init__(cid, rfSignal, gnssSignal, timeInSamples, queue, event, pipe)
 
         self.acquisition = Acquisition(self.rfSignal, self.gnssSignal)
         self.tracking    = Tracking(self.rfSignal, self.gnssSignal)
         self.decoding    = LNAV()
+
+        self.subframeFlags = [False, False, False, False, False]
 
         self.dataRequiredAcquisition = int(self.gnssSignal.codeMs * \
             self.acquisition.nonCohIntegration * \

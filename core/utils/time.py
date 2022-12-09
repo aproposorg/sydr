@@ -14,6 +14,7 @@ class Time(object):
 
     def __init__(self):
         self.datetime = datetime(1970,1,1,0,0,0)
+        self.gpsTime = GPSTime.from_datetime(self.datetime)
         return
     
     def __repr__(self):

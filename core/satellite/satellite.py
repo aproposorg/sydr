@@ -38,7 +38,8 @@ class Satellite(ABC):
         self.isEphemerisDecoded = False
 
         self.ephemeris = []
-        self.lastBRDCEphemeris = BRDCEphemeris()
+        self.partialEphemeris = BRDCEphemeris()
+        self.subframes = []
         
         return
 
@@ -46,44 +47,18 @@ class Satellite(ABC):
 
     def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
         self.ephemeris.append(ephemeris)
-        self.lastBRDCEphemeris = ephemeris
+        self.isEphemerisDecoded = True
         return
-
+    
     # -------------------------------------------------------------------------
 
-    def getLastBRDCEphemeris(self):
-        return self.lastBRDCEphemeris
-
-    # -------------------------------------------------------------------------
-
-    def addNavMessage(self, navMessage:NavigationMessageAbstract):
-        self.navMessages[navMessage.type] = navMessage
+    def addSubframe(self, subframeID:int, subframeBits:np.array):
+        self.subframes.append((subframeID, subframeBits))
+        self.partialEphemeris.fromSubframeBits(subframeBits)
+        if self.partialEphemeris.checkFlags():
+            self.addBRDCEphemeris(self.partialEphemeris)
+            self.partialEphemeris = BRDCEphemeris()
         return
-
-    # -------------------------------------------------------------------------
-
-    def selectNavMessage(self, sig):
-        if sig == GNSSSignalType.GPS_L1_CA:
-            return LNAV()
-        else:
-            raise ValueError("Incorrect signal type.")
-
-    # -------------------------------------------------------------------------
-
-    def isSatelliteReady(self):
-        
-        ready = True
-
-        # Check if TOW found
-        ready = ready and self.isTOWDecoded
-
-        # Check if ephemeris available
-        ready = ready and self.isEphemerisDecoded
-
-        # Check if satellite flag as healthy 
-        # TODO
-
-        return ready
 
     # =========================================================================
 

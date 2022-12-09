@@ -32,7 +32,7 @@ def main():
                                     position=1)
 
     # Initialisation
-    logger.configureLogger(loggingConfigFile)
+    logger.configureLogger(name=__name__, filepath=loggingConfigFile)
     status_bar.update(stage='Initialize', status='RUNNING')
     
     rfSignal = RFSignal(rfConfigFile)
