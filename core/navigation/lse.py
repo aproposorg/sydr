@@ -1,5 +1,6 @@
 
 import numpy as np
+import logging
 
 class LeastSquareEstimation:
     
@@ -45,7 +46,11 @@ class LeastSquareEstimation:
 
         N = np.transpose(self.G).dot(self.G)
         C = np.transpose(self.G).dot(self.y)
-        dX = np.linalg.inv(N).dot(C)
+        try:
+            dX = np.linalg.inv(N).dot(C)
+        except np.linalg.LinAlgError:
+            logging.getLogger(__name__).warning("Singular matrix found during navigation solution computation.")
+            return False
         
         self.x = self.x + dX             # Update state
         self.v = self.G.dot(dX) - self.y # Update residuals
@@ -54,7 +59,7 @@ class LeastSquareEstimation:
         self.Qv = self.Ql - self.G.dot(self.Qx).dot(np.transpose(self.G))
         self.Ql = self.Ql - self.Qv
 
-        return
+        return True
 
     # -------------------------------------------------------------------------
     

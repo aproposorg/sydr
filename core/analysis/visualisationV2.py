@@ -94,7 +94,7 @@ class VisualisationV2:
 
         # Fetch satellite list
         channelList = self.database.fetchTable('channel')
-        satelliteList = {f"{channel['satellite_id']}":channel["id"] for channel in channelList}
+        satelliteList = {f"{channel['satellite_id']}":channel["physical_id"] for channel in channelList}
         checkboxes_prn = pn.widgets.ToggleGroup(options=satelliteList, behavior='radio', button_type="success", width=200)
 
         selections = pn.Column('### Satellites and signals', checkboxes_prn)
@@ -103,7 +103,7 @@ class VisualisationV2:
         # Function definition for result handling
         @pn.depends(checkboxes_prn.param.value)
         def tabs(channelID):
-
+            
             acqLayout   = self._getAcquisitionLayout(channelID)
             trackLayout = self._getTrackingLayout(channelID)
             measLayout  = self._getGNSSMeasurementLayout(channelID)
@@ -591,8 +591,8 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             y_range=Range1d(-50, 50))
-        figEast.line(x='timeSample', y='east', source=source, line_width=lineWidth)
-        figEast.scatter(x='timeSample', y='east', source=source, marker='dot')
+        figEast.line(x='time', y='east', source=source, line_width=lineWidth)
+        figEast.scatter(x='time', y='east', source=source, marker='dot')
         figEast.yaxis.axis_label = "East [m]"
         figEast.xaxis.axis_label = "Time [s]"
         figEast.title.text_font_size = titleFontSize
@@ -607,8 +607,8 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             y_range=Range1d(-50, 50))
-        figNorth.line(x='timeSample', y='north', source=source, line_width=lineWidth)
-        figNorth.scatter(x='timeSample', y='north', source=source, marker='dot')
+        figNorth.line(x='time', y='north', source=source, line_width=lineWidth)
+        figNorth.scatter(x='time', y='north', source=source, marker='dot')
         figNorth.yaxis.axis_label = "North [m]"
         figNorth.xaxis.axis_label = "Time [s]"
         figNorth.title.text_font_size = titleFontSize
@@ -623,8 +623,8 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             y_range=Range1d(-50, 50))
-        figUp.line(x='timeSample', y='up', source=source, line_width=lineWidth)
-        figUp.scatter(x='timeSample', y='up', source=source, marker='dot')
+        figUp.line(x='time', y='up', source=source, line_width=lineWidth)
+        figUp.scatter(x='time', y='up', source=source, marker='dot')
         figUp.yaxis.axis_label = "Up [m]"
         figUp.xaxis.axis_label = "Time [s]"
         figUp.title.text_font_size = titleFontSize

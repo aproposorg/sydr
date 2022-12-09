@@ -44,7 +44,7 @@ RECEIVER_BAR_FORMAT = u'{desc}{desc_pad}[{state:^10}] {percentage:3.0f}%|{bar}| 
 RECEIVER_STATUS_FORMAT = u'{receiver} {fill} ' + \
                          u'X: {x:12.4f} (\u03C3: {sx: .4f}) ' + \
                          u'Y: {y:12.4f} (\u03C3: {sy: .4f}) ' + \
-                         u'Z: {z:12.4f} (\u03C3: {sy: .4f}) ' + \
+                         u'Z: {z:12.4f} (\u03C3: {sz: .4f}) ' + \
                          u'{fill}{datetime} (GPS Time: {gpstime})'
 
 
@@ -131,6 +131,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
 
         self.receiverState = ReceiverState.IDLE
 
+        self.deactivatedSatellites = []
+
         logging.getLogger(__name__).info(f"Receiver {self.name} initialized.")
         return
 
@@ -185,6 +187,9 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             # Handle channels results
             self._processChannels(msProcessed, self.sampleCounter)
 
+            if self.receiverClock.absoluteTime.getGPSSeconds() > 203999.9:
+                i = 1
+
             # Compute measurements based on receiver time
             if not self.receiverClock.isInitialised:
                 # First time we run it to estimate receiver clock error
@@ -215,6 +220,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             chan.rfQueue.put("SIGTERM")
         for chan in self.channels:
             chan.join()
+
+        logging.getLogger(__name__).info(f"Processing in receiver {self.name} ended.")
         
         return
 
@@ -234,6 +241,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             # Create channel
             self.channels.append(ChannelL1CA(idx, self.gnssSignal, self.rfSignal, 0, _queue, _event, _pipe))
             
+            self.channels[-1].hasPreviousMeasurement = False
+
             # Create GUI
             _tow = colored(" TOW ", 'white', 'on_red')
             _sf1 = colored("1", 'white', 'on_red')
@@ -308,27 +317,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     chan.timeSinceLastTOW = channelPacket[5]
                     if not np.isnan(chan.tow):
                         chan.isTOWDecoded = True
-                    logging.getLogger(__name__).debug(f"CID {chan.cid} update : {channelPacket[1]} {channelPacket[2]} {channelPacket[3]} {channelPacket[4]} {channelPacket[5]}")  
-                
-                # satellite = self.satelliteDict[chan.svid]
-                # if chan.state == ChannelState.OFF:
-                #     continue
-                # elif chan.state == ChannelState.IDLE:
-                #     # Signal was not aquired
-                #     logging.getLogger(__name__).info(f"CID {chan.cid} could not acquire satellite G{chan.svid}.")    
-                #     pass
-                # elif chan.state == ChannelState.ACQUIRING:
-                #     # Nothing to do, we just pass
-                #     pass
-                # elif chan.state == ChannelState.TRACKING:
-                #     # Check if just switched from acquiring 
-                #     if chan.isAcquired:
-                #         pass
-                # else:
-                #     logging.getLogger(__name__).error(f"State {chan.state} in channel {chan.cid} is not a valid state.")
-                #     raise ValueError(f"State {chan.state} in channel {chan.cid} is not a valid state.")
+                    #logging.getLogger(__name__).debug(f"CID {chan.cid} update : {channelPacket[1]} {channelPacket[2]} {channelPacket[3]} {channelPacket[4]} {channelPacket[5]}")  
 
-        #logging.getLogger(__name__).debug("Channels processed")
         return
     
     # -------------------------------------------------------------------------
@@ -340,7 +330,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         selectedChannels = []
         for chan in self.channels:
             satellite = self.satelliteDict[chan.svid]
-            if chan.isTOWDecoded and (satellite.isEphemerisDecoded or self.isBRDCEphemerisAssited):
+            if chan.isTOWDecoded \
+                and (satellite.isEphemerisDecoded or self.isBRDCEphemerisAssited):
                 prnList.append(chan.svid)
                 selectedChannels.append(chan)
 
@@ -348,7 +339,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # This is to avoid rank deficiency in matrices.
         prnList = set(prnList) 
         
-        if len(prnList) < 5:
+        if len(prnList) < len(self.channels):
             # Not enough satellites
             self.receiverState = ReceiverState.INIT
             return
@@ -361,6 +352,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             if maxTOW < chan.timeSinceLastTOW:
                 maxTOW = chan.timeSinceLastTOW
                 earliestChannel = chan
+        
+        logging.getLogger(__name__).debug(f"SVID {earliestChannel.svid}, max TOW {maxTOW}")
         
         # Received time
         if not self.receiverClock.isInitialised:
@@ -380,13 +373,17 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
             self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), receivedTime + self.measurementPeriod)
             tow = earliestChannel.tow + earliestChannel.timeSinceLastTOW / 1e3 - timeResidual
+
+            logging.getLogger(__name__).debug(f"Week {week}, time residual {timeResidual}, received time {receivedTime}, tow {tow}")
         
         idx = 0
         gnssMeasurementsList = []
         for chan in selectedChannels:
+            isPseudorangeValid = True
             satellite = self.satelliteDict[chan.svid]
             if self.isBRDCEphemerisAssited:
-                satellite.addBRDCEphemeris(self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid))
+                satellite.lastBRDCEphemeris = self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid)
+                #satellite.addBRDCEphemeris(self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid))
 
             # Compute the time of transmission
             relativeTime = (earliestChannel.timeSinceLastTOW - chan.timeSinceLastTOW) * 1e-3
@@ -396,15 +393,34 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             # TODO add remaining phase
             pseudoranges = (receivedTime - transmitTime) * SPEED_OF_LIGHT
 
-            # Compute satellite positions and clock errors
+            # Compute satellite positions and clock errorsW
             satellitePosition, satelliteClock = satellite.computePosition(transmitTime)
 
             # Apply corrections
             # TODO Ionosphere, troposhere ...
             correctedPseudoranges  = pseudoranges
             correctedPseudoranges += satelliteClock * SPEED_OF_LIGHT # Satellite clock error
-            correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT    # Total Group Delay (TODO this is frequency dependant)
+            correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT  # Total Group Delay (TODO this is frequency dependant)
 
+            logging.getLogger(__name__).debug(f"SVID {chan.svid}, timeSinceLastTOW {chan.timeSinceLastTOW}, relativeTime {relativeTime}, transmitTime {transmitTime}, pseudoranges {pseudoranges}, correctedPseudoranges {correctedPseudoranges}")
+            #logging.getLogger(__name__).debug(f"SVID {chan.svid}, IODE {satellite.lastBRDCEphemeris.iode}, satellitePosition {satellitePosition}, satelliteClock {satelliteClock}")
+
+            # Check if measurement looks correct
+            if not chan.hasPreviousMeasurement:
+                chan.prevRelativeTime = relativeTime
+                chan.hasPreviousMeasurement = True
+            else:
+                chan.prevRelativeTime = chan.relativeTime
+            chan.relativeTime = relativeTime
+
+            # if np.abs(chan.relativeTime - chan.prevRelativeTime) > 10e-5:
+            #     logging.getLogger(__name__).warning(f"CID {chan.cid} SVID {chan.svid} Large difference ({np.abs(chan.relativeTime - chan.prevRelativeTime)}) in TOW compare to previous epoch, measurement discarded.")
+            #     isPseudorangeValid = False
+            #     self.deactivatedSatellites.append(chan.svid)
+
+            # if chan.svid in self.deactivatedSatellites:
+            #     isPseudorangeValid = False
+            
             # Pseudorange
             if self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE]:
                 gnssMeasurements = GNSSmeasurements()
@@ -414,7 +430,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 gnssMeasurements.value    = correctedPseudoranges
                 gnssMeasurements.rawValue = pseudoranges
                 gnssMeasurements.residual = 0.0
-                gnssMeasurements.enabled  = True
+                gnssMeasurements.enabled  = isPseudorangeValid
                 gnssMeasurementsList.append(gnssMeasurements)
 
             # Doppler
@@ -432,34 +448,20 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             idx += 1
         
         # Compute position and measurements
-        self.computeReceiverPosition(receivedTime, gnssMeasurementsList)
-
-        # Update the receiver position
-        state = self.navigation.x
-        statePrecision = self.navigation.getStatePrecision()
-        self.receiverPosition.time = Time.fromGPSTime(week, receivedTime)
-        self.receiverPosition.coordinate.setCoordinates(state[0], state[1], state[2])
-        self.receiverPosition.coordinate.setPrecision(statePrecision[0], statePrecision[1], statePrecision[2])
-        self.receiverPosition.clockError = self.navigation.x[3]
-        self.receiverPosition.id += 1
-
-        # Update receiver clock
-        self.receiverClock.absoluteTime.applyCorrection(-self.receiverPosition.clockError / SPEED_OF_LIGHT)
-
-        self.addPositionDatabase(self.receiverPosition, gnssMeasurementsList)
-        self.measurementTimeList.append(receivedTime)
+        self.computeReceiverPosition(week, receivedTime, gnssMeasurementsList)
         
         coord = self.receiverPosition.coordinate
         logging.getLogger(__name__).info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
         logging.getLogger(__name__).debug(f"Position=({coord.x:12.4f} {coord.y:12.4f} {coord.z:12.4f}), precision=({coord.xPrecison:8.4f} {coord.yPrecison:8.4f} {coord.zPrecison:8.4f})")
         logging.getLogger(__name__).debug(f"Clock error={self.receiverPosition.clockError: 12.4f}")
         logging.getLogger(__name__).debug(f"Receiver clock : ({self.receiverClock.absoluteTime.gpsTime.week_number} {self.receiverClock.absoluteTime.gpsTime.seconds} {self.receiverClock.absoluteTime.gpsTime.femtoseconds})")
-
+        logging.getLogger(__name__).debug(f"-------------------------------")
+        
         return
 
     # -------------------------------------------------------------------------
 
-    def computeReceiverPosition(self, time, measurements):
+    def computeReceiverPosition(self, week, time, measurements):
         
         nbMeasurements = len(measurements)
         G = np.zeros((nbMeasurements, 4))
@@ -513,8 +515,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             self.navigation.W = W
             self.navigation.Ql = Ql
 
-            self.navigation.compute()
-
+            sucess = self.navigation.compute()
+        
         # Correct after minimisation
         idx = 0
         for meas in measurements:
@@ -527,10 +529,23 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             if meas.enabled:
                 self.receiverPosition.measurements.append(meas)
             
-            logging.getLogger(__name__).debug(f"CID {meas.channel.cid} {meas.mtype:11} {meas.value:13.4f} (residual: {meas.residual: .4f}, enabled: {meas.enabled})")
+            logging.getLogger(__name__).debug(f"CID {meas.channel.cid} SVID {meas.channel.svid:02d} {meas.mtype:11} {meas.value:13.4f} (residual: {meas.residual: .4f}, enabled: {meas.enabled})")
 
             idx += 1
 
+        if sucess:
+            state = self.navigation.x
+            statePrecision = self.navigation.getStatePrecision()
+            self.receiverPosition.time = Time.fromGPSTime(week, time)
+            self.receiverPosition.coordinate.setCoordinates(state[0], state[1], state[2])
+            self.receiverPosition.coordinate.setPrecision(statePrecision[0], statePrecision[1], statePrecision[2])
+            self.receiverPosition.clockError = self.navigation.x[3]
+            self.receiverPosition.id += 1
+
+            self.receiverClock.absoluteTime.applyCorrection(-self.receiverPosition.clockError / SPEED_OF_LIGHT)
+            self.addPositionDatabase(self.receiverPosition, measurements)
+            self.measurementTimeList.append(time)
+        
         return
     
     # -------------------------------------------------------------------------
