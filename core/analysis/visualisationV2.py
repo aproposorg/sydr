@@ -1,6 +1,5 @@
 
 from datetime import datetime
-from http.client import REQUESTED_RANGE_NOT_SATISFIABLE
 import logging
 import numpy as np
 import configparser
@@ -580,6 +579,7 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools)
         figEN.scatter(x='east', y='north', source=source, size=30, marker='dot')
+        figEN.scatter(x=np.average(enu[:,0]), y=np.average(enu[:,1]), size=30, fill_color='red')
         figEN.yaxis.axis_label = "North [m]"
         figEN.xaxis.axis_label = "East [m]"
         
@@ -590,7 +590,8 @@ class VisualisationV2:
             title="East", \
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
-            y_range=Range1d(-50, 50))
+            y_range=Range1d(-50, 50),
+            x_axis_type='datetime')
         figEast.line(x='time', y='east', source=source, line_width=lineWidth)
         figEast.scatter(x='time', y='east', source=source, marker='dot')
         figEast.yaxis.axis_label = "East [m]"
@@ -606,7 +607,8 @@ class VisualisationV2:
             title="North",\
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
-            y_range=Range1d(-50, 50))
+            y_range=Range1d(-50, 50),
+            x_axis_type='datetime')
         figNorth.line(x='time', y='north', source=source, line_width=lineWidth)
         figNorth.scatter(x='time', y='north', source=source, marker='dot')
         figNorth.yaxis.axis_label = "North [m]"
@@ -622,7 +624,8 @@ class VisualisationV2:
             title="Up",\
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
-            y_range=Range1d(-50, 50))
+            y_range=Range1d(-50, 50),
+            x_axis_type='datetime')
         figUp.line(x='time', y='up', source=source, line_width=lineWidth)
         figUp.scatter(x='time', y='up', source=source, marker='dot')
         figUp.yaxis.axis_label = "Up [m]"
