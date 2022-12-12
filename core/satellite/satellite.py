@@ -48,6 +48,7 @@ class Satellite(ABC):
     def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
         self.ephemeris.append(ephemeris)
         self.isEphemerisDecoded = True
+        self.lastBRDCEphemeris = ephemeris
         return
     
     # -------------------------------------------------------------------------
@@ -73,7 +74,7 @@ class Satellite(ABC):
             satellitePosition : numpy.array(3)
             Satellite position in ECEF 
         """        
-        eph = self.ephemeris[-1]
+        eph = self.lastBRDCEphemeris
 
         # Compute difference between current time and orbit reference time
         # Check for week rollover at the same time
@@ -126,7 +127,7 @@ class Satellite(ABC):
         return satellitePosition, satelliteClockCorrection
 
     def getTGD(self):
-        return self.ephemeris[-1].tgd
+        return self.lastBRDCEphemeris.tgd
     
     @staticmethod
     def timeCheck(time):

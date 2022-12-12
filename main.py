@@ -1,5 +1,4 @@
 
-import logging
 import enlighten
 
 from core.analysis.visualisationV2 import VisualisationV2

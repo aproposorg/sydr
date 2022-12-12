@@ -25,7 +25,7 @@ from enum import Enum, unique
 from core.utils.circularbuffer import CircularBuffer
 import core.logger as logger
 
-TIMEOUT = 120 # Seconds
+TIMEOUT = 60 # Seconds
 
 # =============================================================================
 class ChannelConfig:
@@ -162,7 +162,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
                 self.logger.debug(f"CID {self.cid} did not received data for {TIMEOUT} seconds, closing thread")
                 return
             
-            if rfData is None:
+            if rfData is "SIGTERM":
                 self.logger.debug(f"CID {self.cid} SIGTERM received, closing thread")
                 break
             # else:
@@ -291,7 +291,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             self.isEphemerisDecoded = True
             self.week = self.decoding.weekNumber
 
-        if self.decoding.isTOWDecoded and self.tow != self.decoding.tow:
+        if self.decoding.isTOWDecoded and np.isnan(self.tow):
             self.isTOWDecoded = True
             self.tow = self.decoding.tow
             self.codeSinceLastTOW = 0
