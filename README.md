@@ -1,7 +1,5 @@
 # SyDR
 
-[![License: Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0)]
-
 SyDR is an open-source Software Defined Radio (SDR) for GNSS processing developed in Python. SyDR's goal is to provide a controlled environment for testing new processing algorithms, for benchmarking purposes.
 
 The software is still at the very early development stages, with limited testing of the software functionalities. Issues and bugs are to be expected with the current version. 
