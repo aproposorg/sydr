@@ -16,3 +16,7 @@ It is recommand to create a python virtual environement after cloning the direct
 To install the different libraries required, use the `pip` command line with the `requirements.txt`. 
 
 `pip install -r requirements.txt`
+
+# Documentation 
+
+TBD
