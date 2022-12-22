@@ -1,3 +1,5 @@
+[![Documentation Status](https://readthedocs.org/projects/sydr/badge/?version=latest)](https://sydr.readthedocs.io/en/latest/?badge=latest)
+
 # SyDR
 
 SyDR is an open-source Software Defined Radio (SDR) for GNSS processing developed in Python. SyDR's goal is to provide a controlled environment for testing new processing algorithms, for benchmarking purposes.
