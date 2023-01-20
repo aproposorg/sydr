@@ -52,6 +52,9 @@ class TrackingAbstract(ABC):
     pll : float
     dll : float
 
+    samplesRequired : int
+    time : np.array
+
     # -------------------------------------------------------------------------
 
     @abstractmethod
@@ -62,6 +65,14 @@ class TrackingAbstract(ABC):
 
         self.rfSignal  = rfSignal
         self.gnssSignal = gnssSignal
+
+        self.remCodePhase = 0.0
+
+        self.codeFrequency   = self.gnssSignal.codeFrequency
+        self.codePhaseStep   = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
+        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.remCodePhase) / self.codePhaseStep))
+
+        self.time = np.arange(0, self.samplesRequired+2) / self.rfSignal.samplingFrequency
 
         return
     
