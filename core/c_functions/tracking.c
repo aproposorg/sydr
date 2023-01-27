@@ -14,18 +14,31 @@ void readValues(complex double * rfdata, int rfsize){
 
 // --------------------------------------------------------------------------------------------------------------------
 
-void generateReplica(double* time, int size_time, int samplesRequired, float carrierFrequency, 
-                                float remCarrierPhase, complex double* replica){
+void generateReplica(double* time, int size_time, 
+                    int samplesRequired, 
+                    float carrierFrequency, 
+                    float remCarrierPhase, complex double* replica){
     
     float tmp = 0.0;
     for(int i=0; i < size_time; i++){
         tmp = -(carrierFrequency * 2.0 * PI * time[i]) + remCarrierPhase;
         //replica[i] = cexp(tmp * I);
     }
+
     return;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+void getCorrelator(int* code,
+                   int samplesRequired, 
+                   float remCarrierPhase, 
+                   float correlatorSpacing){
+    
+    
+
+
+}
 
 
 
