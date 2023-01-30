@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <math.h>
 #include <complex.h>
 
 // GPS' definition of Pi
@@ -22,7 +23,7 @@ void generateReplica(double* time, int size_time,
     float tmp = 0.0;
     for(int i=0; i < size_time; i++){
         tmp = -(carrierFrequency * 2.0 * PI * time[i]) + remCarrierPhase;
-        //replica[i] = cexp(tmp * I);
+        replica[i] = cexp(tmp * I);
     }
 
     return;
@@ -30,14 +31,43 @@ void generateReplica(double* time, int size_time,
 
 // --------------------------------------------------------------------------------------------------------------------
 
-void getCorrelator(int* code,
-                   int samplesRequired, 
-                   float remCarrierPhase, 
-                   float correlatorSpacing){
-    
-    
+/*
+@brief Perform a correlation operation between the code and I/Q signal.
+@param iSignal           Array with the real part of the signal.
+@param qSignal           Array with the imaginary part of the signal.
+@param code              Array with the PRN code.
+@param size              Size of the arrays (iSignal, qSignal, code, iCorr, qCorr).
+@param codeStep          The step size between the code frequency and the sampling frequency.
+@param remCodePhase      Remaining code phase from last loop.
+@param correlatorSpacing Correlator spacing in code chip.
+@param iCorr             Array with correlation result for the real part.
+@param qCorr             Array with correlation result for the imaginary part.
+@return void.
+*/
+void getCorrelator(float* iSignal,
+                   float* qSignal,
+                   int* code,
+                   int size, // samplesRequired
+                   float codeStep,
+                   float remCodePhase, 
+                   float correlatorSpacing,
+                   float* iCorr,
+                   float* qCorr){
 
+    int codeIdx = 0;
+    
+    float start = remCodePhase + correlatorSpacing;
+    float stop = size * codeStep + remCodePhase + correlatorSpacing;
+    float step = (stop - start) / size;
 
+    for(int idx=0; idx < size; idx++){
+        codeIdx = ceil(start + step * idx);
+
+        iCorr[idx] = code[codeIdx] * iSignal[idx];
+        qCorr[idx] = code[codeIdx] * qSignal[idx];
+    }
+
+    return;
 }
 
 
