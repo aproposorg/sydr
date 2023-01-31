@@ -1,6 +1,7 @@
 # Don't track this
 *.png
 *.eps
+*.so
 __pycache__/
 .results/
 .venv/
