@@ -96,10 +96,15 @@ class Tracking(TrackingEPL):
                                               ndpointer(ctypes.c_double)]
         self._getLoopCoefficients.restype = None
 
+        return
+
     # -------------------------------------------------------------------------
     # METHODS
 
     def getCorrelator(self, correlatorSpacing):
+        """
+        TODO
+        """
         iCorr, qCorr = np.empty((1,)), np.empty((1,))
         self._getCorrelator(np.ascontiguousarray(self.iSignal), np.ascontiguousarray(self.qSignal),\
                             np.ascontiguousarray(self.code), len(self.code), self.codePhaseStep,\
@@ -109,6 +114,9 @@ class Tracking(TrackingEPL):
     # -------------------------------------------------------------------------
 
     def generateReplica(self):
+        """
+        TODO
+        """
         remCarrierPhase, replica = np.empty((1,)), np.empty((self.samplesRequired,), dtype='complex128')
         self._generateReplica(np.ascontiguousarray(self.time[:self.samplesRequired+1]), self.samplesRequired,\
                               self.carrierFrequency, self.remCarrierPhase, remCarrierPhase,\
@@ -119,6 +127,9 @@ class Tracking(TrackingEPL):
     # -------------------------------------------------------------------------
 
     def run(self, rfData):
+        """
+        TODO
+        """
         replica = self.generateReplica()
         iSignal, qSignal = np.empty((len(replica),)), np.empty((len(replica),))
         self._generateCarrier(np.ascontiguousarray(rfData), np.ascontiguousarray(replica), len(rfData),\
@@ -155,6 +166,9 @@ class Tracking(TrackingEPL):
     # -------------------------------------------------------------------------
 
     def delayLockLoop(self, iEarly, qEarly, iLate, qLate):
+        """
+        TODO
+        """
         codeNCO, codeError, codeFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
         self._delayLockLoop(iEarly, qEarly, iLate, qLate, self.dllTau1, self.dllTau2,\
                             self.pdiCode, self.codeNCO, self.codeError, self.gnssSignal.codeFrequency,\
@@ -168,6 +182,9 @@ class Tracking(TrackingEPL):
     # -------------------------------------------------------------------------
 
     def phaseLockLoop(self, iPrompt, qPrompt):
+        """
+        TODO
+        """
         carrierNCO, carrierError, carrierFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
         self._phaseLockLoop(iPrompt, qPrompt, self.pllTau1, self.pllTau2, self.pdiCarrier,\
                             self.carrierNCO, self.carrierError, self.initialFrequency,\
@@ -176,19 +193,17 @@ class Tracking(TrackingEPL):
         self.carrierError = carrierError[0]
         self.carrierFrequency = carrierFrequency[0]
         self.pll = self.carrierNCO
-        pass
+        return
 
     # -------------------------------------------------------------------------
 
     def getLoopCoefficients(self, loopNoiseBandwidth, dumpingRatio, loopGain):
+        """
+        TODO
+        """
         tau1, tau2 = np.empty((1,)), np.empty((1,))
         self._getLoopCoefficients(loopNoiseBandwidth, dumpingRatio, loopGain, tau1, tau2)
         return tau1[0], tau2[0]
-
-    # -------------------------------------------------------------------------
-
-    def getLoopCoefficients(self, loopNoiseBandwidth, dumpingRatio, loopGain):
-        return super().getLoopCoefficients(loopNoiseBandwidth, dumpingRatio, loopGain)
 
     # -------------------------------------------------------------------------
 
@@ -202,5 +217,3 @@ class Tracking(TrackingEPL):
 
     # -------------------------------------------------------------------------
     # END OF CLASS
-
-
