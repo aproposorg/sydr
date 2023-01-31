@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <complex.h>
 
@@ -15,16 +16,29 @@ void readValues(complex double * rfdata, int rfsize){
 
 // --------------------------------------------------------------------------------------------------------------------
 
-void generateReplica(double* time, int size_time, 
-                    int samplesRequired, 
-                    float carrierFrequency, 
-                    float remCarrierPhase, complex double* replica){
-    
-    float tmp = 0.0;
-    for(int i=0; i < size_time; i++){
-        tmp = -(carrierFrequency * 2.0 * PI * time[i]) + remCarrierPhase;
-        replica[i] = cexp(tmp * I);
+/*
+@brief
+@param 
+@return void.
+*/
+void generateReplica(double* time,
+                     size_t samplesRequired,
+                     double carrierFrequency,
+                     double remCarrierPhase,
+                     double* r_remCarrierPhase,
+                     complex double* r_replica) 
+{
+
+    double temp;
+
+    for (size_t i=0; i < samplesRequired; i++)
+    {
+        temp = -(carrierFrequency * 2.0 * PI * time[i]) + remCarrierPhase;
+        r_replica[i] = cexp(I * temp);
     }
+    temp = -(carrierFrequency * 2.0 * PI * time[samplesRequired]) + remCarrierPhase;
+
+    *r_remCarrierPhase = fmod(temp, 2*PI);
 
     return;
 }
@@ -40,31 +54,33 @@ void generateReplica(double* time, int size_time,
 @param codeStep          The step size between the code frequency and the sampling frequency.
 @param remCodePhase      Remaining code phase from last loop.
 @param correlatorSpacing Correlator spacing in code chip.
-@param iCorr             Array with correlation result for the real part.
-@param qCorr             Array with correlation result for the imaginary part.
+@param r_iCorr             Array with correlation result for the real part.
+@param r_qCorr             Array with correlation result for the imaginary part.
 @return void.
 */
-void getCorrelator(float* iSignal,
-                   float* qSignal,
+void getCorrelator(double* iSignal,
+                   double* qSignal,
                    int* code,
-                   int size, // samplesRequired
-                   float codeStep,
-                   float remCodePhase, 
-                   float correlatorSpacing,
-                   float* iCorr,
-                   float* qCorr){
+                   size_t size, // samplesRequired
+                   double codeStep,
+                   double remCodePhase, 
+                   double correlatorSpacing,
+                   double* r_iCorr,
+                   double* r_qCorr)
+{
 
-    int codeIdx = 0;
+    size_t codeIdx = 0;
     
-    float start = remCodePhase + correlatorSpacing;
-    float stop = size * codeStep + remCodePhase + correlatorSpacing;
-    float step = (stop - start) / size;
+    double start = remCodePhase + correlatorSpacing;
+    double stop = size * codeStep + remCodePhase + correlatorSpacing;
+    double step = (stop - start) / size;
 
-    for(int idx=0; idx < size; idx++){
+    for (size_t idx=0; idx < size; idx++)
+    {
         codeIdx = ceil(start + step * idx);
 
-        iCorr[idx] = code[codeIdx] * iSignal[idx];
-        qCorr[idx] = code[codeIdx] * qSignal[idx];
+        r_iCorr[idx] = code[codeIdx] * iSignal[idx];
+        r_qCorr[idx] = code[codeIdx] * qSignal[idx];
     }
 
     return;
