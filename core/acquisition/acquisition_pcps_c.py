@@ -31,11 +31,22 @@ class Acquisition(AcquisitionPCPS):
         # Initialize connection to external library
         _lib = ctypes.cdll.LoadLibrary('./core/c_functions/acquisition.so')
         self._setSatellite = _lib.setSatellite
-        self._setSatellite.argtypes = [...]
+        self._setSatellite.argtypes = [ndpointer(ctypes.c_double, ndim=1, flags='C_CONTIGUOUS'),
+                                       ctypes.c_size_t,
+                                       ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS')]
         self._setSatellite.restype = None
 
         self._PCPS = _lib.PCPS
-        self._PCPS.argtypes = [...]
+        self._PCPS.argtypes = [ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS'),
+                               ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS'),
+                               ctypes.c_longlong,
+                               ctypes.c_longlong,
+                               ctypes.c_longlong,
+                               ctypes.c_double,
+                               ctypes.c_double,
+                               ndpointer(ctypes.c_double, ndim=1, flags='C_CONTIGUOUS'),
+                               ctypes.c_size_t,
+                               ndpointer(ctypes.c_double, ndim=2, flags='C_CONTIGUOUS')]
         self._PCPS.restype = None
 
         self._twoCorrelationPeakComparison = _lib.twoCorrelationPeakComparison
@@ -63,9 +74,10 @@ class Acquisition(AcquisitionPCPS):
         TODO
         """
         super(AcquisitionPCPS, self).setSatellite(svid)
-
-        self.codeFFT = np.conj(np.fft.fft(self.code))
-
+        codeFFT = np.empty((len(self.code)//2,), dtype='complex128')
+        self._setSatellite(np.ascontiguousarray(self.code), len(self.code),\
+                           np.ascontiguousarray(codeFFT))
+        self.codeFFT = codeFFT
         return
 
     # -------------------------------------------------------------------------
@@ -106,46 +118,12 @@ class Acquisition(AcquisitionPCPS):
         Raises:
             None
         """
-
-        phasePoints = np.array(range(self.cohIntegration * self.samplesPerCode)) * 2 * np.pi * self.samplingPeriod
-        # Search loop
-        correlationMap = np.zeros((len(self.frequencyBins), self.samplesPerCode))
-        noncoh_sum     = np.zeros((1, self.samplesPerCode))
-        coh_sum        = np.zeros((1, self.samplesPerCode))
-        idx = 0
-        for freq in self.frequencyBins:
-            freq = self.rfSignal.interFrequency - freq
-
-            # Generate carrier replica
-            signal_carrier = np.exp(-1j * freq * phasePoints)
-
-            # Non-Coherent Integration 
-            noncoh_sum = noncoh_sum * 0.0
-            for idx_noncoh in range(0, self.nonCohIntegration):
-                # Select only require part of the dataset
-                iq_signal = rfData[idx_noncoh*self.cohIntegration*self.samplesPerCode:(idx_noncoh+1)*self.cohIntegration*self.samplesPerCode]
-                # Mix with carrier
-                iq_signal = np.multiply(signal_carrier, iq_signal)
-                
-                # Coherent Integration
-                coh_sum = noncoh_sum * 0.0
-                for idx_coh in range(0, self.cohIntegration):
-                    # Perform FFT
-                    iq_fft = np.fft.fft(iq_signal[idx_coh*self.samplesPerCode:(idx_coh+1)*self.samplesPerCode])
-
-                    # Correlation with C/A code
-                    iq_conv = np.multiply(iq_fft, self.codeFFT)
-
-                    # Inverse FFT (go back to time domain)
-                    coh_sum = coh_sum + np.fft.ifft(iq_conv)
-
-                # Absolute values
-                noncoh_sum = noncoh_sum + abs(coh_sum)
-            
-            correlationMap[idx, :] = abs(noncoh_sum)
-            idx += 1
-        correlationMap = np.squeeze(np.squeeze(correlationMap))
-
+        correlationMap = np.empty((len(self.frequencyBins), self.samplesPerCode//2))
+        self._PCPS(np.ascontiguousarray(rfData), np.ascontiguousarray(self.codeFFT),\
+                   self.cohIntegration, self.nonCohIntegration, self.samplesPerCode,\
+                   self.samplingPeriod, self.rfSignal.interFrequency,\
+                   np.ascontiguousarray(self.frequencyBins), len(self.frequencyBins),\
+                   np.ascontiguousarray(correlationMap))
         return correlationMap
 
     # -------------------------------------------------------------------------
@@ -171,8 +149,8 @@ class Acquisition(AcquisitionPCPS):
         acquisitionMetric, estimatedDoppler = np.empty((1,)), np.empty((1,))
         estimatedFrequency, estimatedCode = np.empty((1,)), np.empty((1,), dtype='int64')
         idxEstimatedFrequency, idxEstimatedCode = np.empty((1,), dtype='int64'), np.empty((1,), dtype='int64')
-        self._twoCorrelationPeakComparison(correlationMap, correlationMap.shape[1],\
-                                           self.frequencyBins, correlationMap.shape[0],\
+        self._twoCorrelationPeakComparison(np.ascontiguousarray(correlationMap), correlationMap.shape[1],\
+                                           np.ascontiguousarray(self.frequencyBins), correlationMap.shape[0],\
                                            self.samplesPerCode, self.samplesPerCodeChip,\
                                            self.rfSignal.interFrequency, acquisitionMetric,\
                                            estimatedDoppler, estimatedFrequency,\
