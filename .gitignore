@@ -8,3 +8,4 @@ __pycache__/
 .scripts/
 scalene_profile.json
 speedscope_profile.txt
+core/c_functions/tracking

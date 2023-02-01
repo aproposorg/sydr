@@ -11,7 +11,7 @@ import logging
 import numpy as np
 import ctypes
 from numpy.ctypeslib import ndpointer
-from core.signal.gnsssignal import GNSSSignal
+from core.signal.gnsssignal import GNSSSignal, GNSSSignalType
 from core.signal.rfsignal import RFSignal
 from core.tracking.tracking_epl import Tracking as TrackingEPL
 # =============================================================================
@@ -48,12 +48,13 @@ class Tracking(TrackingEPL):
                                           ctypes.c_size_t,
                                           ctypes.c_double,
                                           ctypes.c_double,
-                                          ndpointer(ctypes.cdouble, ndim=1, flags='C_CONTIGUOUS')]
+                                          ndpointer(ctypes.c_double),
+                                          ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS')]
         self._generateReplica.restype = None
 
         self._generateCarrier = _lib.generateCarrier
-        self._generateCarrier.argtypes = [ndpointer(ctypes.cdouble, ndim=1, flags='C_CONTIGUOUS'),
-                                          ndpointer(ctypes.cdouble, ndim=1, flags='C_CONTIGUOUS'),
+        self._generateCarrier.argtypes = [ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS'),
+                                          ndpointer(np.cdouble, ndim=1, flags='C_CONTIGUOUS'),
                                           ctypes.c_size_t,
                                           ndpointer(ctypes.c_double, ndim=1, flags='C_CONTIGUOUS'),
                                           ndpointer(ctypes.c_double, ndim=1, flags='C_CONTIGUOUS')]
@@ -162,6 +163,13 @@ class Tracking(TrackingEPL):
         #logging.getLogger(__name__).debug(f"svid={self.svid}, iprompt={iPrompt: 10.2f}, qprompt={iPrompt: 10.2f}, DLL={self.dll: 5.3f}, PLL={self.dll: 5.3f}")
 
         return
+
+    # -------------------------------------------------------------------------
+
+    def setSatellite(self, svid):
+        super().setSatellite(svid)
+        self.code = self.code.astype(np.int32) # Conversion from float to int32 to fit the C arguments
+        return 
 
     # -------------------------------------------------------------------------
 

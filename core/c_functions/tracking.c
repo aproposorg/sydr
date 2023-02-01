@@ -3,9 +3,11 @@
 #include <stdlib.h>
 #include <math.h>
 #include <complex.h>
+#include <stdbool.h>
+#include <assert.h>
 
 // GPS' definition of Pi
-#define PI 3.1415926535898   
+#define PI 3.1415926535898
 
 void readValues(complex double * rfdata, int rfsize){
     // Read values
@@ -15,14 +17,19 @@ void readValues(complex double * rfdata, int rfsize){
 } 
 
 // --------------------------------------------------------------------------------------------------------------------
-
+// TODO Coud be simplified by just recomputing the value of time in for loop instead of giving an array.
 /*
 @brief
-@param 
+@param time              Array of length `size+1` with time values ranging from 0 to (size+1) / sampling frequency 
+@param size              Length of the arrays 
+@param carrierFrequency  Carrier frequency of the signal (i.e. remaining due to Doppler effect)
+@param remCarrierPhase   Remaining carrier phase from last loop (initial value is 0.0)
+@param r_remCarrierPhase Return of the remCarrierPhase
+@param r_replica         Return of the replica array of length `size`
 @return void.
 */
 void generateReplica(double* time,
-                     size_t samplesRequired,
+                     size_t size,
                      double carrierFrequency,
                      double remCarrierPhase,
                      double* r_remCarrierPhase,
@@ -30,12 +37,14 @@ void generateReplica(double* time,
 {
     double temp;
 
-    for (size_t i=0; i < samplesRequired; i++)
+    for (size_t i=0; i < size; i++)
     {
         temp = -(carrierFrequency * 2.0 * PI * time[i]) + remCarrierPhase;
         r_replica[i] = cexp(I * temp);
+        //printf("%f\n", temp);
+        //printf("%f + i%f\n", creal(r_replica[i]), cimag(r_replica[i]));
     }
-    temp = -(carrierFrequency * 2.0 * PI * time[samplesRequired]) + remCarrierPhase;
+    temp = -(carrierFrequency * 2.0 * PI * time[size]) + remCarrierPhase; //0.0094247779607694003
 
     *r_remCarrierPhase = fmod(temp, 2*PI);
 
@@ -200,20 +209,109 @@ void getLoopCoefficients(double loopNoiseBandwidth,
     return;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+bool test_generateReplica(){
+    /*
+    Unit test function of generateReplica.
+    */
+    int size = 5;
+    int samplingFrequency = 1e7;
+    double carrierFrequency = -1500.0;
+    double remCarrierPhase = 0.0;
+    double time[size+1];
+    double r_remCarrierPhase = 0.0;
+    complex double r_replica[size];
+    complex double r_replica_truth[size];
+    float epsilon = 1e-8;
+    bool success = true;
+    
+    // init 
+    for(int i=0; i < size+1; i++){
+        time[i] = (double) i / samplingFrequency;
+    }
+    for(int i=0; i < size; i++){
+        r_replica[i] = 0.0;
+    }
+
+    // test function
+    generateReplica(time, size, carrierFrequency, remCarrierPhase, &r_remCarrierPhase, r_replica);
+
+    // Assert
+    r_replica_truth[0] = 1 + I * 0.0;
+    r_replica_truth[1] = 0.9999995558678348 + I * 0.000942477656548699;
+    r_replica_truth[2] = 0.9999982234717338 + I * 0.0018849544759281136;
+    r_replica_truth[3] = 0.9999960028128805 + I * 0.002827429620969703;
+    r_replica_truth[4] = 0.9999928938932473 + I * 0.0037699022545064132;
+
+    for(int i=0; i < size; i++){
+        if(fabs(r_replica_truth[i] - r_replica[i]) > epsilon){
+            success = false;
+            break;
+        }
+    }
+
+    assert(success == true);
+
+    return success;
+}
+
 /// ===================================================================================================================
 
 int main(){
     printf("Hello World!\n");
+    
+    test_generateReplica();
 
-    int rfsize = 8;
-    complex double rfdata[rfsize];
+    // int size = 10000;
+    // int samplingFrequency = 1e7;
+    // double carrierFrequency = -1500.0;
+    // double remCarrierPhase = 0.0;
+    // double time[size+1];
+    // double r_remCarrierPhase = 0.0;
+    // complex double r_replica[size];
+    
+    // // init 
+    // for(int i=0; i < size+1; i++){
+    //     time[i] = (double) i / samplingFrequency;
+    // }
+    // for(int i=0; i < size; i++){
+    //     r_replica[i] = 0.0;
+    // }
 
-    // Put values
-    for(int i=0; i < rfsize; i++){
-        rfdata[i] = i + i*2.0 * I;
-    }
+    // // test function
+    // generateReplica(time, size, carrierFrequency, remCarrierPhase, &r_remCarrierPhase, r_replica);
 
-    readValues(rfdata, rfsize);
-
-    return 0;
+    // return 0;
 }
+
+/*
+temp
+0.0
+0.0009424777960769379
+0.0018849555921538759
+0.0028274333882308137
+0.0037699111843077517
+0.00471238898038469
+0.005654866776461627
+0.006597344572538565
+0.007539822368615503
+0.00848230016469244
+0.00942477796076938
+
+remCarrierPhase
+0.00942477796076938
+
+replica
+(1+0j)
+(0.9999995558678348+0.000942477656548699j)
+(0.9999982234717338+0.0018849544759281136j)
+(0.9999960028128805+0.002827429620969703j)
+(0.9999928938932473+0.0037699022545064132j)
+(0.999988896715596+0.004712371539373423j)
+(0.9999840112834769+0.005654836638408881j)
+(0.9999782376012297+0.00659729671445466j)
+(0.999971575673983+0.007539750930357091j)
+(0.9999640255076541+0.00848219844896771j)
+(0.9999555871089498+0.009424638433144006j)
+*/
