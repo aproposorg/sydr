@@ -313,7 +313,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     self.channelsStatus[chan.cid].week             = channelPacket[3]
                     self.channelsStatus[chan.cid].tow              = channelPacket[4]
                     self.channelsStatus[chan.cid].timeSinceTOW     = channelPacket[5]
-                    if not np.isnan(chan.tow):
+                    if not np.isnan(self.channelsStatus[chan.cid].tow):
                         self.channelsStatus[chan.cid].isTOWDecoded = True
                     #logging.getLogger(__name__).debug(f"CID {chan.cid} update : {channelPacket[1]} {channelPacket[2]} {channelPacket[3]} {channelPacket[4]} {channelPacket[5]}")  
 
@@ -347,8 +347,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         maxTOW = -1
         for chan in selectedChannels:
             # This assumes all the channels were given the same number of samples to process
-            if maxTOW < chan.timeSinceLastTOW:
-                maxTOW = chan.timeSinceLastTOW
+            if maxTOW < chan.timeSinceTOW:
+                maxTOW = chan.timeSinceTOW
                 earliestChannel = chan
         
         logging.getLogger(__name__).debug(f"SVID {earliestChannel.svid}, max TOW {maxTOW}")
@@ -370,7 +370,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             timeResidual = (self.receiverClock.absoluteTime - self.nextMeasurementTime).total_seconds()
             receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
             self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), receivedTime + self.measurementPeriod)
-            tow = earliestChannel.tow + earliestChannel.timeSinceLastTOW / 1e3 - timeResidual
+            tow = earliestChannel.tow + earliestChannel.timeSinceTOW / 1e3 - timeResidual
 
             logging.getLogger(__name__).debug(f"Week {week}, time residual {timeResidual}, received time {receivedTime}, tow {tow}")
         
@@ -384,7 +384,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 #satellite.addBRDCEphemeris(self.database.fetchBRDC(self.receiverClock.absoluteTime, satellite.system, satellite.svid))
 
             # Compute the time of transmission
-            relativeTime = (earliestChannel.timeSinceLastTOW - chan.timeSinceLastTOW) * 1e-3
+            relativeTime = (earliestChannel.timeSinceTOW - chan.timeSinceTOW) * 1e-3
             transmitTime = tow - relativeTime
 
             # Compute pseudoranges
@@ -400,16 +400,16 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             correctedPseudoranges += satelliteClock * SPEED_OF_LIGHT # Satellite clock error
             correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT  # Total Group Delay (TODO this is frequency dependant)
 
-            logging.getLogger(__name__).debug(f"SVID {chan.svid}, timeSinceLastTOW {chan.timeSinceLastTOW}, relativeTime {relativeTime}, transmitTime {transmitTime}, pseudoranges {pseudoranges}, correctedPseudoranges {correctedPseudoranges}")
+            logging.getLogger(__name__).debug(f"SVID {chan.svid}, timeSinceLastTOW {chan.timeSinceTOW}, relativeTime {relativeTime}, transmitTime {transmitTime}, pseudoranges {pseudoranges}, correctedPseudoranges {correctedPseudoranges}")
             #logging.getLogger(__name__).debug(f"SVID {chan.svid}, IODE {satellite.lastBRDCEphemeris.iode}, satellitePosition {satellitePosition}, satelliteClock {satelliteClock}")
 
             # Check if measurement looks correct
-            if not chan.hasPreviousMeasurement:
-                chan.prevRelativeTime = relativeTime
-                chan.hasPreviousMeasurement = True
-            else:
-                chan.prevRelativeTime = chan.relativeTime
-            chan.relativeTime = relativeTime
+            # if not chan.hasPreviousMeasurement:
+            #     chan.prevRelativeTime = relativeTime
+            #     chan.hasPreviousMeasurement = True
+            # else:
+            #     chan.prevRelativeTime = chan.relativeTime
+            # chan.relativeTime = relativeTime
 
             # if np.abs(chan.relativeTime - chan.prevRelativeTime) > 10e-5:
             #     logging.getLogger(__name__).warning(f"CID {chan.cid} SVID {chan.svid} Large difference ({np.abs(chan.relativeTime - chan.prevRelativeTime)}) in TOW compare to previous epoch, measurement discarded.")
@@ -657,7 +657,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
         # Measurements
         for meas in measurements:
             measdict = {}
-            measdict["channel_id"]   = meas.channel.dbid
+            measdict["channel_id"]   = meas.channel.cid
             measdict["time"]         = time.time()
             measdict["time_sample"]  = self.sampleCounter
             measdict["position_id"]  = position.id
