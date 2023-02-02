@@ -27,8 +27,6 @@ class Tracking(TrackingEPL):
         """
         TODO
         """
-        super().__init__(rfSignal, gnssSignal)
-
         # Initialize connection to external library
         _lib = ctypes.cdll.LoadLibrary('./core/c_functions/tracking.so')
         self._getCorrelator = _lib.getCorrelator
@@ -97,6 +95,8 @@ class Tracking(TrackingEPL):
                                               ndpointer(ctypes.c_double)]
         self._getLoopCoefficients.restype = None
 
+        super().__init__(rfSignal, gnssSignal)
+
         return
 
     # -------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class Tracking(TrackingEPL):
         """
         iCorr, qCorr = np.empty((1,)), np.empty((1,))
         self._getCorrelator(np.ascontiguousarray(self.iSignal), np.ascontiguousarray(self.qSignal),\
-                            np.ascontiguousarray(self.code), len(self.code), self.codePhaseStep,\
+                            np.ascontiguousarray(self.code), self.samplesRequired, self.codePhaseStep,\
                             self.remCodePhase, correlatorSpacing, iCorr, qCorr)
         return iCorr[0], qCorr[0]
 
@@ -137,7 +137,7 @@ class Tracking(TrackingEPL):
                               np.ascontiguousarray(iSignal), np.ascontiguousarray(qSignal))
         self.iSignal = iSignal
         self.qSignal = qSignal
-
+        
         # Build correlators (Early-Prompt-Late)
         iEarly , qEarly  = self.getCorrelator(self.correlatorSpacing[0])
         iPrompt, qPrompt = self.getCorrelator(self.correlatorSpacing[1])
@@ -225,3 +225,5 @@ class Tracking(TrackingEPL):
 
     # -------------------------------------------------------------------------
     # END OF CLASS
+
+

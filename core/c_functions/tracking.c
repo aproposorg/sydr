@@ -82,12 +82,14 @@ void getCorrelator(double* iSignal,
     double stop = size * codeStep + remCodePhase + correlatorSpacing;
     double step = (stop - start) / size;
 
+    *r_iCorr = 0.0;
+    *r_qCorr = 0.0;
     for (size_t idx=0; idx < size; idx++)
     {
         codeIdx = ceil(start + step * idx);
 
-        r_iCorr[idx] = code[codeIdx] * iSignal[idx];
-        r_qCorr[idx] = code[codeIdx] * qSignal[idx];
+        *r_iCorr += code[codeIdx] * iSignal[idx];
+        *r_qCorr += code[codeIdx] * qSignal[idx];
     }
 
     return;
@@ -260,58 +262,21 @@ bool test_generateReplica(){
 
 int main(){
     printf("Hello World!\n");
+
+    // generateReplica unit test 
+    // test_generateReplica();
     
-    test_generateReplica();
+    // getCorrelator unit test
+    int size = 5;
+    double iSignal[5] = {-5.061244639011612, 9.39905932245856, 5.521358200447387, -3.904872069362163, 17.396453218094308};
+    double qSignal[5] = {41.46545312310088, 22.992557140364028, -13.982653668826686, -7.533390612593724, -18.637688038773916};
+    int code[5] = {-1, 1, 1, 1, -1};
+    double codeStep = 0.1023;
+    double remCodePhase = 0.0;
+    double correlatorSpacing = 0.5;
+    double r_iCorr = 0.0;
+    double r_qCorr = 0.0;
 
-    // int size = 10000;
-    // int samplingFrequency = 1e7;
-    // double carrierFrequency = -1500.0;
-    // double remCarrierPhase = 0.0;
-    // double time[size+1];
-    // double r_remCarrierPhase = 0.0;
-    // complex double r_replica[size];
-    
-    // // init 
-    // for(int i=0; i < size+1; i++){
-    //     time[i] = (double) i / samplingFrequency;
-    // }
-    // for(int i=0; i < size; i++){
-    //     r_replica[i] = 0.0;
-    // }
+    getCorrelator(iSignal, qSignal, code, size, codeStep, remCodePhase, correlatorSpacing, &r_iCorr, &r_qCorr);
 
-    // // test function
-    // generateReplica(time, size, carrierFrequency, remCarrierPhase, &r_remCarrierPhase, r_replica);
-
-    // return 0;
 }
-
-/*
-temp
-0.0
-0.0009424777960769379
-0.0018849555921538759
-0.0028274333882308137
-0.0037699111843077517
-0.00471238898038469
-0.005654866776461627
-0.006597344572538565
-0.007539822368615503
-0.00848230016469244
-0.00942477796076938
-
-remCarrierPhase
-0.00942477796076938
-
-replica
-(1+0j)
-(0.9999995558678348+0.000942477656548699j)
-(0.9999982234717338+0.0018849544759281136j)
-(0.9999960028128805+0.002827429620969703j)
-(0.9999928938932473+0.0037699022545064132j)
-(0.999988896715596+0.004712371539373423j)
-(0.9999840112834769+0.005654836638408881j)
-(0.9999782376012297+0.00659729671445466j)
-(0.999971575673983+0.007539750930357091j)
-(0.9999640255076541+0.00848219844896771j)
-(0.9999555871089498+0.009424638433144006j)
-*/

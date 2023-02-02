@@ -2,6 +2,7 @@ import sys, os
 sys.path.append('/mnt/c/Users/vmangr/Documents/Code/sydr/') 
 
 import numpy as np
+import math
 from core.signal.gnsssignal import GNSSSignal, GNSSSignalType
 from core.signal.rfsignal import RFSignal
 from core.tracking.tracking_epl_c import Tracking as TrackingInC
@@ -28,12 +29,20 @@ if __name__ == "__main__":
     with open('/mnt/c/Users/vmangr/Documents/Code/sydr/core/unitTest/data/qSignal.txt') as f:
         qSignal = np.loadtxt(f)
     
-    print(rfdata)
-    print(iSignal)
-    print(qSignal)
-    
     trackingC.setSatellite(svid=2)
-    trackingC.run(rfdata)
-    
+    trackingC.setInitialValues(estimatedFrequency=3700.0)
+    trackingPython.setSatellite(svid=2)
+    trackingPython.setInitialValues(estimatedFrequency=3700.0)
 
-    print('whatever')
+    trackingPython.run(rfdata)
+    trackingC.run(rfdata)
+
+    # Assert
+    assert math.isclose(trackingC.correlatorResults[0], trackingPython.correlatorResults[0], rel_tol=1e-11) == True
+    assert math.isclose(trackingC.correlatorResults[1], trackingPython.correlatorResults[1], rel_tol=1e-11) == True
+    assert math.isclose(trackingC.correlatorResults[2], trackingPython.correlatorResults[2], rel_tol=1e-11) == True
+    assert math.isclose(trackingC.correlatorResults[3], trackingPython.correlatorResults[3], rel_tol=1e-11) == True
+    assert math.isclose(trackingC.correlatorResults[4], trackingPython.correlatorResults[4], rel_tol=1e-11) == True
+    assert math.isclose(trackingC.correlatorResults[5], trackingPython.correlatorResults[5], rel_tol=1e-11) == True
+
+    print("Unit test passed.")
