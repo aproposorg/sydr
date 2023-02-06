@@ -41,23 +41,26 @@ class Satellite(ABC):
         self.partialEphemeris = BRDCEphemeris()
         self.subframes = []
         
+        self.subframeTOW = 0 # Used when navigation message is decoded from signal
+
         return
 
     # -------------------------------------------------------------------------
 
-    def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
+    def addBRDCEphemeris(self, ephemeris:BRDCEphemeris, subframeTOW:int):
         self.ephemeris.append(ephemeris)
         self.isEphemerisDecoded = True
         self.lastBRDCEphemeris = ephemeris
+        self.subframeTOW = subframeTOW
         return
     
     # -------------------------------------------------------------------------
 
-    def addSubframe(self, subframeID:int, subframeBits:np.array):
+    def addSubframe(self, subframeID:int, subframeBits:np.array, subframeTOW:int):
         self.subframes.append((subframeID, subframeBits))
         self.partialEphemeris.fromSubframeBits(subframeBits)
         if self.partialEphemeris.checkFlags():
-            self.addBRDCEphemeris(self.partialEphemeris)
+            self.addBRDCEphemeris(self.partialEphemeris, subframeTOW)
             self.partialEphemeris = BRDCEphemeris()
         return
 

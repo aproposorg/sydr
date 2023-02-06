@@ -303,7 +303,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     continue
                 elif commType == ChannelMessage.DECODING_UPDATE:
                     satellite = self.satelliteDict[chan.svid]
-                    satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'])
+                    satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'], channelPacket[1]['tow'])
                     self.channelsStatus[chan.cid].subframeFlags[channelPacket[1]['subframe_id']-1] = True
                     self.addDecodingDatabase(chan.cid, channelPacket[1])
                     continue
@@ -332,6 +332,8 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 and (satellite.isEphemerisDecoded or self.isBRDCEphemerisAssited):
                 prnList.append(chan.svid)
                 selectedChannels.append(chan)
+        
+
 
         # In case multi-frequency/Channel tracking, we want at least 5 unique satellites.
         # This is to avoid rank deficiency in matrices.
@@ -359,17 +361,24 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                 week = self.receiverClock.absoluteTime.getGPSWeek()
             else:
                 week = earliestChannel.week
-            receivedTime = earliestChannel.tow + AVG_TRAVEL_TIME_MS / 1e3
+            
+            if not self.isBRDCEphemerisAssited:
+                tow = satellite.subframeTOW
+            else:
+                tow = earliestChannel.tow + AVG_TRAVEL_TIME_MS / 1e3
+            
+            receivedTime = tow + AVG_TRAVEL_TIME_MS / 1e3
             self.receiverClock.absoluteTime.setGPSTime(week, receivedTime)
             self.receiverClock.isInitialised = True
             self.nextMeasurementTime.setGPSTime(week, math.ceil(receivedTime))
-            tow = earliestChannel.tow
+
         else:
             # Compute the residual time to have a "round" received time
             week =  self.receiverClock.absoluteTime.getGPSWeek()
             timeResidual = (self.receiverClock.absoluteTime - self.nextMeasurementTime).total_seconds()
             receivedTime = self.receiverClock.absoluteTime.getGPSSeconds() - timeResidual
             self.nextMeasurementTime.setGPSTime(self.receiverClock.absoluteTime.getGPSWeek(), receivedTime + self.measurementPeriod)
+            
             tow = earliestChannel.tow + earliestChannel.timeSinceTOW / 1e3 - timeResidual
 
             logging.getLogger(__name__).debug(f"Week {week}, time residual {timeResidual}, received time {receivedTime}, tow {tow}")
