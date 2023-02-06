@@ -183,7 +183,7 @@ void phaseLockLoop(double iPrompt,
     *r_carrierNCO += pllTau2 / pllTau1 * (newCarrierError - carrierError);
     *r_carrierNCO += pdiCarrier / pllTau1 * newCarrierError;
 
-    *r_carrierError = carrierError;
+    *r_carrierError = newCarrierError;
 
     *r_carrierFrequency = initialFrequency + *r_carrierNCO;
 

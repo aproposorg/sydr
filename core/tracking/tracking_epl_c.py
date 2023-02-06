@@ -173,45 +173,45 @@ class Tracking(TrackingEPL):
 
     # -------------------------------------------------------------------------
 
-    # def delayLockLoop(self, iEarly, qEarly, iLate, qLate):
-    #     """
-    #     TODO
-    #     """
-    #     codeNCO, codeError, codeFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
-    #     self._delayLockLoop(iEarly, qEarly, iLate, qLate, self.dllTau1, self.dllTau2,\
-    #                         self.pdiCode, self.codeNCO, self.codeError, self.gnssSignal.codeFrequency,\
-    #                         codeNCO, codeError, codeFrequency)
-    #     self.codeNCO = codeNCO[0]
-    #     self.codeError = codeError[0]
-    #     self.codeFrequency = codeFrequency[0]
-    #     self.dll = self.codeNCO
-    #     return
+    def delayLockLoop(self, iEarly, qEarly, iLate, qLate):
+        """
+        TODO
+        """
+        codeNCO, codeError, codeFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
+        self._delayLockLoop(iEarly, qEarly, iLate, qLate, self.dllTau1, self.dllTau2,\
+                            self.pdiCode, self.codeNCO, self.codeError, self.gnssSignal.codeFrequency,\
+                            codeNCO, codeError, codeFrequency)
+        self.codeNCO = codeNCO[0]
+        self.codeError = codeError[0]
+        self.codeFrequency = codeFrequency[0]
+        self.dll = self.codeNCO
+        return
 
     # # -------------------------------------------------------------------------
 
-    # def phaseLockLoop(self, iPrompt, qPrompt):
-    #     """
-    #     TODO
-    #     """
-    #     carrierNCO, carrierError, carrierFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
-    #     self._phaseLockLoop(iPrompt, qPrompt, self.pllTau1, self.pllTau2, self.pdiCarrier,\
-    #                         self.carrierNCO, self.carrierError, self.initialFrequency,\
-    #                         carrierNCO, carrierError, carrierFrequency)
-    #     self.carrierNCO = carrierNCO[0]
-    #     self.carrierError = carrierError[0]
-    #     self.carrierFrequency = carrierFrequency[0]
-    #     self.pll = self.carrierNCO
-    #     return
+    def phaseLockLoop(self, iPrompt, qPrompt):
+        """
+        TODO
+        """
+        carrierNCO, carrierError, carrierFrequency = np.empty((1,)), np.empty((1,)), np.empty((1,))
+        self._phaseLockLoop(iPrompt, qPrompt, self.pllTau1, self.pllTau2, self.pdiCarrier,\
+                            self.carrierNCO, self.carrierError, self.initialFrequency,\
+                            carrierNCO, carrierError, carrierFrequency)
+        self.carrierNCO = carrierNCO[0]
+        self.carrierError = carrierError[0]
+        self.carrierFrequency = carrierFrequency[0]
+        self.pll = self.carrierNCO
+        return
 
     # # -------------------------------------------------------------------------
 
-    # def getLoopCoefficients(self, loopNoiseBandwidth, dumpingRatio, loopGain):
-    #     """
-    #     TODO
-    #     """
-    #     tau1, tau2 = np.empty((1,)), np.empty((1,))
-    #     self._getLoopCoefficients(loopNoiseBandwidth, dumpingRatio, loopGain, tau1, tau2)
-    #     return tau1[0], tau2[0]
+    def getLoopCoefficients(self, loopNoiseBandwidth, dumpingRatio, loopGain):
+        """
+        TODO
+        """
+        tau1, tau2 = np.empty((1,)), np.empty((1,))
+        self._getLoopCoefficients(loopNoiseBandwidth, dumpingRatio, loopGain, tau1, tau2)
+        return tau1[0], tau2[0]
 
     # -------------------------------------------------------------------------
 
