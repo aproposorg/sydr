@@ -303,7 +303,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
                     continue
                 elif commType == ChannelMessage.DECODING_UPDATE:
                     satellite = self.satelliteDict[chan.svid]
-                    satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'], channelPacket[1]['tow'])
+                    satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'])
                     self.channelsStatus[chan.cid].subframeFlags[channelPacket[1]['subframe_id']-1] = True
                     self.addDecodingDatabase(chan.cid, channelPacket[1])
                     continue
@@ -362,10 +362,7 @@ class ReceiverGPSL1CA(ReceiverAbstract):
             else:
                 week = earliestChannel.week
             
-            if not self.isBRDCEphemerisAssited:
-                tow = satellite.subframeTOW
-            else:
-                tow = earliestChannel.tow + AVG_TRAVEL_TIME_MS / 1e3
+            tow = earliestChannel.tow + earliestChannel.timeSinceTOW / 1e3
             
             receivedTime = tow + AVG_TRAVEL_TIME_MS / 1e3
             self.receiverClock.absoluteTime.setGPSTime(week, receivedTime)

@@ -47,20 +47,19 @@ class Satellite(ABC):
 
     # -------------------------------------------------------------------------
 
-    def addBRDCEphemeris(self, ephemeris:BRDCEphemeris, subframeTOW:int):
+    def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
         self.ephemeris.append(ephemeris)
         self.isEphemerisDecoded = True
         self.lastBRDCEphemeris = ephemeris
-        self.subframeTOW = subframeTOW
         return
     
     # -------------------------------------------------------------------------
 
-    def addSubframe(self, subframeID:int, subframeBits:np.array, subframeTOW:int):
+    def addSubframe(self, subframeID:int, subframeBits:np.array):
         self.subframes.append((subframeID, subframeBits))
         self.partialEphemeris.fromSubframeBits(subframeBits)
         if self.partialEphemeris.checkFlags():
-            self.addBRDCEphemeris(self.partialEphemeris, subframeTOW)
+            self.addBRDCEphemeris(self.partialEphemeris)
             self.partialEphemeris = BRDCEphemeris()
         return
 

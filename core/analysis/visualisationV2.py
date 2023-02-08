@@ -579,7 +579,7 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools)
         figEN.scatter(x='east', y='north', source=source, size=30, marker='dot')
-        figEN.scatter(x=np.average(enu[:,0]), y=np.average(enu[:,1]), size=30, fill_color='red')
+        figEN.scatter(x=np.average(enu[:,0]), y=np.average(enu[:,1]), size=10, fill_color='red')
         figEN.yaxis.axis_label = "North [m]"
         figEN.xaxis.axis_label = "East [m]"
         
