@@ -12,6 +12,7 @@ from bokeh.models.widgets import DataTable, TableColumn
 import holoviews as hv
 import pymap3d as pm
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 from core.signal.gnsssignal import GNSSSignal
 from core.utils.enumerations import GNSSSignalType
@@ -641,6 +642,54 @@ class VisualisationV2:
                               [figEast],
                               [figNorth],
                               [figUp]])
+        
+
+        # For matplotlib
+        # TODO Move this to a new class
+        fig, ax = plt.subplots(1,1, figsize=(4,4))
+        ax.grid(zorder=0)
+        ax.set_axisbelow(True)
+        plt.plot(enu[:,1], enu[:,0], '+', label='LSE')
+        plt.plot(np.average(enu[:,0]), np.average(enu[:,1]), 'o', color='r', label='Average')
+
+        plt.ylabel('North [m]')
+        plt.xlabel('East [m]')
+        plt.ylim((-30, 30))
+        plt.xlim((-30, 30))
+        plt.title("East/North errors")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig('enu.png', dpi=300)
+        plt.savefig('enu.eps')
+
+        print(f'Average ({np.average(enu[:,0]):.2f}m,{np.average(enu[:,1]):.2f}m)')
+
+        fig, ax = plt.subplots(3,1, figsize=(4,5))
+        plt.suptitle("East/North/Up errors")
+        ax[0].grid(zorder=0)
+        ax[0].set_axisbelow(True)
+        ax[0].plot(enu[:,0], label='East')
+        ax[0].set_xlabel('Time [s]')
+        ax[0].set_ylabel('East [m]')
+        ax[0].set_ylim((-30, 30))
+
+        ax[1].grid(zorder=0)
+        ax[1].set_axisbelow(True)
+        ax[1].plot(enu[:,1], label='North')
+        ax[1].set_xlabel('Time [s]')
+        ax[1].set_ylabel('North [m]')
+        ax[1].set_ylim((-30, 30))
+
+        ax[2].grid(zorder=0)
+        ax[2].set_axisbelow(True)
+        ax[2].plot(enu[:,2], label='Up')
+        ax[2].set_xlabel('Time [s]')
+        ax[2].set_ylabel('Up [m]')
+        ax[2].set_ylim((-60, 60))
+
+        plt.tight_layout()
+        plt.savefig('enu.png', dpi=300)
+        plt.savefig('enu.eps')
 
 
         return positionLayout
