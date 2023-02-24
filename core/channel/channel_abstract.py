@@ -7,6 +7,7 @@
 # =============================================================================
 # PACKAGES
 import logging
+import time
 import multiprocessing
 import numpy as np
 from typing import List
@@ -242,7 +243,10 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
             
             # Run tracking
+            tic = time.process_time_ns()
             self.tracking.run(buffer)
+            toc = time.process_time_ns()
+            processTimeNanos = toc - tic 
 
             self.timeInSamples += samplesRequired
             if self.isTOWDecoded:
@@ -258,7 +262,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             buffer = self.buffer.getSlice(self.currentSample, samplesRequired)
 
             # Send to main program
-            self.send(ChannelMessage.TRACKING_UPDATE, self.tracking.getDatabaseDict())
+            self.send(ChannelMessage.TRACKING_UPDATE, self.tracking.getDatabaseDict(), processTimeNanos)
 
         return
 
@@ -292,7 +296,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
 
     # -------------------------------------------------------------------------
 
-    def send(self, commType:ChannelMessage, dictToSend: dict = None):
+    def send(self, commType:ChannelMessage, dictToSend:dict=None, processTimeNanos=0.0):
         """
         Send a packet to main program through a defined pipe.
         """
@@ -305,6 +309,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
             or commType == ChannelMessage.DECODING_UPDATE :
 
             dictToSend["unprocessed_samples"] = int(self.unprocessedSamples)
+            dictToSend["processTimeNanos"] = int(processTimeNanos)
             _packet = (commType, dictToSend)
         else:
             raise ValueError(f"Channel communication {commType} is not valid.")

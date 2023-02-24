@@ -73,7 +73,7 @@ class VisualisationV2:
     def run(self):
         mainTabs = pn.Tabs()
 
-        # Measurement Tab   
+        # # Measurement Tab   
         measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
 
@@ -86,8 +86,11 @@ class VisualisationV2:
 
         logging.getLogger(__name__).info(f"HTML report created and saved at [{_filepath}].")
 
-        return
+        # Processing time 
+        # self._processingTime()
 
+        return
+    
     # -------------------------------------------------------------------------
 
     def _getMeasurementsTab(self):
@@ -642,10 +645,19 @@ class VisualisationV2:
                               [figEast],
                               [figNorth],
                               [figUp]])
-        
 
         # For matplotlib
+        #self._plotENU_plt(enu)
+        
+        return positionLayout
+
+    # -------------------------------------------------------------------------
+    
+    def _plotENU_plt(self, enu):
         # TODO Move this to a new class
+        
+        plt.rcParams.update({'font.size': 8})
+
         fig, ax = plt.subplots(1,1, figsize=(4,4))
         ax.grid(zorder=0)
         ax.set_axisbelow(True)
@@ -656,16 +668,19 @@ class VisualisationV2:
         plt.xlabel('East [m]')
         plt.ylim((-30, 30))
         plt.xlim((-30, 30))
-        plt.title("East/North errors")
+        plt.title("East / North errors")
         plt.legend()
         plt.tight_layout()
-        plt.savefig('enu.png', dpi=300)
-        plt.savefig('enu.eps')
+        plt.savefig('en.png', dpi=300)
+        plt.savefig('en.eps')
 
-        print(f'Average ({np.average(enu[:,0]):.2f}m,{np.average(enu[:,1]):.2f}m)')
-
+        print(f'Average ({np.average(enu[:,0]):.2f}m,{np.average(enu[:,1]):.2f}m,{np.average(enu[:,2]):.2f}m) ')
+        print(f'STD ({np.std(enu[:,0]):.2f}m,{np.std(enu[:,1]):.2f}m,{np.std(enu[:,2]):.2f}m)')
+        print(f'Max ({np.max(np.abs(enu[:,0])):.2f}m,{np.max(np.abs(enu[:,1])):.2f}m,{np.max(np.abs(enu[:,2])):.2f}m)')
+        print(f'Min ({np.min(np.abs(enu[:,0])):.2f}m,{np.min(np.abs(enu[:,1])):.2f}m,{np.min(np.abs(enu[:,2])):.2f}m)')
+        
         fig, ax = plt.subplots(3,1, figsize=(4,5))
-        plt.suptitle("East/North/Up errors")
+        plt.suptitle("East / North / Up errors")
         ax[0].grid(zorder=0)
         ax[0].set_axisbelow(True)
         ax[0].plot(enu[:,0], label='East')
@@ -689,10 +704,32 @@ class VisualisationV2:
 
         plt.tight_layout()
         plt.savefig('enu.png', dpi=300)
-        plt.savefig('enu.eps')
+        plt.savefig('enu_time.eps')
 
+    # -------------------------------------------------------------------------
 
-        return positionLayout
+    def _processingTime(self):
+
+        channelList = self.database.fetchTable('channel')
+
+        for channelID in range(len(channelList)):
+            db_entries = self.database.fetchTracking(channelID)
+
+            processTime = []
+            for entry in db_entries:
+                processTime.append(entry['processTimeNanos'])
+            
+            processTime = np.array(processTime) / 1e3
+            print(f'Channel {channelID}')
+            print(f'Average: {np.average(processTime):10.3f} micros')
+            print(f'STD    : {np.std(processTime):10.3f} micros')
+            print(f'Max    : {np.max(np.abs(processTime)):10.3f} micros')
+            print(f'Min    : {np.min(np.abs(processTime)):10.3f} micros')
+            print(f'-----')
+
+        return
+    
+    # -------------------------------------------------------------------------
 
 
 
