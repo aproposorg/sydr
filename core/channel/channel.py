@@ -7,19 +7,14 @@
 # =============================================================================
 # PACKAGES
 import logging
-import time
 import multiprocessing
 import numpy as np
-from typing import List
 from abc import ABC, abstractmethod
 from queue import Empty
 from enum import Enum, unique
 
-from core.acquisition.acquisition_abstract import AcquisitionAbstract
-from core.tracking.tracking_abstract import TrackingAbstract, TrackingFlags
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
-from core.decoding.message_abstract import NavigationMessageAbstract
 from core.utils.circularbuffer import CircularBuffer
 # =============================================================================
 PROCESS_TIMEOUT = 60 # Seconds 
@@ -27,7 +22,7 @@ PROCESS_TIMEOUT = 60 # Seconds
 @unique
 class ChannelState(Enum):
     """
-    Channel state according to the defined state machine architecture.
+    Enumeration class for channel state according to the defined state machine architecture.
     """
     OFF           = 0
     IDLE          = 1
@@ -41,13 +36,11 @@ class ChannelState(Enum):
 @unique
 class ChannelMessage(Enum):
     """
-    Message sent by the channel to the main thread.
+    Enumeration class for message types sent by the channel to the main thread.
     """
     END_OF_PIPE        = 0
     CHANNEL_UPDATE     = 1
-    ACQUISITION_UPDATE = 2
-    TRACKING_UPDATE    = 3
-    DECODING_UPDATE    = 4
+    DSP_UPDATE         = 2
 
     def __str__(self):
         return str(self.name)
@@ -95,13 +88,16 @@ class Channel(ABC, multiprocessing.Process):
         self.channelState  = ChannelState.IDLE
 
         # Communication
-        self.pipe = pipe
+        self.communicationPipe = pipe
 
         return
     
     # -------------------------------------------------------------------------
 
     def setGNSSSignalParameters(self, gnssSignal:GNSSSignal, satelliteID:np.uint8):
+        """
+        Set the GNSS signal and satellite tracked by the channel.
+        """
         self.satelliteID = satelliteID
         self.gnssSignal = gnssSignal
         self.channelState = ChannelState.ACQUIRING
@@ -111,9 +107,21 @@ class Channel(ABC, multiprocessing.Process):
     # -------------------------------------------------------------------------
 
     def setRFSignalParameters(self, rfSignal:RFSignal, queue:multiprocessing.Queue):
+        """
+        Set the parameters of the RF signals sent to the channel.
+        """
         self.rfQueue  = queue 
         self.rfSignal = rfSignal
         logging.getLogger(__name__).debug(f"CID {self.cid} initialised with RF signal parameters.")
+        return
+    
+    # -------------------------------------------------------------------------
+
+    def setBufferSize(self, size):
+        """
+        Set the size of the RF data buffer.
+        """
+        self.rfBuffer = CircularBuffer(size)
         return
     
     # -------------------------------------------------------------------------
@@ -141,7 +149,10 @@ class Channel(ABC, multiprocessing.Process):
             self._updateBuffer(rfData)
 
             # Process the data according to the current channel state
-            self._processHandler()
+            results = self._processHandler()
+
+            # Send the results
+            self.send(ChannelMessage.DSP_UPDATE, results)
 
             self.send(ChannelMessage.CHANNEL_UPDATE)
             self.send(ChannelMessage.END_OF_PIPE)
@@ -152,40 +163,37 @@ class Channel(ABC, multiprocessing.Process):
 
     # -------------------------------------------------------------------------
 
+    @abstractmethod
     def _processHandler(self):
         """
-        Handle the RF Data based on the current channel state.
+        Abstract method, handle the RF Data based on the current channel state.
         """
-
-        # Check channel state
-        #self.logger.debug(f"CID {self.cid} is in {self.state} state")
-
-        if self.state == ChannelState.IDLE:
-            print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
-            self.send({})
-
-        elif self.state == ChannelState.ACQUIRING:
-            self.runAcquisition()
-            
-        elif self.state == ChannelState.TRACKING:
-            if self.isAcquired:
-                self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
-            # Track
-            self.runTracking()
-
-            # If decoding
-            self.doDecoding()
-        else:
-            raise ValueError(f"Channel state {self.state} is not valid.")
-
         return
 
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    def acquisition(self):
+    def setAcquisition(self):
+        """
+        Abstract method, set the needed parameters for the acquisition operations
+        """
+        return
+
+    # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def runAcquisition(self):
         """
         Abstract method, perform the acquisition operation on the current RF signal. 
+        """
+        return
+
+    # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def setTracking(self):
+        """
+        Abstract method, set the needed parameters for the tracking operations
         """
         return
 
@@ -209,7 +217,7 @@ class Channel(ABC, multiprocessing.Process):
 
     # -------------------------------------------------------------------------
 
-    def send(self, commType:ChannelMessage, dictToSend:dict=None, processTimeNanos=0.0):
+    def send(self, commType:ChannelMessage, dictToSend:dict=None):
         """
         Send a packet to main program through a defined pipe.
         """
@@ -217,17 +225,15 @@ class Channel(ABC, multiprocessing.Process):
             _packet = (commType)
         elif commType == ChannelMessage.CHANNEL_UPDATE:
             _packet = (commType, self.state, self.trackingFlags, self.tow, self.getTimeSinceTOW())
-        elif commType == ChannelMessage.ACQUISITION_UPDATE \
-            or commType == ChannelMessage.TRACKING_UPDATE \
-            or commType == ChannelMessage.DECODING_UPDATE :
+        elif commType == ChannelMessage.DSP_UPDATE:
+            for results in dictToSend:
 
-            dictToSend["unprocessed_samples"] = int(self.unprocessedSamples)
-            dictToSend["processTimeNanos"] = int(processTimeNanos)
-            _packet = (commType, dictToSend)
+                results["unprocessed_samples"] = int(self.unprocessedSamples)
+                _packet = (commType, dictToSend)
         else:
             raise ValueError(f"Channel communication {commType} is not valid.")
         
-        self.pipe[0].send(_packet)
+        self.communicationPipe[0].send(_packet)
 
         return
 
@@ -254,6 +260,28 @@ class Channel(ABC, multiprocessing.Process):
         self.unprocessedSamples += len(data)
 
         return
+    
+    # -------------------------------------------------------------------------
+    
+    def prepareResultsAcquisition(self):
+        """
+        Prepare the acquisition result to be sent. 
+        """
+        mdict = {
+            "type" : "acquisition"
+        }
+        return mdict
+    
+    # -------------------------------------------------------------------------
+    
+    def prepareResultsTracking(self):
+        """
+        Prepare the acquisition result to be sent. 
+        """
+        mdict = {
+            "type" : "tracking"
+        }
+        return mdict
 
 # =============================================================================
 # END OF FILE

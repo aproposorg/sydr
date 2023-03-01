@@ -9,17 +9,20 @@ class CircularBuffer:
     buffer        : list
     idxWrite      : int
     idxRead       : int
-    bufferMaxSize : int
-    bufferFull    : bool
+    size          : int
+    maxSize       : int
+    full          : bool
 
     def __init__(self, size):
-        self.bufferMaxSize = size
-        self.buffer = [] * self.bufferMaxSize
+        self.maxSize = size
+        self.buffer = [] * self.maxSize
 
-        self.bufferFull = False
+        self.full = False
 
         self.idxWrite = 0
         self.idxRead = 0
+
+        self.size = 0
 
         return
 
@@ -31,20 +34,23 @@ class CircularBuffer:
         shift = len(data)
         self.buffer[self.idxWrite:self.idxWrite + shift] = data
         self.idxWrite += shift
+        self.size = self.idxWrite
 
         # Update buffer size
-        if self.bufferFull:
-            self.idxWrite %= self.bufferMaxSize
+        if self.full:
+            self.idxWrite %= self.maxSize
         else:
-            if self.idxWrite >= self.bufferMaxSize:
-                self.bufferFull = True
-                self.idxWrite %= self.bufferMaxSize
+            if self.idxWrite >= self.maxSize:
+                self.full = True
+                self.idxWrite %= self.maxSize
+            if self.size > self.maxSize:
+                self.size = self.maxSize
 
         return
 
     def getSlice(self, idxStart, samplesRequired):
 
-        idxStop = (idxStart + samplesRequired) % self.bufferMaxSize
+        idxStop = (idxStart + samplesRequired) % self.maxSize
 
         if idxStop < idxStart:
             return self.buffer[idxStart:] + self.buffer[:idxStop]
@@ -66,7 +72,7 @@ class CircularBuffer:
         return self.buffer
 
     def getBufferMaxSize(self):
-        return self.bufferMaxSize
+        return self.maxSize
     
     def isFull(self):
-        return self.bufferFull
+        return self.full
