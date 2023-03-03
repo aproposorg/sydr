@@ -175,7 +175,7 @@ class Channel(ABC, multiprocessing.Process):
     @abstractmethod
     def setAcquisition(self):
         """
-        Abstract method, set the needed parameters for the acquisition operations
+        Abstract method, set the needed parameters for the acquisition operations.
         """
         return
 
@@ -193,14 +193,14 @@ class Channel(ABC, multiprocessing.Process):
     @abstractmethod
     def setTracking(self):
         """
-        Abstract method, set the needed parameters for the tracking operations
+        Abstract method, set the needed parameters for the tracking operations.
         """
         return
 
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    def tracking(self):
+    def runTracking(self):
         """
         Abstract method, perform the tracking operation on the current RF signal.  
         """
@@ -209,7 +209,16 @@ class Channel(ABC, multiprocessing.Process):
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    def decoding(self):
+    def setDecoding(self):
+        """
+        Abstract method, set the needed parameters for the decoding operations.
+        """
+        return
+
+    # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def runDecoding(self):
         """
         Abstract method, perform the decoding operation on the current RF signal. 
         """

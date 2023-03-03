@@ -46,6 +46,16 @@ TROPO_METEO_VAR_E0  = [    0.0,    8.85,    7.24,    5.36,    3.39] # [mbar]
 TROPO_METEO_VAR_B0  = [    0.0, 0.25e-3, 0.32e-3, 0.81e-3, 0.62e-3] # [K/m]
 TROPO_METEO_VAR_L0  = [    0.0,    0.33,    0.46,    0.74,    0.30]
 
-
 # DISPLAY
 UNI_SIGMA = '\u03C3'
+
+# =====================================================================================================================
+# NAVIGATION MESSAGES
+
+# LNAV (GPS)
+LNAV_PREAMBULE_BITS     = [1, 0, 0, 0, 1, 0, 1, 1] # Preambule bit sequence
+LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 1] # Inverse preambule bit sequence
+LNAV_PREAMBULE_SIZE = 8   # Number of bits in preambule
+LNAV_MS_PER_BIT     = 20  # Number of milliseconds per navigation bits
+LNAV_SUBFRAME_SIZE  = 300 # Number of bits per subframe
+LNAV_WORD_SIZE      = 30  # Number of bits per word
