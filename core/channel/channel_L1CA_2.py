@@ -5,8 +5,10 @@ import numpy as np
 from core.channel.channel import Channel, ChannelState, ChannelMessage
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
-from core.dsp.decoding import Prompt2Bit
-import core.utils.constants as constants
+from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
+from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
+from core.utils.circularbuffer import CircularBuffer
+from core.satellite.ephemeris import BRDCEphemeris
 
 class ChannelL1CA(Channel):
 
@@ -16,8 +18,10 @@ class ChannelL1CA(Channel):
     initialFrequency : float
     iPrompt          : np.array
     qPrompt          : np.array
-    navBits          : np.array
+    navBitsBuffer    : np.array
     navBitsSamples   : np.array
+    ephemeris        : BRDCEphemeris
+    trackFlags       : TrackingFlags
     
     sampleCounter    : int
     codeCounter      : int
@@ -32,7 +36,6 @@ class ChannelL1CA(Channel):
     acq_requiredSamples        : int
 
     # Tracking
-    track_flags              : TrackingFlags
     track_correlatorsSpacing : tuple
     track_dll_tau1           : float
     track_dll_tau2           : float
@@ -168,7 +171,7 @@ class ChannelL1CA(Channel):
 
         self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
 
-        self.track_flags = TrackingFlags.UNKNOWN
+        self.trackFlags = TrackingFlags.UNKNOWN
 
         return
     
@@ -211,15 +214,15 @@ class ChannelL1CA(Channel):
         self.carrierFrequency = self.initialFrequency + self.NCO_carrier
 
         # Check if bit sync
-        if not (self.track_flags & TrackingFlags.BIT_SYNC):
+        if not (self.trackFlags & TrackingFlags.BIT_SYNC):
             # if not bit sync yet, check if there is a bit inversion
-            if self.track_flags & TrackingFlags.CODE_LOCK:
+            if self.trackFlags & TrackingFlags.CODE_LOCK:
                 if np.sign(self.iPrompt) != np.sign(iPrompt_new):
-                    self.track_flags |= TrackingFlags.BIT_SYNC
+                    self.trackFlags |= TrackingFlags.BIT_SYNC
 
         # TODO Check if tracking was succesful an update the flags
         # TODO Add more flags
-        self.track_flags |= TrackingFlags.CODE_LOCK
+        self.trackFlags |= TrackingFlags.CODE_LOCK
 
         # Update some variables
         # TODO Previously linespace, check if correct
@@ -247,17 +250,13 @@ class ChannelL1CA(Channel):
     
     # -------------------------------------------------------------------------
     
-    def setDecoding(self, configuration:dict):
+    def setDecoding(self):
         super().setDecoding()
 
-        self.lnav_preambuleBits = constants.LNAV_PREAMBULE_BITS
-        self.lnav_msInBit = constants.LNAV_MS_PER_BIT
-        self.lnav_subframeBits = constants.LNAV_SUBFRAME_SIZE
-        self.lnav_wordBits = constants.LNAV_WORD_SIZE
-
-        self.navBits = np.empty((1, self.lnav_subframeBits))
-        self.navBitsSamples = np.empty((1, self.lnav_subframeBits))
+        self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
+        self.navBitsBuffer = np.empty((1, self.navBitBufferSize))
         self.navBitsCounter = 0
+        self.ephemeris = BRDCEphemeris()
 
         return
     
@@ -266,27 +265,77 @@ class ChannelL1CA(Channel):
     def runDecoding(self):
         
         # Check if time to decode the bit
-        if not (self.track_flags & TrackingFlags.BIT_SYNC):
+        if not (self.trackFlags & TrackingFlags.BIT_SYNC):
             # No bit sync yet, nothing to do
             return
         
         # Check if new bit to decode
-        if not (self.lnav_nbPrompt == self.lnav_msInBit):
+        if not (self.lnav_nbPrompt == LNAV_MS_PER_BIT):
             # No new bit, nothing to do
             return
         
         # Convert prompt correlator to bits
         self.navBitsCounter += 1
-        self.navBits[self.navBitsCounter-1] = Prompt2Bit(self.lnav_iPrompt_sum) # TODO Check if this function work
-        self.navBitsSamples[self.navBitsCounter-1] = self.codeCounter
+        self.navBitsBuffer[self.navBitsCounter-1] = Prompt2Bit(self.lnav_iPrompt_sum) # TODO Check if this function work
+
+        # Check if minimum number of bits decoded
+        # Need at least the preambule bits plus the previous 2 bit to perform checks plus the 2 words afterwards.
+        minBits = 2 + 2 * LNAV_WORD_SIZE
+        if self.navBitsCounter < minBits:
+            return 
         
         # Check if first subframe found
-        if not(self.track_flags & TrackingFlags.SUBFRAME_SYNC):
-            print()
+        if not(self.trackFlags & TrackingFlags.SUBFRAME_SYNC):
+            idx = self.navBitsCounter - minBits
+            if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+                # Preambule not found
+                return
+            
+            # Flush previous bits
+            _newbuffer = np.empty_like(self.navBitsBuffer)
+            _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
+            self.navBitsBuffer = _newbuffer
+            self.navBitsCounter = minBits
+    	    
+            # Update tracking flags 
+            self.trackFlags |= TrackingFlags.SUBFRAME_SYNC # OR logic
+        
+        # Check if complete subframe can be decoded
+        if self.navBitsCounter < self.navBitBufferSize:
+            return
+        
+        # Check if the beginning of the new subframe match the preambule
+        idx = self.navBitsCounter - minBits
+        if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+            # Preambule not found, reset counter and flag
+            self.navBitsCounter = 0
+            self.trackFlags ^= TrackingFlags.SUBFRAME_SYNC # XOR logic
+            return
+        
+        # Decode only essential in subframe
+        self.tow, subframeID = LNAV_DecodeSubframe(self.navBitsBuffer[2:], self.navBitsBuffer[1])
+        
+        # Update tracking flags
+        # TODO Add success check?
+        self.trackFlags |= (TrackingFlags.TOW_DECODED & TrackingFlags.TOW_KNOWN)
 
+        if not (self.trackFlags & TrackingFlags.EPH_DECODED) and self.ephemeris.checkFlags():
+            self.trackFlags |= (TrackingFlags.EPH_DECODED & TrackingFlags.EPH_KNOWN)
+
+        # Results sent back to the receiver
+        results = super().prepareResultsDecoding()
+        results["type"] = MessageType.GPS_LNAV
+        results["subframe_id"] = subframeID
+        results["tow"] = self.tow
+        results["bits"] = self.navBitBufferSize
+
+        # Flush decoded bits
+        _newbuffer = np.empty_like(self.navBitsBuffer)
+        _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
+        self.navBitsBuffer = _newbuffer
+        self.navBitsCounter = minBits
 
         return
-
 
     # -------------------------------------------------------------------------
 
@@ -314,8 +363,6 @@ class ChannelL1CA(Channel):
                 self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
             # Track
             results.append(self.tracking())
-
-            # If decoding
             results.append(self.decoding())
         else:
             raise ValueError(f"Channel state {self.state} is not valid.")

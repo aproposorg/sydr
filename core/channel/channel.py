@@ -64,8 +64,9 @@ class Channel(ABC, multiprocessing.Process):
     gnssSignal   : GNSSSignal     # GNSS signal parameters 
     satelliteID  : np.uint8       # Satellite ID
     
-    # Channel - receiver communication
-    communicationPipe : multiprocessing.Pipe  # Pipe for communication between channel and main thread
+    # Channel - Manager communication
+    communicationPipe : multiprocessing.Pipe  # Pipe for message communication between channel and manager
+    dataQueue         : multiprocessing.Queue # Queue for handling new RF data from manager to channel
 
     # Multiprocessing
     daemon  : bool                      # Start as a daemon process (see multiprocessing documentation)
@@ -86,12 +87,17 @@ class Channel(ABC, multiprocessing.Process):
         # Initialisation 
         self.channelID     = cid
         self.channelState  = ChannelState.IDLE
-
-        # Communication
-        self.communicationPipe = pipe
-
+        
         return
     
+    # -------------------------------------------------------------------------
+
+    def setCommunicationParameters(self, communicationPipe:multiprocessing.Pipe, rfQueue:multiprocessing.Queue):
+        self.communicationPipe = communicationPipe
+        self.rfQueue = rfQueue
+        logging.getLogger(__name__).debug(f"CID {self.cid} initialised with communication pipes.")
+        return
+
     # -------------------------------------------------------------------------
 
     def setGNSSSignalParameters(self, gnssSignal:GNSSSignal, satelliteID:np.uint8):
@@ -285,12 +291,24 @@ class Channel(ABC, multiprocessing.Process):
     
     def prepareResultsTracking(self):
         """
-        Prepare the acquisition result to be sent. 
+        Prepare the tracking result to be sent. 
         """
         mdict = {
             "type" : "tracking"
         }
         return mdict
+    
+    # -------------------------------------------------------------------------
+    
+    def prepareResultsDecoding(self):
+        """
+        Prepare the decoding result to be sent. 
+        """
+        mdict = {
+            "type" : "decoding"
+        }
+        return mdict
+
 
 # =============================================================================
 # END OF FILE

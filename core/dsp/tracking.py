@@ -8,9 +8,8 @@ from enum import Enum, unique
 @unique
 class TrackingFlags(Enum):
     """
-    Tracking flags to be represent the current stage of tracking.
-    They are to be intepreted in binary format, to allow multiple state 
-    represesented in one decimal number. 
+    Tracking flags to represent the current stage of tracking. They are to be intepreted in binary format, to allow 
+    multiple state represesented in one decimal number. 
     Similar to states in https://developer.android.com/reference/android/location/GnssMeasurement 
     """
 
