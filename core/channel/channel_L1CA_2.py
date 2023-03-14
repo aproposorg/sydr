@@ -1,6 +1,7 @@
 
 import multiprocessing
 import numpy as np
+import configparser
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
@@ -25,7 +26,6 @@ class ChannelL1CA(Channel):
     
     sampleCounter    : int
     codeCounter      : int
-    navBitsCounter   : int
 
     # Acquisition
     acq_dopplerRange           : tuple
@@ -49,18 +49,18 @@ class ChannelL1CA(Channel):
     track_nbPrompt           : int
 
     # Decoding
-    lnav_preambuleBits : np.array
-    lnav_msInBit       : int
-    lnav_subframeBits  : int
-    lnav_wordBits      : int
-    lnav_iPrompt_sum   : float
-    lnav_nbPrompt      : int
+    navBitsBuffer    : np.array
+    navBitBufferSize : int
+    navBitsCounter   : int
+    nbPrompt         : int
+    ephemeris
 
-    def __init__(self, cid:int, pipe:multiprocessing.Pipe, multiprocessing=False):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configFilePath:str):
         
         # Super init
-        super().__init__(cid, pipe, multiprocessing=multiprocessing)
+        super().__init__(cid, sharedBuffer, resultQueue)
 
+        # Initialisation
         self.codeOffset       = 0
         self.codeFrequency    = 0.0
         self.carrierFrequency = 0.0
@@ -79,7 +79,18 @@ class ChannelL1CA(Channel):
 
         self.sampleCounter = 0
         self.codeCounter = 0
+
+        self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
+        self.navBitsBuffer = np.empty((1, self.navBitBufferSize))
         self.navBitsCounter = 0
+        self.ephemeris = BRDCEphemeris()
+
+        # Initialisation from configuration file
+        configuration = configparser.ConfigParser()
+        configuration.read(configFilePath)
+
+        self.setAcquisition(configuration['ACQUISITION'])
+        self.setTracking(configuration['TRACKING'])
 
         return
     
@@ -101,6 +112,32 @@ class ChannelL1CA(Channel):
     
     # -------------------------------------------------------------------------
 
+    def setTracking(self, configuration:dict):
+
+        self.track_correlatorsSpacing = configuration['correlatorsSpacing']
+
+        self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['dll_NoiseBandwidth']),
+            dampingRatio=float(configuration['dll_DampingRatio']),
+            loopGain=float(configuration['dll_LoopGain']))
+        self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['pll_NoiseBandwidth']),
+            dampingRatio=float(configuration['pll_DampingRatio']),
+            loopGain=float(configuration['pll_LoopGain']))
+        self.track_dll_pdi = float(configuration['dll_pdi'])
+        self.track_pll_pdi = float(configuration['pll_pdi'])
+        
+        self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
+        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
+
+        self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
+
+        self.trackFlags = TrackingFlags.UNKNOWN
+
+        return
+    
+    # -------------------------------------------------------------------------
+
     def runAcquisition(self):
         """
         Perform the acquisition process with the current RF data.
@@ -108,7 +145,7 @@ class ChannelL1CA(Channel):
         super().runAcquisition()
             
         # Check if sufficient data in buffer
-        if self.rfBuffer.size < self.acq_requiredSamples:
+        if self.unprocessedSamples < self.acq_requiredSamples:
             return
             
         codeFFT = np.conj(np.fft.fft(self.code))
@@ -151,37 +188,11 @@ class ChannelL1CA(Channel):
     
     # -------------------------------------------------------------------------
 
-    def setTracking(self, configuration):
-
-        self.track_correlatorsSpacing = configuration['correlatorsSpacing']
-
-        self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=float(configuration['dll_NoiseBandwidth']),
-            dampingRatio=float(configuration['dll_DampingRatio']),
-            loopGain=float(configuration['dll_LoopGain']))
-        self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=float(configuration['pll_NoiseBandwidth']),
-            dampingRatio=float(configuration['pll_DampingRatio']),
-            loopGain=float(configuration['pll_LoopGain']))
-        self.track_dll_pdi = float(configuration['dll_pdi'])
-        self.track_pll_pdi = float(configuration['pll_pdi'])
-        
-        self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
-
-        self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
-
-        self.trackFlags = TrackingFlags.UNKNOWN
-
-        return
-    
-    # -------------------------------------------------------------------------
-
     def runTracking(self):
         super().runTracking()
 
         # Check if sufficient data in buffer
-        if self.rfBuffer.size < self.track_requiredSamples:
+        if self.unprocessedSamples < self.track_requiredSamples:
             return
 
         # Correlators
@@ -247,18 +258,6 @@ class ChannelL1CA(Channel):
         results["code_frequency"]    = self.codeFrequency        
 
         return results
-    
-    # -------------------------------------------------------------------------
-    
-    def setDecoding(self):
-        super().setDecoding()
-
-        self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
-        self.navBitsBuffer = np.empty((1, self.navBitBufferSize))
-        self.navBitsCounter = 0
-        self.ephemeris = BRDCEphemeris()
-
-        return
     
     # -------------------------------------------------------------------------
 

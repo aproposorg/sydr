@@ -113,11 +113,11 @@ class ChannelManager():
         """
         # Start the channels
         for chan in self.channels:
-            chan.event_run.set()
+            chan.eventRun.set()
 
         # Wait for channels to be done
         for chan in self.channels:
-            chan.event_done.wait()
+            chan.eventDone.wait()
 
         # Process results
         results = []
@@ -136,11 +136,15 @@ class ChannelManager():
     
     def close(self):
         """
-        Close the ChannelManager and free the memory allocations made for the buffer. Should be called once at the end
-        of the scenario when exiting the program.
+        Close the ChannelManager, kill the processes and free the memory allocations made for the buffer. 
+        Should be called once at the end of the scenario when exiting the program.
         """
         self._sharedMemory.close()
         self._sharedMemory.unlink()
+
+        for chan in self.channels:
+            chan.terminate()
+
         return
     
     # -----------------------------------------------------------------------------------------------------------------

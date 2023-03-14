@@ -51,59 +51,68 @@ class Channel(ABC, multiprocessing.Process):
     Abstract class for Channel object definition.
     """
 
+    TIMEOUT = 10 # Seconds before event timeout
+
     # IDs
     channelID    : np.uint8       # Channel ID
     channelState : ChannelState   # Current channel state
 
     # RF signal
     rfSignal     : RFSignal       # RF signal parameters
-    rfBuffer     : CircularBuffer    # Circular buffer for limited data storage
-    rfQueue      : multiprocessing.Queue  # Queue for reception of new data from main thread, pipe is not used as it has limited storage
+    rfBuffer     : CircularBuffer # Circular buffer for limited data storage
+    
+    nbUnprocessedSamples : int    # Number of samples waiting to be processed
 
     # Satellite and GNSS signal
     gnssSignal   : GNSSSignal     # GNSS signal parameters 
     satelliteID  : np.uint8       # Satellite ID
     
     # Channel - Manager communication
-    communicationPipe : multiprocessing.Pipe  # Pipe for message communication between channel and manager
-    dataQueue         : multiprocessing.Queue # Queue for handling new RF data from manager to channel
-
-    # Multiprocessing
-    daemon  : bool                      # Start as a daemon process (see multiprocessing documentation)
+    resultQueue : multiprocessing.Queue  # Queue to place the results of the channel processing
+    eventRun    : multiprocessing.Event  # Event to start the channel processing when set.
+    eventDone   : multiprocessing.Event  # Event set when channel processing done.
 
     # =========================================================================
 
     @abstractmethod
-    def __init__(self, cid:int, pipe:multiprocessing.Pipe, multiprocessing=False):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue):
         """
-        Constructor.
+        Abstract constructor for Channel class. 
+
+        Args:
+            cid (int): Channel ID.
+            sharedBuffer (CircularBuffer): Circular buffer with the RF data.
+            resultQueue (multiprocessing.Queue): Queue to place the results of the channel processing
+
+        Returns:
+            None
+        
+        Raises:
+            None
         """
         
         # For multiprocessing inheritance
-        if(multiprocessing):
-            super(multiprocessing.Process, self).__init__()
-            self.daemon  = True
+        super(multiprocessing.Process, self).__init__(name=f'CID{cid}', daemon=True)
 
         # Initialisation 
-        self.channelID     = cid
-        self.channelState  = ChannelState.IDLE
-        
-        return
-    
-    # -------------------------------------------------------------------------
+        self.channelID = cid
+        self.channelState = ChannelState.IDLE
+        self.rfBuffer = sharedBuffer
+        self.resultQueue = resultQueue
+        self.eventRun = multiprocessing.Event()
+        self.eventDone = multiprocessing.Event()
 
-    def setCommunicationParameters(self, communicationPipe:multiprocessing.Pipe, rfQueue:multiprocessing.Queue):
-        self.communicationPipe = communicationPipe
-        self.rfQueue = rfQueue
-        logging.getLogger(__name__).debug(f"CID {self.cid} initialised with communication pipes.")
+        self.unprocessedSamples = 0
+
         return
 
     # -------------------------------------------------------------------------
 
-    def setGNSSSignalParameters(self, gnssSignal:GNSSSignal, satelliteID:np.uint8):
+    def setSignalParameters(self, rfSignal:RFSignal, gnssSignal:GNSSSignal, satelliteID:np.uint8):
         """
         Set the GNSS signal and satellite tracked by the channel.
         """
+        self.rfSignal = rfSignal
         self.satelliteID = satelliteID
         self.gnssSignal = gnssSignal
         self.channelState = ChannelState.ACQUIRING
@@ -112,59 +121,39 @@ class Channel(ABC, multiprocessing.Process):
     
     # -------------------------------------------------------------------------
 
-    def setRFSignalParameters(self, rfSignal:RFSignal, queue:multiprocessing.Queue):
+    def run(self, nbNewSamples:int):
         """
-        Set the parameters of the RF signals sent to the channel.
-        """
-        self.rfQueue  = queue 
-        self.rfSignal = rfSignal
-        logging.getLogger(__name__).debug(f"CID {self.cid} initialised with RF signal parameters.")
-        return
-    
-    # -------------------------------------------------------------------------
+        Main processing loop, hanlding new RF data and channel processing.
 
-    def setBufferSize(self, size):
-        """
-        Set the size of the RF data buffer.
-        """
-        self.rfBuffer = CircularBuffer(size)
-        return
-    
-    # -------------------------------------------------------------------------
+        Args:
+            nbNewSamples (int) : Number of new samples added to the shared buffer at each run.
 
-    def run(self):
-        """
-        Main processing loop, handling the reception of new RF data and channel processing.
+        Returns:
+            None
+
+        Raises:
+            None
+
         """
         
         while True:
-            try:
-                rfData = self.rfQueue.get(timeout=PROCESS_TIMEOUT)
-            except Empty:
-                self.logger.debug(f"CID {self.cid} did not received data for {PROCESS_TIMEOUT} seconds, closing thread")
-                return
-            # TODO Add except if rfQueue not init
+
+            # Wait for ChannelManager event signal
+            timeoutFlag = self.eventRun.wait(timeout=self.TIMEOUT)
             
-            if rfData == "SIGTERM":
-                logging.getLogger(__name__).debug(f"CID {self.cid} SIGTERM received, closing thread")
+            if timeoutFlag:
+                logging.getLogger(__name__).debug(f"CID {self.cid} timeout, exiting run.") 
                 break
-            # else:
-            #    self.logger.debug(f"CID {self.cid} received RF Data {rfData}")
             
-            # Load the data in the buffer
-            self._updateBuffer(rfData)
+            # Update samples tracker
+            self.unprocessedSamples += nbNewSamples
 
             # Process the data according to the current channel state
             results = self._processHandler()
 
             # Send the results
-            self.send(ChannelMessage.DSP_UPDATE, results)
-
-            self.send(ChannelMessage.CHANNEL_UPDATE)
-            self.send(ChannelMessage.END_OF_PIPE)
-
-        logging.getLogger(__name__).debug(f"CID {self.cid} Exiting run") 
-
+            self.resultQueue.put(results)
+        
         return
 
     # -------------------------------------------------------------------------
@@ -173,60 +162,6 @@ class Channel(ABC, multiprocessing.Process):
     def _processHandler(self):
         """
         Abstract method, handle the RF Data based on the current channel state.
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def setAcquisition(self):
-        """
-        Abstract method, set the needed parameters for the acquisition operations.
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def runAcquisition(self):
-        """
-        Abstract method, perform the acquisition operation on the current RF signal. 
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def setTracking(self):
-        """
-        Abstract method, set the needed parameters for the tracking operations.
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def runTracking(self):
-        """
-        Abstract method, perform the tracking operation on the current RF signal.  
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def setDecoding(self):
-        """
-        Abstract method, set the needed parameters for the decoding operations.
-        """
-        return
-
-    # -------------------------------------------------------------------------
-
-    @abstractmethod
-    def runDecoding(self):
-        """
-        Abstract method, perform the decoding operation on the current RF signal. 
         """
         return
 
@@ -262,19 +197,6 @@ class Channel(ABC, multiprocessing.Process):
         timeSinceTOW += self.codeSinceTOW * self.gnssSignal.codeMs # Add number of code since TOW
         timeSinceTOW += self.unprocessedSamples / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
         return timeSinceTOW
-
-    # -------------------------------------------------------------------------
-
-    def _updateBuffer(self, data:np.array):
-        """
-        Update buffer with new data, shift the previous data and update the 
-        required variables.
-        """
-
-        self.buffer.shift(data)
-        self.unprocessedSamples += len(data)
-
-        return
     
     # -------------------------------------------------------------------------
     
