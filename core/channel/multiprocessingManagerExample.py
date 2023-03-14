@@ -6,17 +6,20 @@ from abc import ABC, abstractmethod
 import logging
 from queue import Empty
 
+from core.utils.circularbuffer import CircularBuffer
+
 # =====================================================================================================================
 
 class Channel(ABC, multiprocessing.Process):
 
-    def __init__(self, cid, sharedBuffer, resultQueue):
+    def __init__(self, cid, sharedBuffer:CircularBuffer, resultQueue):
         super(multiprocessing.Process, self).__init__(name=f'CID{cid}', daemon=True)
         self.cid = cid
         self.buffer = sharedBuffer
         self.resultQueue = resultQueue
         self.event_run = multiprocessing.Event()
         self.event_done = multiprocessing.Event()
+        self.currentSample = 0
         return
     
     @abstractmethod
@@ -31,12 +34,14 @@ class ChannelGPSL1CA(Channel):
 
     def __init__(self, cid, sharedBuffer, resultQueue):
         super().__init__(cid, sharedBuffer, resultQueue)
+        self.samplesRequired = 10
         return
     
     def run(self):
         while 1:
             super().run()
-            result = np.sum(self.buffer)
+            result = np.sum(self.buffer.getSlice(self.currentSample, self.samplesRequired))
+            self.currentSample = (self.currentSample + self.samplesRequired) % self.buffer.maxSize
             packet = {}
             packet["cid"] = self.cid
             packet["result"] = result
@@ -57,7 +62,7 @@ class ChannelManager():
         # Allocate shared memory 
         nbytes = size * np.dtype(dtype).itemsize
         self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
-        self.sharedBuffer = np.ndarray(shape=(1, size), dtype=dtype, buffer=self._sharedMemory.buf)
+        self.sharedBuffer = CircularBuffer(size, dtype, self._sharedMemory)
 
         # RF queue
         self.resultQueue = multiprocessing.Queue()
@@ -74,7 +79,7 @@ class ChannelManager():
         return
     
     def addNewRFData(self, data):
-        self.sharedBuffer[:] = data
+        self.sharedBuffer.shift(data)
         return
     
     def run(self):
@@ -109,7 +114,7 @@ class ChannelManager():
 class Receiver():
     def __init__(self, nbChannels):
         self.nbChannels = nbChannels
-        self.channelManager = ChannelManager(size=10, dtype=np.int8, timeout=1)
+        self.channelManager = ChannelManager(size=20, dtype=np.int8, timeout=1)
         self.channelManager.addChannel(ChannelGPSL1CA, nbChannels)
         return
     
