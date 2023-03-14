@@ -2,6 +2,7 @@
 import numpy as np
 import logging
 import multiprocessing
+from multiprocessing import shared_memory
 
 from core.channel.channel import Channel
 from core.signal.gnsssignal import GNSSSignal
@@ -10,87 +11,105 @@ from core.utils.circularbuffer import CircularBuffer
 
 class ChannelManager():
 
-    rfSignal : RFSignal  # Only used to save the properties of the RF signal.
-    nbChannels : int
-    nbChannelsMax : int
-
     channels : list
-    channelsStatus : list
+    nbChannels : int
 
-    channelsConfigDict : dict
+    # Memory management
+    _sharedMemory : shared_memory.SharedMemory
+    sharedBuffer : np.ndarray
 
     # Communication
-    communicationPipe : multiprocessing.Pipe
-    rfQueue : multiprocessing.Queue
+    resultQueue : multiprocessing.Queue()
+    timeout : int
 
-    # -----------------------------------------------------------------------------------------------------------------
+    def __init__(self, buffersize:int, dtype:np.dtype) -> None:
+        """
+        Constructor for ChannelManager class. Some indication on the RF data needs to be provided for buffer memory
+        allocation. 
 
-    def __init__(self, rfSignal:RFSignal, nbChannelsMax:int):
-        self.rfSignal = rfSignal 
-        self.nbChannels = 0
-        self.nbChannelsMax = nbChannelsMax
+        Args:
+            buffersize (int): Size of the data buffer in number of elements.
+            dtype (np.dtype): Type of data in buffer.
+
+        Returns:
+            None
         
-        # Communication with receiver
-        # The pipe is for "light" communication between the receiver and the manager, it has two connection (in, out).
-        # The queue is only for receiving the RF data from receiver to manager, as they don't fit in a Pipe object.
-        self.communicationPipe = multiprocessing.Pipe()  
-        self.rfQueue = multiprocessing.Queue() 
-
-        return
-    
-    # -----------------------------------------------------------------------------------------------------------------
-
-    def setChannelConfig(self, channelTypeName:str, channel:Channel):
-        """
-        Set the channel object to be used and link it to a custom name.
-
-        Args:
-            channelTypeName (str): Custom name to link the channel object.
-            channel (Channel): Channel object.
-    
-        Returns:
-            None
-
         Raises:
             None
 
         """
 
-        self.channelsConfigDict[channelTypeName] = channel
+        self.channels = []
+        self.nbChannels = 0
+
+        # Allocate shared memory 
+        nbytes = buffersize * np.dtype(dtype).itemsize
+        self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
+        self.sharedBuffer = np.ndarray(shape=(1, buffersize), dtype=dtype, buffer=self._sharedMemory.buf)
+
+        # RF queue
+        self.resultQueue = multiprocessing.Queue()
 
         return
 
-    
     # -----------------------------------------------------------------------------------------------------------------
-    
-    def addChannel(self, channel:Channel):
-        """
-        Add a new channel to channel manager.
 
-        Args:
-            channel (Channel): a Channel child class. 
-    
-        Returns:
-            None
+class ChannelManager():
 
-        Raises:
-            None
+    def __init__(self, size:int, dtype:np.int8, timeout:int) -> None:
 
-        """
-        # Check current amount of channels
-        if self.nbChannels >= self.nbChannelsMax:
-            msg = f"Maximum number of channels exceeded, no channel created."
-            logging.getLogger(__name__).warning(msg)
-            raise Warning(msg)
+        self.channels = []
+        self.nbChannels = 0
 
-        # Add channel to list
-        self.channels.append(channel)
+        # Allocate shared memory 
+        nbytes = size * np.dtype(dtype).itemsize
+        self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
+        self.sharedBuffer = np.ndarray(shape=(1, size), dtype=dtype, buffer=self._sharedMemory.buf)
+
+        # RF queue
+        self.rfQueue = multiprocessing.Queue()
+        self.receiverPipe = multiprocessing.Pipe()
+        self.resultQueue = multiprocessing.Queue()
+        self.timeout = timeout
 
         return
     
-    # -----------------------------------------------------------------------------------------------------------------
+    def addChannel(self, ChannelObject, nbChannels=1):
 
+        for i in range(nbChannels):
+            events = (multiprocessing.Event(), multiprocessing.Event())
+            self.channels.append(ChannelObject(self.nbChannels, self.sharedBuffer, self.resultQueue, events))
+            self.channels[-1].start()
+            self.nbChannels += 1
+        return
     
+    def addNewRFData(self, data):
+        self.sharedBuffer[:] = data
+        return
+    
+    def run(self):
+        # Start the channels
+        for chan in self.channels:
+            chan.event_run.set()
 
-    # -----------------------------------------------------------------------------------------------------------------
+        # Wait for channels to be done
+        for chan in self.channels:
+            chan.event_done.wait()
 
+        # Process results
+        results = []
+        # qsize is highlighted as "approximate count" in documentation, but in our case we have an event trigger before.
+        while self.resultQueue.qsize() > 0:
+            try:
+                packet = self.resultQueue.get(timeout=1)
+            except Empty:
+                break
+            print(f"From manager: CID {packet['cid']}, {packet['result']}")
+            results.append(packet)
+                
+        return results
+    
+    def close(self):
+        self._sharedMemory.close()
+        self._sharedMemory.unlink()
+        return
