@@ -1,6 +1,30 @@
 
 
 import numpy as np
+from enum import Enum, unique
+
+# =====================================================================================================================
+
+@unique
+class TrackingFlags(Enum):
+    """
+    Tracking flags to represent the current stage of tracking. They are to be intepreted in binary format, to allow 
+    multiple state represesented in one decimal number. 
+    Similar to states in https://developer.android.com/reference/android/location/GnssMeasurement 
+    """
+
+    UNKNOWN       = 0    # 0000 0000 No tracking
+    CODE_LOCK     = 1    # 0000 0001 Code found (after first tracking?)
+    BIT_SYNC      = 2    # 0000 0010 First bit identified 
+    SUBFRAME_SYNC = 4    # 0000 0100 First subframe found
+    TOW_DECODED   = 8    # 0000 1000 Time Of Week decoded from navigation message
+    EPH_DECODED   = 16   # 0001 0000 Ephemeris from navigation message decoded
+    TOW_KNOWN     = 32   # 0010 0000 Time Of Week known (retrieved from Assisted Data), to be set if TOW_DECODED set.
+    EPH_KNOWN     = 64   # 0100 0000 Ephemeris known (retrieved from Assisted Data), to be set if EPH_DECODED set.
+    FINE_LOCK     = 128  # 1000 0000 Fine tracking lock
+
+    def __str__(self):
+        return str(self.name)
 
 # =====================================================================================================================
 

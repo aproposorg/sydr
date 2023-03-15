@@ -1,5 +1,6 @@
 from abc import ABC, abstractclassmethod
 import numpy as np
+from enum import Enum, unique
 
 from core.utils.constants import EARTH_GM, EARTH_ROTATION_RATE, PI, RELATIVIST_CLOCK_F
 from core.utils.enumerations import GNSSSystems
@@ -53,6 +54,10 @@ class BRDCEphemeris(Ephemeris):
     subframe2Flag : bool
     subframe3Flag : bool
 
+    subframe1Bits : np.array
+    subframe2Bits : np.array
+    subframe3Bits : np.array
+    
     # -------------------------------------------------------------------------
 
     def __init__(self):

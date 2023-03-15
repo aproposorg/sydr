@@ -1,17 +1,31 @@
 
 import multiprocessing
 import numpy as np
+import configparser
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
-from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients
+from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
+from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
+from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
+from core.utils.circularbuffer import CircularBuffer
+from core.satellite.ephemeris import BRDCEphemeris
 
 class ChannelL1CA(Channel):
 
-    codeOffset : int
-    codeFrequency : float
+    codeOffset       : int
+    codeFrequency    : float
     carrierFrequency : float
     initialFrequency : float
+    iPrompt          : np.array
+    qPrompt          : np.array
+    navBitsBuffer    : np.array
+    navBitsSamples   : np.array
+    ephemeris        : BRDCEphemeris
+    trackFlags       : TrackingFlags
+    
+    sampleCounter    : int
+    codeCounter      : int
 
     # Acquisition
     acq_dopplerRange           : tuple
@@ -30,12 +44,23 @@ class ChannelL1CA(Channel):
     track_pll_tau2           : float
     track_pll_pdi            : float
     track_requiredSamples    : int
+    track_iPrompt_sum        : float
+    track_qPrompt_sum        : float
+    track_nbPrompt           : int
 
-    def __init__(self, cid:int, pipe:multiprocessing.Pipe, multiprocessing=False):
+    # Decoding
+    navBitsBuffer    : np.array
+    navBitBufferSize : int
+    navBitsCounter   : int
+    nbPrompt         : int
+    ephemeris
+
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configFilePath:str):
         
         # Super init
-        super().__init__(cid, pipe, multiprocessing=multiprocessing)
+        super().__init__(cid, sharedBuffer, resultQueue)
 
+        # Initialisation
         self.codeOffset       = 0
         self.codeFrequency    = 0.0
         self.carrierFrequency = 0.0
@@ -48,6 +73,25 @@ class ChannelL1CA(Channel):
         self.NCO_carrierError     = 0.0
         self.NCO_remainingCarrier = 0.0
 
+        self.iPrompt = 0.0
+        self.qPrompt = 0.0
+        self.nbPrompt = 0.0
+
+        self.sampleCounter = 0
+        self.codeCounter = 0
+
+        self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
+        self.navBitsBuffer = np.empty((1, self.navBitBufferSize))
+        self.navBitsCounter = 0
+        self.ephemeris = BRDCEphemeris()
+
+        # Initialisation from configuration file
+        configuration = configparser.ConfigParser()
+        configuration.read(configFilePath)
+
+        self.setAcquisition(configuration['ACQUISITION'])
+        self.setTracking(configuration['TRACKING'])
+
         return
     
     # -------------------------------------------------------------------------
@@ -55,14 +99,40 @@ class ChannelL1CA(Channel):
     def setAcquisition(self, configuration:dict):
         super().setAcquisition()
 
-        self.acq_dopplerRange           = configuration['dopplerRange']
-        self.acq_dopplerSteps           = configuration['dopplerStep']
-        self.acq_coherentIntegration    = configuration['coherentIntegration']
-        self.acq_nonCoherentIntegration = configuration['nonCoherentIntegration']
-        self.acq_threshold              = configuration['threshold']
+        self.acq_dopplerRange           = float(configuration['dopplerRange'])
+        self.acq_dopplerSteps           = float(configuration['dopplerStep'])
+        self.acq_coherentIntegration    = int(configuration['coherentIntegration'])
+        self.acq_nonCoherentIntegration = int(configuration['nonCoherentIntegration'])
+        self.acq_threshold              = float(configuration['threshold'])
 
         self.acq_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3 * \
             self.acq_nonCoherentIntegration * self.acq_coherentIntegration)
+
+        return
+    
+    # -------------------------------------------------------------------------
+
+    def setTracking(self, configuration:dict):
+
+        self.track_correlatorsSpacing = configuration['correlatorsSpacing']
+
+        self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['dll_NoiseBandwidth']),
+            dampingRatio=float(configuration['dll_DampingRatio']),
+            loopGain=float(configuration['dll_LoopGain']))
+        self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['pll_NoiseBandwidth']),
+            dampingRatio=float(configuration['pll_DampingRatio']),
+            loopGain=float(configuration['pll_LoopGain']))
+        self.track_dll_pdi = float(configuration['dll_pdi'])
+        self.track_pll_pdi = float(configuration['pll_pdi'])
+        
+        self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
+        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
+
+        self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
+
+        self.trackFlags = TrackingFlags.UNKNOWN
 
         return
     
@@ -75,7 +145,7 @@ class ChannelL1CA(Channel):
         super().runAcquisition()
             
         # Check if sufficient data in buffer
-        if self.rfBuffer.size < self.acq_requiredSamples:
+        if self.unprocessedSamples < self.acq_requiredSamples:
             return
             
         codeFFT = np.conj(np.fft.fft(self.code))
@@ -118,35 +188,11 @@ class ChannelL1CA(Channel):
     
     # -------------------------------------------------------------------------
 
-    def setTracking(self, configuration):
-
-        self.track_correlatorsSpacing = configuration['correlatorsSpacing']
-
-        self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=configuration['dll_NoiseBandwidth'],
-            dampingRatio=configuration['dll_DampingRatio'],
-            loopGain=configuration['dll_LoopGain'])
-        self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=configuration['pll_NoiseBandwidth'],
-            dampingRatio=configuration['pll_DampingRatio'],
-            loopGain=configuration['pll_LoopGain'])
-        self.track_dll_pdi = configuration['dll_pdi']
-        self.track_pll_pdi = configuration['pll_pdi']
-        
-        self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
-
-        self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
-
-        return
-    
-    # -------------------------------------------------------------------------
-
     def runTracking(self):
         super().runTracking()
 
         # Check if sufficient data in buffer
-        if self.rfBuffer.size < self.track_requiredSamples:
+        if self.unprocessedSamples < self.track_requiredSamples:
             return
 
         # Correlators
@@ -158,6 +204,8 @@ class ChannelL1CA(Channel):
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.correlatorsSpacing)
+        iPrompt_new = correlatorResults[2]
+        qPrompt_new = correlatorResults[3]
         
         # Delay Lock Loop 
         self.NCO_code, self.NCO_codeError = DLL_NNEML(
@@ -176,9 +224,22 @@ class ChannelL1CA(Channel):
         # Update NCO carrier frequency
         self.carrierFrequency = self.initialFrequency + self.NCO_carrier
 
+        # Check if bit sync
+        if not (self.trackFlags & TrackingFlags.BIT_SYNC):
+            # if not bit sync yet, check if there is a bit inversion
+            if self.trackFlags & TrackingFlags.CODE_LOCK:
+                if np.sign(self.iPrompt) != np.sign(iPrompt_new):
+                    self.trackFlags |= TrackingFlags.BIT_SYNC
+
+        # TODO Check if tracking was succesful an update the flags
+        # TODO Add more flags
+        self.trackFlags |= TrackingFlags.CODE_LOCK
+
         # Update some variables
         # TODO Previously linespace, check if correct
-        nbSamples = len(self.rfBuffer.buffer)
+        nbSamples = len(self.rfBuffer.buffer) # TODO Should be the same as samplesRequired no?
+        self.sampleCounter += nbSamples
+        self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.NCO_remainingCode += nbSamples * self.codeStep - self.gnssSignal.codeBits
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
@@ -194,10 +255,87 @@ class ChannelL1CA(Channel):
         results["dll"]               = self.NCO_code
         results["pll"]               = self.NCO_carrier
         results["carrier_frequency"] = self.carrierFrequency
-        results["code_frequency"]    = self.codeFrequency
+        results["code_frequency"]    = self.codeFrequency        
 
         return results
     
+    # -------------------------------------------------------------------------
+
+    def runDecoding(self):
+        
+        # Check if time to decode the bit
+        if not (self.trackFlags & TrackingFlags.BIT_SYNC):
+            # No bit sync yet, nothing to do
+            return
+        
+        # Check if new bit to decode
+        if not (self.lnav_nbPrompt == LNAV_MS_PER_BIT):
+            # No new bit, nothing to do
+            return
+        
+        # Convert prompt correlator to bits
+        self.navBitsCounter += 1
+        self.navBitsBuffer[self.navBitsCounter-1] = Prompt2Bit(self.lnav_iPrompt_sum) # TODO Check if this function work
+
+        # Check if minimum number of bits decoded
+        # Need at least the preambule bits plus the previous 2 bit to perform checks plus the 2 words afterwards.
+        minBits = 2 + 2 * LNAV_WORD_SIZE
+        if self.navBitsCounter < minBits:
+            return 
+        
+        # Check if first subframe found
+        if not(self.trackFlags & TrackingFlags.SUBFRAME_SYNC):
+            idx = self.navBitsCounter - minBits
+            if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+                # Preambule not found
+                return
+            
+            # Flush previous bits
+            _newbuffer = np.empty_like(self.navBitsBuffer)
+            _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
+            self.navBitsBuffer = _newbuffer
+            self.navBitsCounter = minBits
+    	    
+            # Update tracking flags 
+            self.trackFlags |= TrackingFlags.SUBFRAME_SYNC # OR logic
+        
+        # Check if complete subframe can be decoded
+        if self.navBitsCounter < self.navBitBufferSize:
+            return
+        
+        # Check if the beginning of the new subframe match the preambule
+        idx = self.navBitsCounter - minBits
+        if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+            # Preambule not found, reset counter and flag
+            self.navBitsCounter = 0
+            self.trackFlags ^= TrackingFlags.SUBFRAME_SYNC # XOR logic
+            return
+        
+        # Decode only essential in subframe
+        self.tow, subframeID = LNAV_DecodeSubframe(self.navBitsBuffer[2:], self.navBitsBuffer[1])
+        
+        # Update tracking flags
+        # TODO Add success check?
+        self.trackFlags |= (TrackingFlags.TOW_DECODED & TrackingFlags.TOW_KNOWN)
+
+        if not (self.trackFlags & TrackingFlags.EPH_DECODED) and self.ephemeris.checkFlags():
+            self.trackFlags |= (TrackingFlags.EPH_DECODED & TrackingFlags.EPH_KNOWN)
+
+        # Results sent back to the receiver
+        results = super().prepareResultsDecoding()
+        results["type"] = MessageType.GPS_LNAV
+        results["subframe_id"] = subframeID
+        results["tow"] = self.tow
+        results["bits"] = self.navBitBufferSize
+
+        # Flush decoded bits
+        _newbuffer = np.empty_like(self.navBitsBuffer)
+        _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
+        self.navBitsBuffer = _newbuffer
+        self.navBitsCounter = minBits
+
+        return
+
     # -------------------------------------------------------------------------
 
     def _processHandler(self):
@@ -224,8 +362,6 @@ class ChannelL1CA(Channel):
                 self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
             # Track
             results.append(self.tracking())
-
-            # If decoding
             results.append(self.decoding())
         else:
             raise ValueError(f"Channel state {self.state} is not valid.")

@@ -204,11 +204,10 @@ class ChannelAbstract(ABC, multiprocessing.Process):
 
     def doAcquisition(self):
 
-        if self.buffer.isFull():
+        if self.buffer.full:
             #logging.getLogger(__name__).debug(f"CID {self.cid} buffer full, processing enabled")
 
-            buffer = self.buffer.getBuffer()
-            self.acquisition.run(buffer[-self.dataRequiredAcquisition:])
+            self.acquisition.run(self.buffer.buffer[-self.dataRequiredAcquisition:])
             self.isAcquired = self.acquisition.isAcquired
 
             if self.isAcquired:
@@ -221,8 +220,8 @@ class ChannelAbstract(ABC, multiprocessing.Process):
                 self.state = ChannelState.TRACKING
 
                 # We take double the amount required to be sure one full code will fit
-                self.currentSample = self.buffer.getBufferMaxSize() - 2 * samplesRequired + (code + 1)
-                self.unprocessedSamples = self.buffer.getBufferMaxSize() - self.currentSample
+                self.currentSample = self.buffer.maxSize - 2 * samplesRequired + (code + 1)
+                self.unprocessedSamples = self.buffer.maxSize - self.currentSample
 
             else:
                 logging.getLogger(__name__).debug(f"CID {self.cid} satellite G{self.svid} not acquired, channel state switched to IDLE")
@@ -254,7 +253,7 @@ class ChannelAbstract(ABC, multiprocessing.Process):
                 self.codeSinceTOW += 1
 
             # Update the index for samples
-            self.currentSample = (self.currentSample + samplesRequired) % self.buffer.getBufferMaxSize()
+            self.currentSample = (self.currentSample + samplesRequired) % self.buffer.maxSize
             self.unprocessedSamples -= samplesRequired
 
             # Update for next loop

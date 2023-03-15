@@ -103,6 +103,8 @@ class Acquisition(AcquisitionAbstract):
             None
         """
 
+        rfData = rfData.flatten()
+
         phasePoints = np.array(range(self.cohIntegration * self.samplesPerCode)) * 2 * np.pi * self.samplingPeriod
         # Search loop
         correlationMap = np.zeros((len(self.frequencyBins), self.samplesPerCode))
