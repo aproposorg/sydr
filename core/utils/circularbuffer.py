@@ -16,7 +16,7 @@ class CircularBuffer:
     dtype         : np.dtype
     sharedMemory  : shared_memory.SharedMemory
 
-    def __init__(self, size:int, dtype:np.dtype=np.float64, sharedMemory:shared_memory.SharedMemory=None):
+    def __init__(self, size:int, dtype:np.dtype=complex, sharedMemory:shared_memory.SharedMemory=None):
         """
         Constructor for CircularBuffer class. 
 
