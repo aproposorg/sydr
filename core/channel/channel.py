@@ -40,7 +40,9 @@ class ChannelMessage(Enum):
     """
     END_OF_PIPE        = 0
     CHANNEL_UPDATE     = 1
-    DSP_UPDATE         = 2
+    ACQUISITION_UPDATE = 2
+    TRACKING_UPDATE    = 3
+    DECODING_UPDATE    = 4
 
     def __str__(self):
         return str(self.name)
@@ -72,10 +74,12 @@ class Channel(ABC, multiprocessing.Process):
     eventRun    : multiprocessing.Event  # Event to start the channel processing when set.
     eventDone   : multiprocessing.Event  # Event set when channel processing done.
 
+    configuration : dict # Configuration dictionnary
+
     # =========================================================================
 
     @abstractmethod
-    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configuration:dict):
         """
         Abstract constructor for Channel class. 
 
@@ -97,12 +101,15 @@ class Channel(ABC, multiprocessing.Process):
         # Initialisation 
         self.channelID = cid
         self.channelState = ChannelState.IDLE
+        self.satelliteID = 0
         self.rfBuffer = sharedBuffer
         self.resultQueue = resultQueue
         self.eventRun = multiprocessing.Event()
         self.eventDone = multiprocessing.Event()
 
         self.unprocessedSamples = 0
+
+        self.configuration = configuration
 
         return
 
@@ -199,14 +206,21 @@ class Channel(ABC, multiprocessing.Process):
         return timeSinceTOW
     
     # -------------------------------------------------------------------------
+
+    def prepareResults(self):
+        mdict = {
+            "cid" : self.channelID
+        }
+        return mdict
+    
+    # -------------------------------------------------------------------------
     
     def prepareResultsAcquisition(self):
         """
         Prepare the acquisition result to be sent. 
         """
-        mdict = {
-            "type" : "acquisition"
-        }
+        mdict = self.prepareResults()
+        mdict["type"] = ChannelMessage.ACQUISITION_UPDATE
         return mdict
     
     # -------------------------------------------------------------------------
@@ -215,9 +229,8 @@ class Channel(ABC, multiprocessing.Process):
         """
         Prepare the tracking result to be sent. 
         """
-        mdict = {
-            "type" : "tracking"
-        }
+        mdict = self.prepareResults()
+        mdict["type"] = ChannelMessage.TRACKING_UPDATE
         return mdict
     
     # -------------------------------------------------------------------------
@@ -226,9 +239,8 @@ class Channel(ABC, multiprocessing.Process):
         """
         Prepare the decoding result to be sent. 
         """
-        mdict = {
-            "type" : "decoding"
-        }
+        mdict = self.prepareResults()
+        mdict["type"] = ChannelMessage.DECODING_UPDATE
         return mdict
 
 

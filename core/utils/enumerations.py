@@ -1,8 +1,9 @@
-from enum import Enum
+from enum import Enum, unique
 import sqlite3
 
 # =============================================================================
 
+@unique
 class GNSSSystems(Enum):
     GPS     = 1
     GLONASS = 2
@@ -26,6 +27,7 @@ class GNSSSystems(Enum):
 
 # =============================================================================
 
+@unique
 class GNSSMeasurementType(Enum):
     PSEUDORANGE = 1
     PHASE       = 2
@@ -46,6 +48,7 @@ class GNSSMeasurementType(Enum):
 
 # =============================================================================
 
+@unique
 class GNSSSignalType(Enum):
     GPS_L1_CA = 0
     
@@ -59,5 +62,18 @@ class GNSSSignalType(Enum):
         """
         if protocol is sqlite3.PrepareProtocol:
             return str(self.name)
+
+# =============================================================================
+
+@unique
+class ReceiverState(Enum):
+    OFF        = 0
+    IDLE       = 1
+    INIT       = 2
+    NAVIGATION = 3
+
+    def __str__(self):
+        return str(self.name)
+
 
 # =============================================================================

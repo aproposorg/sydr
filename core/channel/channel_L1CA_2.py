@@ -1,7 +1,6 @@
 
 import multiprocessing
 import numpy as np
-import configparser
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
@@ -9,7 +8,6 @@ from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.circularbuffer import CircularBuffer
-from core.satellite.ephemeris import BRDCEphemeris
 
 class ChannelL1CA(Channel):
 
@@ -21,7 +19,6 @@ class ChannelL1CA(Channel):
     qPrompt          : np.array
     navBitsBuffer    : np.array
     navBitsSamples   : np.array
-    ephemeris        : BRDCEphemeris
     trackFlags       : TrackingFlags
     
     sampleCounter    : int
@@ -53,9 +50,10 @@ class ChannelL1CA(Channel):
     navBitBufferSize : int
     navBitsCounter   : int
     nbPrompt         : int
-    ephemeris
+    subframeFlags    : list
+    tow              : int
 
-    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configFilePath:str):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configuration:dict):
         
         # Super init
         super().__init__(cid, sharedBuffer, resultQueue)
@@ -83,12 +81,9 @@ class ChannelL1CA(Channel):
         self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
         self.navBitsBuffer = np.empty((1, self.navBitBufferSize))
         self.navBitsCounter = 0
-        self.ephemeris = BRDCEphemeris()
+        self.tow = 0
 
-        # Initialisation from configuration file
-        configuration = configparser.ConfigParser()
-        configuration.read(configFilePath)
-
+        # Initialisation from configuration
         self.setAcquisition(configuration['ACQUISITION'])
         self.setTracking(configuration['TRACKING'])
 
@@ -313,12 +308,13 @@ class ChannelL1CA(Channel):
         
         # Decode only essential in subframe
         self.tow, subframeID = LNAV_DecodeSubframe(self.navBitsBuffer[2:], self.navBitsBuffer[1])
+        self.subframeFlags[subframeID] = True
         
         # Update tracking flags
         # TODO Add success check?
         self.trackFlags |= (TrackingFlags.TOW_DECODED & TrackingFlags.TOW_KNOWN)
 
-        if not (self.trackFlags & TrackingFlags.EPH_DECODED) and self.ephemeris.checkFlags():
+        if not (self.trackFlags & TrackingFlags.EPH_DECODED) and all(self.subframeFlags[0:3]):
             self.trackFlags |= (TrackingFlags.EPH_DECODED & TrackingFlags.EPH_KNOWN)
 
         # Results sent back to the receiver

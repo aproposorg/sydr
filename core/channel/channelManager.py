@@ -13,7 +13,7 @@ from core.utils.circularbuffer import CircularBuffer
 
 class ChannelManager():
 
-    channels : list
+    channels : dict
     nbChannels : int
 
     # Memory management
@@ -39,7 +39,7 @@ class ChannelManager():
             None
         """
 
-        self.channels = []
+        self.channels = {}
         self.nbChannels = 0
 
         # Allocate shared memory 
@@ -54,7 +54,7 @@ class ChannelManager():
 
     # -----------------------------------------------------------------------------------------------------------------
 
-    def addChannel(self, ChannelObject:type[Channel], configFilePath:str, nbChannels=1):
+    def addChannel(self, ChannelObject:type[Channel], configuration:dict, nbChannels=1):
         """
         Add channel(s) to the ChannelManager, providing the Channel type and the number of channels of that type to be
         added.
@@ -72,8 +72,9 @@ class ChannelManager():
         """
 
         for i in range(nbChannels):
-            self.channels.append(ChannelObject(self.nbChannels, self.sharedBuffer, self.resultQueue))
-            self.channels[-1].start()
+            channelID = self.nbChannels
+            self.channels[channelID] = ChannelObject(channelID, self.sharedBuffer, self.resultQueue, configuration)
+            self.channels[channelID].start()
             self.nbChannels += 1
         
         return
@@ -147,4 +148,25 @@ class ChannelManager():
 
         return
     
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def getChannel(self, channelID):
+        """
+        Return the channel provided a channelID.
+
+        Args:
+            channelID (int) : Channel ID number.
+
+        Returns:
+            channel (Channel): The channel with the requested Channel ID.
+
+        Raises:
+            ValueError: Channel ID does not exist.
+        
+        """
+        if not (channelID in self.channels.keys()):
+            raise ValueError("Channel ID does not exist.")
+
+        return self.channels[channelID]
+
     # -----------------------------------------------------------------------------------------------------------------
