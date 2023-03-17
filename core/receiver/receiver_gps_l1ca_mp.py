@@ -17,7 +17,7 @@ from core.channel.channel import ChannelMessage
 
 # =====================================================================================================================
 
-class ReceiverGPSL1CA(Receiver,):
+class ReceiverGPSL1CA(Receiver):
     """
     Implementation of receiver for GPS L1 C/A signals. 
     """
@@ -40,15 +40,22 @@ class ReceiverGPSL1CA(Receiver,):
         """
         super().__init__()
 
+        # Set satellites to track
+        self.prnList = list(map(int, config.get('SATELLITES', 'include_prn').split(',')))
+
         # Add channels in channel manager
         config = configparser.ConfigParser(self.configuration['CHANNELS']['gps_l1ca'])
-        self.channelManager.addChannel(ChannelL1CA, config)
+        self.channelManager.addChannel(ChannelL1CA, config, len(self.prnList))
+
+        # Set satellites to track
+        for prn in self.prnList:
+            self.channelManager.requestTracking()
 
         return
 
     # -----------------------------------------------------------------------------------------------------------------
 
-    def run(self):
+    def run(self, satellitesList):
         """
         Start the processing.
 
@@ -63,6 +70,7 @@ class ReceiverGPSL1CA(Receiver,):
         """
         super().run()
 
+
         return
     
     # -----------------------------------------------------------------------------------------------------------------
@@ -73,14 +81,7 @@ class ReceiverGPSL1CA(Receiver,):
         for packet in results:
             channel : ChannelL1CA
             channel = self.channelManager.getChannel(packet['cid'])
-            if packet['type'] == ChannelMessage.ACQUISITION_UPDATE:
-                logging.getLogger(__name__).info(f"CID {channel.channelID} found satellite G{channel.satelliteID}, tracking started.")
-                self.addAcquisitionDatabase(channel.channelID.cid, channelPacket[1])
-                continue
-            elif packet['type'] == ChannelMessage.TRACKING_UPDATE:
-                self.addTrackingDatabase(chan.cid, channelPacket[1])
-                continue
-            elif packet['type'] == ChannelMessage.DECODING_UPDATE:
+            if packet['type'] == ChannelMessage.DECODING_UPDATE:
                 satellite = self.satelliteDict[chan.svid]
                 satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'])
                 self.channelsStatus[chan.cid].subframeFlags[channelPacket[1]['subframe_id']-1] = True
@@ -97,7 +98,9 @@ class ReceiverGPSL1CA(Receiver,):
             
 
 
-        return 
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
 
 
 

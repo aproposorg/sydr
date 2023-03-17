@@ -48,11 +48,7 @@ class Receiver(ABC):
         self.receiverState = ReceiverState.IDLE
         self.clock = Clock()
         self.position = GNSSPosition()
-
-        # Find the amount of space needed in shared storage
-        # TODO Compute based on buffer size needed by channels
-        buffersize = self.rfSignal.samplingFrequency * 1e-3 * 100
-        dtype = self.rfSignal.dtype
+        
         self.channelManager = ChannelManager(buffersize, dtype)
 
         # Create GUI
@@ -114,29 +110,12 @@ class Receiver(ABC):
 
         """
         for packet in results:
-            channel : Channel
-            channel = self.channelManager.getChannel(packet['cid'])
-
             if packet['type'] == ChannelMessage.ACQUISITION_UPDATE:
                 self.addAcquisitionDatabase(packet)
             elif packet['type'] == ChannelMessage.TRACKING_UPDATE:
-                self.database.addData("tracking", packet)
-                logging.getLogger(__name__).debug(
-                    f"Logged tracking results in database for CID {channel.channelID} (G{channel.satelliteID})")
-            
+                self.addTrackingDatabase(packet)
             elif packet['type'] == ChannelMessage.DECODING_UPDATE:
-                self.database.addData("decoding", packet)
-                logging.getLogger(__name__).debug(
-                    f"Logged tracking results in database for CID {channel.channelID} (G{channel.satelliteID})")
-            
-            elif packet['type'] == ChannelMessage.CHANNEL_UPDATE:
-                self.channelsStatus[chan.cid].state            = channelPacket[1]
-                self.channelsStatus[chan.cid].trackingFlags    = channelPacket[2]
-                self.channelsStatus[chan.cid].week             = channelPacket[3]
-                self.channelsStatus[chan.cid].tow              = channelPacket[4]
-                self.channelsStatus[chan.cid].timeSinceTOW     = channelPacket[5]
-                if not np.isnan(self.channelsStatus[chan.cid].tow):
-                    self.channelsStatus[chan.cid].isTOWDecoded = True
+                self.addDecodingDatabase(packet)
 
         return
 
@@ -144,6 +123,18 @@ class Receiver(ABC):
 
     def addAcquisitionDatabase(self, result:dict):
         """
+        Add acquisition result to database. 
+        This method should be supercharge in case of a custom database saving.
+
+        Args:
+            result (dict) : Acquisition result from channel.
+
+        Returns: 
+            None
+        
+        Raises:
+            None
+        
         """
 
         channel : Channel
@@ -152,9 +143,9 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        result["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
+        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
-        self.database.addData("acquisition", results)
+        self.database.addData("acquisition", result)
 
         logging.getLogger(__name__).debug(
             f"Logged acquisition results in database for CID {channel.channelID} (G{channel.satelliteID})")
@@ -163,27 +154,67 @@ class Receiver(ABC):
 
     # -------------------------------------------------------------------------
 
-    def addTrackingDatabase(self, channelID:int, results:dict):
+    def addTrackingDatabase(self, result:dict):
+        """
+        Add tracking result to database.
+        This method should be supercharge in case of a custom database saving.
+
+        Args:
+            result (dict) : Tracking result from channel.
+
+        Returns: 
+            None
+        
+        Raises:
+            None
+        
+        """
+
+        channel : Channel
+        channel = self.channelManager.getChannel(result['cid'])
 
         # Add the mandatory values
-        results["channel_id"]   = channelID
-        results["time"]         = time.time()
-        results["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
+        result["channel_id"]   = channel.channelID
+        result["time"]         = time.time()
+        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
-        self.database.addData("tracking", results)
+        self.database.addData("tracking", result)
+
+        logging.getLogger(__name__).debug(
+            f"Logged tracking results in database for CID {channel.channelID} (G{channel.satelliteID})")
 
         return
 
     # -------------------------------------------------------------------------
 
-    def addDecodingDatabase(self, channelID:int, results:dict):
+    def addDecodingDatabase(self, result:dict):
+        """
+        Add decoding result to database.
+        This method should be supercharge in case of a custom database saving.
+
+        Args:
+            result (dict) : Decoding result from channel.
+
+        Returns: 
+            None
+        
+        Raises:
+            None
+        
+        """
+
+        channel : Channel
+        channel = self.channelManager.getChannel(result['cid'])
 
         # Add the mandatory values
-        results["channel_id"]   = channelID
-        results["time"]         = time.time()
-        results["time_sample"]  = float(self.sampleCounter - results["unprocessed_samples"])
+        result["channel_id"]   = channel.channelID
+        result["time"]         = time.time()
+        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
-        self.database.addData("decoding", results)
+        self.database.addData("decoding", result)
+
+        logging.getLogger(__name__).debug(
+            f"Logged decoding results in database for CID {channel.channelID} (G{channel.satelliteID})")
 
         return
     

@@ -5,7 +5,7 @@ import multiprocessing
 from multiprocessing import shared_memory
 from queue import Empty
 
-from core.channel.channel import Channel
+from core.channel.channel import Channel, ChannelState
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
@@ -23,14 +23,16 @@ class ChannelManager():
     # Communication
     resultQueue : multiprocessing.Queue()
 
-    def __init__(self, buffersize:int, dtype:np.dtype) -> None:
+    # RF
+    rfSignal : RFSignal
+
+    def __init__(self, rfSignal:RFSignal) -> None:
         """
         Constructor for ChannelManager class. Some indication on the RF data needs to be provided for buffer memory
         allocation. 
 
         Args:
-            buffersize (int): Size of the data buffer in number of elements.
-            dtype (np.dtype): Type of data in buffer.
+            rfSignal (RFSignal): Parameters of the RF Signal provided.
 
         Returns:
             None
@@ -39,10 +41,16 @@ class ChannelManager():
             None
         """
 
+        self.rfSignal = rfSignal
+
         self.channels = {}
         self.nbChannels = 0
 
         # Allocate shared memory 
+        # Find the amount of space needed in shared storage
+        # TODO Compute based on buffer size needed by channels
+        buffersize = self.rfSignal.samplingFrequency * 1e-3 * 100
+        dtype = self.rfSignal.dtype
         nbytes = buffersize * np.dtype(dtype).itemsize
         self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
         self.sharedBuffer = CircularBuffer(buffersize, dtype, self._sharedMemory)
@@ -79,6 +87,21 @@ class ChannelManager():
         
         return
     
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def requestTracking(self, gnssSignal:GNSSSignal, satelliteID:int):
+        """
+        
+        """
+        
+        # Loop through channels to find a free one
+        channel : Channel
+        for channel in self.channels:
+            if channel.channelState is ChannelState.IDLE:
+                channel.setSignalParameters(self.rfSignal, gnssSignal, satelliteID)
+        
+        return
+
     # -----------------------------------------------------------------------------------------------------------------
 
     def addNewRFData(self, data):

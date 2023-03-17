@@ -182,7 +182,8 @@ class Channel(ABC, multiprocessing.Process):
             _packet = (commType)
         elif commType == ChannelMessage.CHANNEL_UPDATE:
             _packet = (commType, self.state, self.trackingFlags, self.tow, self.getTimeSinceTOW())
-        elif commType == ChannelMessage.DSP_UPDATE:
+        elif commType in \
+            (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE, ChannelMessage.DECODING_UPDATE):
             for results in dictToSend:
 
                 results["unprocessed_samples"] = int(self.unprocessedSamples)
