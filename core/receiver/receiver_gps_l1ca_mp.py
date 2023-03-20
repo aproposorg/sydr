@@ -12,8 +12,11 @@ import logging
 
 from core.receiver.receiver import Receiver
 from core.utils.enumerations import ReceiverState
-from core.channel.channel_L1CA_2 import ChannelL1CA
+from core.channel.channel_L1CA_2 import ChannelL1CA, ChannelStatusL1CA
 from core.channel.channel import ChannelMessage
+from core.enlightengui import EnlightenGUI
+from core.satellite.satellite import Satellite, GNSSSystems
+from core.utils.time import Time
 
 # =====================================================================================================================
 
@@ -24,7 +27,13 @@ class ReceiverGPSL1CA(Receiver):
     
     configuration : dict
 
-    def __init__(self, configFilePath:str):
+    satelliteDict : dict
+
+    channelsStatus : dict
+
+    nextMeasurementTime : Time
+
+    def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
         """
         Constructor for ReceiverGPSL1CA class.
 
@@ -38,24 +47,35 @@ class ReceiverGPSL1CA(Receiver):
             None
         
         """
-        super().__init__()
+        super().__init__(configuration, overwrite, gui)
 
         # Set satellites to track
-        self.prnList = list(map(int, config.get('SATELLITES', 'include_prn').split(',')))
+        self.prnList = list(map(int, self.configuration.get('SATELLITES', 'include_prn').split(',')))
 
         # Add channels in channel manager
-        config = configparser.ConfigParser(self.configuration['CHANNELS']['gps_l1ca'])
-        self.channelManager.addChannel(ChannelL1CA, config, len(self.prnList))
+        channelConfig = configparser.ConfigParser()
+        channelConfig.read(self.configuration['CHANNELS']['gps_l1ca'])
+        self.channelManager.addChannel(ChannelL1CA, channelConfig, len(self.prnList))
 
         # Set satellites to track
+        self.satelliteDict = {}
+        self.channelsStatus = {}
         for prn in self.prnList:
-            self.channelManager.requestTracking()
+            cid = self.channelManager.requestTracking(prn)
+            self.channelsStatus[cid] = ChannelStatusL1CA(cid, prn)
+            self.satelliteDict[prn] = Satellite(GNSSSystems.GPS, prn)
+
+        self.nextMeasurementTime = Time()
+
+        # Initialise GUI
+        self.gui.createReceiverGUI(self)
+        self.gui.updateMainStatus(stage=f'Processing {self.name}', status='RUNNING')
 
         return
 
     # -----------------------------------------------------------------------------------------------------------------
 
-    def run(self, satellitesList):
+    def run(self):
         """
         Start the processing.
 
@@ -70,38 +90,46 @@ class ReceiverGPSL1CA(Receiver):
         """
         super().run()
 
-
         return
     
     # -----------------------------------------------------------------------------------------------------------------
 
     def _processChannelResults(self, results:list):
-        super()._processChannelResults()
+        super()._processChannelResults(results)
 
         for packet in results:
             channel : ChannelL1CA
             channel = self.channelManager.getChannel(packet['cid'])
             if packet['type'] == ChannelMessage.DECODING_UPDATE:
-                satellite = self.satelliteDict[chan.svid]
-                satellite.addSubframe(channelPacket[1]['subframe_id'], channelPacket[1]['bits'])
-                self.channelsStatus[chan.cid].subframeFlags[channelPacket[1]['subframe_id']-1] = True
-                self.addDecodingDatabase(chan.cid, channelPacket[1])
+                satellite : Satellite
+                satellite = self.satelliteDict[channel.satelliteID]
+                satellite.addSubframe(packet['subframe_id'], packet['bits'])
                 continue
             elif packet['type'] == ChannelMessage.CHANNEL_UPDATE:
-                self.channelsStatus[chan.cid].state            = channelPacket[1]
-                self.channelsStatus[chan.cid].trackingFlags    = channelPacket[2]
-                self.channelsStatus[chan.cid].week             = channelPacket[3]
-                self.channelsStatus[chan.cid].tow              = channelPacket[4]
-                self.channelsStatus[chan.cid].timeSinceTOW     = channelPacket[5]
-                if not np.isnan(self.channelsStatus[chan.cid].tow):
-                    self.channelsStatus[chan.cid].isTOWDecoded = True
-            
-
+                self.channelsStatus[channel.channelID].state         = packet['state']
+                self.channelsStatus[channel.channelID].trackingFlags = packet['tracking_flags']
+                self.channelsStatus[channel.channelID].tow           = packet['tow']
+                self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
+            else:
+                raise ValueError(
+                    f"Unknown channel message '{packet['type']}' received from channel {channel.channelID}.")
 
         return
     
     # -----------------------------------------------------------------------------------------------------------------
 
+    def computeGNSSMeasurements(self):
+        """
+        
+        """
+        super().computeGNSSMeasurements()
 
+        # # Compute measurements based on receiver time
+        # if self.clock.isInitialised or (self.clock. < self.nextMeasurementTime):
+        #     return
+        
+        # # TODO
+        
+        return
 
 

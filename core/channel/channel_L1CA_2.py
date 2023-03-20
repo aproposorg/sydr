@@ -2,12 +2,14 @@
 import multiprocessing
 import numpy as np
 
-from core.channel.channel import Channel, ChannelState, ChannelMessage
+from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.circularbuffer import CircularBuffer
+from core.signal.gnsssignal import GNSSSignal, GNSSSignalType
+from core.signal.rfsignal import RFSignal
 
 class ChannelL1CA(Channel):
 
@@ -53,10 +55,11 @@ class ChannelL1CA(Channel):
     subframeFlags    : list
     tow              : int
 
-    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configuration:dict):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, rfSignal:RFSignal,
+                 configuration:dict):
         
         # Super init
-        super().__init__(cid, sharedBuffer, resultQueue)
+        super().__init__(cid, sharedBuffer, resultQueue, rfSignal, configuration)
 
         # Initialisation
         self.codeOffset       = 0
@@ -83,6 +86,10 @@ class ChannelL1CA(Channel):
         self.navBitsCounter = 0
         self.tow = 0
 
+        # Set signal parameters
+        # TODO Change to constants
+        self.gnssSignal = GNSSSignal(self.configuration['DEFAULT']['signal'], GNSSSignalType.GPS_L1_CA)
+
         # Initialisation from configuration
         self.setAcquisition(configuration['ACQUISITION'])
         self.setTracking(configuration['TRACKING'])
@@ -92,15 +99,16 @@ class ChannelL1CA(Channel):
     # -------------------------------------------------------------------------
 
     def setAcquisition(self, configuration:dict):
-        super().setAcquisition()
-
-        self.acq_dopplerRange           = float(configuration['dopplerRange'])
-        self.acq_dopplerSteps           = float(configuration['dopplerStep'])
-        self.acq_coherentIntegration    = int(configuration['coherentIntegration'])
-        self.acq_nonCoherentIntegration = int(configuration['nonCoherentIntegration'])
+        """
+        """
+        
+        self.acq_dopplerRange           = float(configuration['doppler_range'])
+        self.acq_dopplerSteps           = float(configuration['doppler_steps'])
+        self.acq_coherentIntegration    = int  (configuration['coherent_integration'])
+        self.acq_nonCoherentIntegration = int  (configuration['non_coherent_integration'])
         self.acq_threshold              = float(configuration['threshold'])
 
-        self.acq_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3 * \
+        self.acq_requiredSamples = int(self.rfSignal.samplingFrequency * 1e-3 * \
             self.acq_nonCoherentIntegration * self.acq_coherentIntegration)
 
         return
@@ -109,23 +117,25 @@ class ChannelL1CA(Channel):
 
     def setTracking(self, configuration:dict):
 
-        self.track_correlatorsSpacing = configuration['correlatorsSpacing']
+        self.track_correlatorsSpacing = [float(configuration['correlator_early']),
+                                         float(configuration['correlator_prompt']),
+                                         float(configuration['correlator_late'])]
 
         self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=float(configuration['dll_NoiseBandwidth']),
-            dampingRatio=float(configuration['dll_DampingRatio']),
-            loopGain=float(configuration['dll_LoopGain']))
+            loopNoiseBandwidth=float(configuration['dll_noise_bandwidth']),
+            dampingRatio=float(configuration['dll_dumping_ratio']),
+            loopGain=float(configuration['dll_loop_gain']))
         self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
-            loopNoiseBandwidth=float(configuration['pll_NoiseBandwidth']),
-            dampingRatio=float(configuration['pll_DampingRatio']),
-            loopGain=float(configuration['pll_LoopGain']))
+            loopNoiseBandwidth=float(configuration['pll_noise_bandwidth']),
+            dampingRatio=float(configuration['pll_dumping_ratio']),
+            loopGain=float(configuration['pll_loop_gain']))
         self.track_dll_pdi = float(configuration['dll_pdi'])
         self.track_pll_pdi = float(configuration['pll_pdi'])
         
         self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
 
-        self.track_requiredSamples = int(self.gnssSignal.codeMs * self.rfSignal.samplingFrequency * 1e-3)
+        self.track_requiredSamples = int(self.rfSignal.samplingFrequency * 1e-3)
 
         self.trackFlags = TrackingFlags.UNKNOWN
 
@@ -137,7 +147,6 @@ class ChannelL1CA(Channel):
         """
         Perform the acquisition process with the current RF data.
         """
-        super().runAcquisition()
             
         # Check if sufficient data in buffer
         if self.unprocessedSamples < self.acq_requiredSamples:
@@ -148,12 +157,12 @@ class ChannelL1CA(Channel):
         samplesPerCodeChip = round(self.rfSignal.samplingFrequency / self.gnssSignal.codeFrequency)
 
         # Parallel Code Phase Search method (PCPS)
-        correlationMap = PCPS(rfData = self.rfbuffer.buffer[-self.acq_requiredSamples:], 
+        correlationMap = PCPS(rfData = self.rfBuffer.buffer[-self.acq_requiredSamples:], 
                               interFrequency = self.rfSignal.interFrequency,
                               samplingFrequency = self.rfSignal.samplingFrequency,
                               codeFFT=codeFFT,
                               dopplerRange=self.acq_dopplerRange,
-                              dopplerSteps=self.acq_dopplerSteps,
+                              dopplerStep=self.acq_dopplerSteps,
                               samplesPerCode=samplesPerCode, 
                               coherentIntegration=self.acq_coherentIntegration,
                               nonCoherentIntegration=self.acq_nonCoherentIntegration)
@@ -184,21 +193,20 @@ class ChannelL1CA(Channel):
     # -------------------------------------------------------------------------
 
     def runTracking(self):
-        super().runTracking()
 
         # Check if sufficient data in buffer
         if self.unprocessedSamples < self.track_requiredSamples:
             return
 
         # Correlators
-        correlatorResults = EPL(rfData = self.rfbuffer.buffer[-self.track_requiredSamples:],
+        correlatorResults = EPL(rfData = self.rfBuffer.buffer[-self.track_requiredSamples:],
                                 code = self.code,
                                 samplingFrequency=self.rfSignal.samplingFrequency,
                                 carrierFrequency=self.gnssSignal.carrierFrequency,
                                 remainingCarrier=self.NCO_remainingCarrier,
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
-                                correlatorsSpacing=self.correlatorsSpacing)
+                                correlatorsSpacing=self.track_correlatorsSpacing)
         iPrompt_new = correlatorResults[2]
         qPrompt_new = correlatorResults[3]
         
@@ -235,6 +243,7 @@ class ChannelL1CA(Channel):
         nbSamples = len(self.rfBuffer.buffer) # TODO Should be the same as samplesRequired no?
         self.sampleCounter += nbSamples
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
+        self.codeSinceTOW += 1
         self.NCO_remainingCode += nbSamples * self.codeStep - self.gnssSignal.codeBits
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
         self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
@@ -346,19 +355,18 @@ class ChannelL1CA(Channel):
         #self.logger.debug(f"CID {self.cid} is in {self.state} state")
 
         results = []
-        if self.state == ChannelState.IDLE:
-            print(f"WARNING: Tracking channel {self.cid} is in IDLE.")
-            self.send({})
+        if self.channelState == ChannelState.IDLE:
+            raise Warning(f"Tracking channel {self.channelID} is in IDLE.")
 
-        elif self.state == ChannelState.ACQUIRING:
-            results.append(self.runAcquisition())
+        elif self.channelState == ChannelState.ACQUIRING:
+            self.addResult(results, self.runAcquisition())
             
-        elif self.state == ChannelState.TRACKING:
+        elif self.channelState == ChannelState.TRACKING:
             if self.isAcquired:
                 self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
             # Track
-            results.append(self.tracking())
-            results.append(self.decoding())
+            self.addResult(results, self.runTracking())
+            self.addResult(results, self.runDecoding())
         else:
             raise ValueError(f"Channel state {self.state} is not valid.")
 
@@ -366,4 +374,19 @@ class ChannelL1CA(Channel):
     
     # -------------------------------------------------------------------------
 
+    def addResult(self, resultsList, result):
+        if result is not None:
+            resultsList.append(result)
+        return resultsList
+
+    # -------------------------------------------------------------------------
+
+# =============================================================================
+
+class ChannelStatusL1CA(ChannelStatus):
+    def __init__(self, channelID:int, satelliteID:int):
+        super().__init__(channelID, satelliteID)
+        self.subframeFlags = [False, False, False, False, False]
+
+# =============================================================================
     

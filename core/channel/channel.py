@@ -16,8 +16,9 @@ from enum import Enum, unique
 from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
-# =============================================================================
-PROCESS_TIMEOUT = 60 # Seconds 
+from core.dsp.tracking import TrackingFlags
+
+
 # =============================================================================
 @unique
 class ChannelState(Enum):
@@ -53,11 +54,14 @@ class Channel(ABC, multiprocessing.Process):
     Abstract class for Channel object definition.
     """
 
-    TIMEOUT = 10 # Seconds before event timeout
+    TIMEOUT = 100000 # Seconds before event timeout
+
+    configuration : dict # Configuration dictionnary
 
     # IDs
     channelID    : np.uint8       # Channel ID
     channelState : ChannelState   # Current channel state
+    trackFlags   : TrackingFlags
 
     # RF signal
     rfSignal     : RFSignal       # RF signal parameters
@@ -74,12 +78,15 @@ class Channel(ABC, multiprocessing.Process):
     eventRun    : multiprocessing.Event  # Event to start the channel processing when set.
     eventDone   : multiprocessing.Event  # Event set when channel processing done.
 
-    configuration : dict # Configuration dictionnary
+    tow  : int
+    week : int
+    codeSinceTOW : int
 
     # =========================================================================
 
     @abstractmethod
-    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, configuration:dict):
+    def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, rfSignal:RFSignal,
+                 configuration:dict):
         """
         Abstract constructor for Channel class. 
 
@@ -98,6 +105,8 @@ class Channel(ABC, multiprocessing.Process):
         # For multiprocessing inheritance
         super(multiprocessing.Process, self).__init__(name=f'CID{cid}', daemon=True)
 
+        self.configuration = configuration
+
         # Initialisation 
         self.channelID = cid
         self.channelState = ChannelState.IDLE
@@ -106,29 +115,29 @@ class Channel(ABC, multiprocessing.Process):
         self.resultQueue = resultQueue
         self.eventRun = multiprocessing.Event()
         self.eventDone = multiprocessing.Event()
-
         self.unprocessedSamples = 0
+        self.rfSignal = rfSignal
 
-        self.configuration = configuration
+        self.tow = 0
+        self.week = 0
+        self.codeSinceTOW = 0
 
         return
 
     # -------------------------------------------------------------------------
 
-    def setSignalParameters(self, rfSignal:RFSignal, gnssSignal:GNSSSignal, satelliteID:np.uint8):
+    def setSatellite(self, satelliteID:np.uint8):
         """
         Set the GNSS signal and satellite tracked by the channel.
         """
-        self.rfSignal = rfSignal
         self.satelliteID = satelliteID
-        self.gnssSignal = gnssSignal
         self.channelState = ChannelState.ACQUIRING
-        logging.getLogger(__name__).debug(f"CID {self.cid} initialised to satellite [G{self.svid}], signal [{gnssSignal.name}].")
+        self.code = self.gnssSignal.getCode(satelliteID, self.rfSignal.samplingFrequency)
         return
     
     # -------------------------------------------------------------------------
 
-    def run(self, nbNewSamples:int):
+    def run(self):
         """
         Main processing loop, hanlding new RF data and channel processing.
 
@@ -147,19 +156,28 @@ class Channel(ABC, multiprocessing.Process):
 
             # Wait for ChannelManager event signal
             timeoutFlag = self.eventRun.wait(timeout=self.TIMEOUT)
+            self.eventRun.clear()
             
-            if timeoutFlag:
-                logging.getLogger(__name__).debug(f"CID {self.cid} timeout, exiting run.") 
+            if not timeoutFlag:
+                logging.getLogger(__name__).debug(f"CID {self.channelID} timeout, exiting run.")
+                self.eventDone.set()
                 break
             
             # Update samples tracker
-            self.unprocessedSamples += nbNewSamples
+            self.unprocessedSamples += self.rfSignal.samplesPerMs
 
             # Process the data according to the current channel state
             results = self._processHandler()
 
+            # Add channel update 
+            results.append(self.prepareChannelUpdate())
+
             # Send the results
             self.resultQueue.put(results)
+
+            # Signal channel manager
+            self.eventDone.set()
+            
         
         return
 
@@ -178,10 +196,8 @@ class Channel(ABC, multiprocessing.Process):
         """
         Send a packet to main program through a defined pipe.
         """
-        if commType == ChannelMessage.END_OF_PIPE:
-            _packet = (commType)
-        elif commType == ChannelMessage.CHANNEL_UPDATE:
-            _packet = (commType, self.state, self.trackingFlags, self.tow, self.getTimeSinceTOW())
+        if commType == ChannelMessage.CHANNEL_UPDATE:
+            _packet = (commType, self.channelState, self.trackFlags, self.tow, self.getTimeSinceTOW())
         elif commType in \
             (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE, ChannelMessage.DECODING_UPDATE):
             for results in dictToSend:
@@ -243,7 +259,45 @@ class Channel(ABC, multiprocessing.Process):
         mdict = self.prepareResults()
         mdict["type"] = ChannelMessage.DECODING_UPDATE
         return mdict
+    
+    # -------------------------------------------------------------------------
 
+    def prepareChannelUpdate(self):
+        
+        _packet = self.prepareResults()
+        _packet['type'] = ChannelMessage.CHANNEL_UPDATE
+        _packet['state'] = self.channelState
+        _packet['tracking_flags'] = self.trackFlags
+        _packet['tow'] = self.tow
+        _packet['time_since_tow'] = self.getTimeSinceTOW() 
+        
+        return _packet
+    
+# =============================================================================
+
+# TODO update variables
+
+class ChannelStatus():
+
+    def __init__(self, channelID:int, satelliteID:int):
+
+        self.channelID = channelID
+        self.satelliteID = satelliteID
+        self.channelState = ChannelState.IDLE
+        self.trackFlags = TrackingFlags.UNKNOWN
+        self.week = 0
+        self.tow = 0
+        self.timeSinceTOW = 0
+        self.subframeFlags = []
+        
+        self.isTOWDecoded = False
+
+        return
+
+    def fromChannel(self, channel:Channel):
+        self.cid = channel.channelID
+        self.svid = channel.satelliteID
+        return self
 
 # =============================================================================
 # END OF FILE

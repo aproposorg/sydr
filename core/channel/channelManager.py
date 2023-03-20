@@ -10,8 +10,11 @@ from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
 
+# =====================================================================================================================
 
 class ChannelManager():
+
+    TIMEOUT = 100
 
     channels : dict
     nbChannels : int
@@ -49,9 +52,9 @@ class ChannelManager():
         # Allocate shared memory 
         # Find the amount of space needed in shared storage
         # TODO Compute based on buffer size needed by channels
-        buffersize = self.rfSignal.samplingFrequency * 1e-3 * 100
+        buffersize = int(self.rfSignal.samplingFrequency * 1e-3 * 100)
         dtype = self.rfSignal.dtype
-        nbytes = buffersize * np.dtype(dtype).itemsize
+        nbytes = int(buffersize * np.dtype(dtype).itemsize)
         self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
         self.sharedBuffer = CircularBuffer(buffersize, dtype, self._sharedMemory)
 
@@ -81,26 +84,38 @@ class ChannelManager():
 
         for i in range(nbChannels):
             channelID = self.nbChannels
-            self.channels[channelID] = ChannelObject(channelID, self.sharedBuffer, self.resultQueue, configuration)
-            self.channels[channelID].start()
+            self.channels[channelID] = ChannelObject(channelID, self.sharedBuffer, self.resultQueue, 
+                                                     self.rfSignal, configuration)
             self.nbChannels += 1
         
         return
     
     # -----------------------------------------------------------------------------------------------------------------
 
-    def requestTracking(self, gnssSignal:GNSSSignal, satelliteID:int):
+    def requestTracking(self, satelliteID:int):
         """
         
         """
         
         # Loop through channels to find a free one
+        # TODO handle case where there is no free channel
         channel : Channel
-        for channel in self.channels:
+        cid = -1
+        success = False
+        for channel in self.channels.values():
             if channel.channelState is ChannelState.IDLE:
-                channel.setSignalParameters(self.rfSignal, gnssSignal, satelliteID)
+                channel.setSatellite(satelliteID)
+                channel.start()
+                cid = channel.channelID
+                success = True
+                break
         
-        return
+        if success:
+            logging.getLogger(__name__).debug(f"CID {cid} initialised to satellite [G{satelliteID}].")
+        else:
+            raise Warning(f"Could not find an IDLE channel for tracking satellite [G{satelliteID}].")
+        
+        return cid
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -135,25 +150,29 @@ class ChannelManager():
         Raises:
             None
         """
+
         # Start the channels
-        for chan in self.channels:
+        for chan in self.channels.values():
             chan.eventRun.set()
 
         # Wait for channels to be done
-        for chan in self.channels:
+        for chan in self.channels.values():
             chan.eventDone.wait()
 
         # Process results
-        results = []
+        _results = []
         # qsize is highlighted as "approximate count" in documentation, but in our case we have an event trigger 
         # before so the count should be exact.
         while self.resultQueue.qsize() > 0:
             try:
-                packet = self.resultQueue.get(timeout=self.timeout)
+                packet = self.resultQueue.get(timeout=self.TIMEOUT)
             except Empty:
                 break
-            results.append(packet)
-                
+            _results.append(packet)
+        
+        # Flatten list
+        results = [element for sublist in _results for element in sublist]
+
         return results
     
     # -----------------------------------------------------------------------------------------------------------------

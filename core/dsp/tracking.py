@@ -1,12 +1,12 @@
 
 
 import numpy as np
-from enum import Enum, unique
+from enum import Enum, unique, IntEnum
 
 # =====================================================================================================================
 
 @unique
-class TrackingFlags(Enum):
+class TrackingFlags(IntEnum):
     """
     Tracking flags to represent the current stage of tracking. They are to be intepreted in binary format, to allow 
     multiple state represesented in one decimal number. 

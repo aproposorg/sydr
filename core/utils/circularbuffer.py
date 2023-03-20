@@ -1,6 +1,7 @@
 
 import numpy as np
 from multiprocessing import shared_memory
+import multiprocessing
 
 class CircularBuffer:
     """

@@ -2,8 +2,8 @@
 import enlighten
 from termcolor import colored
 
-from core.utils.clock import Clock
-from core.receiver.receiver import Receiver
+from core.utils.time import Clock
+from core.utils.coordinate import Coordinate
 from core.channel.channel import Channel
 from core.channel.channel_L1CA_2 import ChannelL1CA
 from core.dsp.tracking import TrackingFlags
@@ -57,26 +57,33 @@ class EnlightenGUI():
     
     # ----------------------------------------------------------------------------------------------------------------
 
-    def createReceiverGUI(self, receiver:Receiver):
+    def updateMainStatus(self, stage:str, status:str):
+
+        self.main_status_bar.update(stage=stage, status=status)
+
+        return
+
+    # ----------------------------------------------------------------------------------------------------------------
+
+    def createReceiverGUI(self, receiver):
         """
         """
         
         # Receiver status bar (top)
-        clock_str = f"{receiver.clock.gpsTime.week_number} \
-              {receiver.clock.gpsTime.seconds + receiver.clock.gpsTime.femtoseconds/1e15:.3f}"
-        
+        clock : Clock = receiver.clock
+        coordinate : Coordinate = receiver.coordinate
         self.receiver_status_bar = self.manager.status_bar(
             status_format = RECEIVER_STATUS_FORMAT,
             color         = 'bold_white_on_steelblue4',
             receiver      = receiver.name,
             datetime      = str(receiver.clock.datetime)[:-3],
-            gpstime       = clock_str,
-            x             = receiver.position.coordinate.x,
-            y             = receiver.position.coordinate.y,
-            z             = receiver.position.coordinate.z,
-            sx            = receiver.position.coordinate.xPrecison,
-            sy            = receiver.position.coordinate.yPrecison,
-            sz            = receiver.position.coordinate.zPrecison)
+            gpstime       = f"{clock.getGPSWeek()} {clock.getGPSSeconds():.3f}",
+            x             = coordinate.x,
+            y             = coordinate.y,
+            z             = coordinate.z,
+            sx            = coordinate.xPrecison,
+            sy            = coordinate.yPrecison,
+            sz            = coordinate.zPrecison)
         
         # Receiver processing main progress bar
         self.receiver_progress_bar = self.manager.counter(
@@ -86,12 +93,12 @@ class EnlightenGUI():
             unit       = 'ms', 
             color      = 'springgreen3', \
             min_delta  = 0.5, 
-            state      = f"{self.receiverState}")
+            state      = f"{receiver.receiverState}")
         
         # Receiver channels status and progress
         self.channels_progress_bars_dict = {}
         channel : Channel # Typing for syntax completion 
-        for channel in receiver.channelManager.channels:
+        for channel in receiver.channelsStatus.values():
             self.channels_progress_bars_dict[channel.channelID] = self.manager.counter(
                 bar_format = CHANNEL_BAR_FORMAT, 
                 total      = receiver.msToProcess, 
@@ -113,34 +120,31 @@ class EnlightenGUI():
     
     # ----------------------------------------------------------------------------------------------------------------
     
-    def updateReceiverGUI(self, receiver:Receiver):
+    def updateReceiverGUI(self, receiver):
         """
         """
-
-        # Update receiver status
-        clock_str = f"{receiver.clock.gpsTime.week_number} \
-              {receiver.clock.gpsTime.seconds + receiver.clock.gpsTime.femtoseconds/1e15:.3f}"
         
+        # Update receiver status
+        clock : Clock = receiver.clock
+        coordinate : Coordinate = receiver.coordinate
         self.receiver_status_bar.update(
               datetime = str(receiver.clock.datetime)[:-3], 
-              gpstime  = clock_str,
-              x        = receiver.receiverPosition.coordinate.x,
-              y        = receiver.position.coordinate.y,
-              z        = receiver.position.coordinate.z,
-              sx       = receiver.position.coordinate.xPrecison,
-              sy       = receiver.position.coordinate.yPrecison,
-              sz       = receiver.position.coordinate.zPrecison)
+              gpstime  = f"{clock.getGPSWeek()} {clock.getGPSSeconds():.3f}",
+              x        = coordinate.x,
+              y        = coordinate.y,
+              z        = coordinate.z,
+              sx       = coordinate.xPrecison,
+              sy       = coordinate.yPrecison,
+              sz       = coordinate.zPrecison)
         
         # Update the receiver progress bar counter
-        self.receiver_progress_bar.update(state=f"{self.receiverState}")
+        self.receiver_progress_bar.update(state=f"{receiver.receiverState}")
 
         # Update channel progress bars
         channel : Channel # Typing for syntax completion 
-        for channel in receiver.channelManager.channels:
-            if not isinstance(channel, ChannelL1CA):
-                raise Warning("Unknown channel type, GUI cannot be updated properly.")
+        for channel in receiver.channelsStatus.values():
             self.channels_progress_bars_dict[channel.channelID].update(
-                state = f"{channel.state}", 
+                state = f"{channel.channelState}", 
                 prn   = f'G{channel.satelliteID:02d}', 
                 tow   = colored(f" TOW: {channel.tow:6.0f}", 'white', 'on_green' if (channel.trackFlags & TrackingFlags.TOW_DECODED) else 'on_red'),
                 sf1   = colored("1", 'white', 'on_green' if channel.subframeFlags[0] else 'on_red'),

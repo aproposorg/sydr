@@ -32,6 +32,8 @@ class DatabaseHandler:
         self.columns = {} # Dictionnary containing the column list for each table
         self.dictBuffer = {} # Dictionnary buffering the object to be send to DB, this is to limit DB interations
 
+        self.maxSizeDictBuffer = 1000
+
         # Initialise database content
         self._initialise()
 
@@ -47,6 +49,10 @@ class DatabaseHandler:
             self.dictBuffer[table] = []
         
         self.dictBuffer[table].append(data)
+
+        # Commit changes
+        if len(self.dictBuffer.keys) > self.maxSizeDictBuffer:
+            self.commit
 
         return
 
@@ -479,6 +485,17 @@ class DatabaseHandler:
             
             dataList.append(dataDict)
         return dataList
+    
+
+    # -------------------------------------------------------------------------
+
+    def close(self):
+        
+        self.commit()
+
+        self.connection.close()
+        
+        return
     
 if __name__=="__main__":
     db = DatabaseHandler('./.results/REC1.db', overwrite=False)

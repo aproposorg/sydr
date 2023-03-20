@@ -9,20 +9,23 @@ from core.utils.enumerations import ReceiverState
 from core.signal.rfsignal import RFSignal
 from core.channel.channelManager import ChannelManager
 from core.record.database import DatabaseHandler
-from core.utils.clock import Clock
+from core.utils.time import Clock
 from core.measurements import GNSSPosition
+from core.utils.coordinate import Coordinate
 from core.enlightengui import EnlightenGUI
 from core.channel.channel import Channel, ChannelMessage
 
 # =============================================================================
 
 class Receiver(ABC):
+    
+    configuration : dict
 
     name : str
     receiverState : ReceiverState
     
     clock : Clock
-    position : GNSSPosition
+    coordinate : Coordinate
 
     # Processing
     msToProcess : int
@@ -32,29 +35,27 @@ class Receiver(ABC):
     rfSignal : RFSignal
     gui : EnlightenGUI
 
-    def __init__(self, configFilePath:str, overwrite=True, gui:EnlightenGUI=None):
-        configuration = configparser.ConfigParser(configFilePath)
+    def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
+        self.configuration = configuration
         
         # Load configuration
-        self.name = configuration['DEFAULT']['name']
-        self.msToProcess = configuration['DEFAULT']['ms_to_process']
-        self.outfolder = configuration['DEFAULT']['outfolder']
+        self.name        = str(configuration['DEFAULT']['name'])
+        self.msToProcess = int(configuration['DEFAULT']['ms_to_process'])
+        self.outfolder   = str(configuration['DEFAULT']['outfolder'])
 
-        self.rfSignal = RFSignal(configuration['RFSIGNAL']['filepath'])
+        self.rfSignal = RFSignal(configuration['RFSIGNAL'])
         
         self.database = DatabaseHandler(f"{self.outfolder}/{self.name}.db", overwrite)
 
         # Initialise
         self.receiverState = ReceiverState.IDLE
         self.clock = Clock()
-        self.position = GNSSPosition()
-        
-        self.channelManager = ChannelManager(buffersize, dtype)
+        self.coordinate = Coordinate()
+        self.channelManager = ChannelManager(self.rfSignal)
 
         # Create GUI
         if not (gui is None):
             self.gui = gui
-            self.gui.createReceiverGUI(self)
 
         return
 
@@ -67,9 +68,10 @@ class Receiver(ABC):
 
         # Read the I/Q file
         msPerLoop = 1
-        for msProcessed in range(self.msToProcess):
+        for idx in range(self.msToProcess):
             # Get the new RF data
-            ChannelManager.addNewRFData(self.rfSignal.getMilliseconds(nbMilliseconds=msPerLoop))
+            data = self.rfSignal.getMilliseconds(nbMilliseconds=msPerLoop)
+            self.channelManager.addNewRFData(data)
 
             # Update clock
             self.clock.addTime(msPerLoop * 1e-3)
@@ -79,6 +81,12 @@ class Receiver(ABC):
 
             # Process the results
             self._processChannelResults(results)
+
+            # Compute measurements and position
+            self.computeGNSSMeasurements()
+
+            # Update GUI
+            self._updateGUI()
 
         return
     
@@ -93,11 +101,17 @@ class Receiver(ABC):
         return
     
     # -------------------------------------------------------------------------
+
+    @abstractmethod
+    def computeGNSSMeasurements(self):
+        return
+
+    # -------------------------------------------------------------------------
     
     def _updateDatabaseFromChannels(self, results:list):
         """
         Update the database based on the received results. Database column and contents will be updated according to
-        the dictionnary strucutre returned by the channel results. 
+        the dictionnary strucutre returned by the channel results. The update is not commited on the database.
 
         Args:
             results (list) : Results from channels.
@@ -110,7 +124,9 @@ class Receiver(ABC):
 
         """
         for packet in results:
-            if packet['type'] == ChannelMessage.ACQUISITION_UPDATE:
+            if packet == None:
+                continue
+            elif packet['type'] == ChannelMessage.ACQUISITION_UPDATE:
                 self.addAcquisitionDatabase(packet)
             elif packet['type'] == ChannelMessage.TRACKING_UPDATE:
                 self.addTrackingDatabase(packet)
@@ -220,6 +236,13 @@ class Receiver(ABC):
     
     # -------------------------------------------------------------------------
     
-    def updateGUI(self):
+    def _updateGUI(self):
         self.gui.updateReceiverGUI(self)
         return
+    
+    # -------------------------------------------------------------------------
+
+    def close(self):
+        self.channelManager.close()
+        self.database.close()
+        self.gui.updateMainStatus(stage=f'Processing {self.name}', status='DONE')

@@ -4,7 +4,7 @@ import numpy as np
 # =====================================================================================================================
 
 def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT:np.array, dopplerRange:tuple, 
-         dopplerSteps:int, samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1):
+         dopplerStep:int, samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1):
     """
     Implementation of the Parallel Code Phase Search (PCPS) method [Borre, 2007]. This method perform the correlation 
     of the code in the frequency domain using FFTs. It produces a 2D correlation map over the frequency and code 
@@ -14,8 +14,8 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
         rfData (numpy.array): Data sample to be used.
         interFrequency (float) : Intermediate Frequency used in RF signal.
         codeFFT (numpy.array): Primary code of the GNSS signal, transformed using a FFT. 
-        dopplerRange (tuple): Frequency bounds for acquisition search.
-        dopplerSteps (int) : Frequency steps for acquisition search.
+        dopplerRange (int): Frequency bound (-/+) for acquisition search.
+        dopplerStep (int) : Frequency step for acquisition search.
         codeBins (np.array): Code bins 
 
     Returns:
@@ -26,7 +26,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
     """
 
     phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
-    frequencyBins = np.arange(dopplerRange[0], dopplerRange[1], dopplerSteps)
+    frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerStep)
 
     # Search loop
     correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
