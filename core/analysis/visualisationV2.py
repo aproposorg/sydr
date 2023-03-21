@@ -77,9 +77,9 @@ class VisualisationV2:
         measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
 
-        # Navigation Tab
-        navigationTab = self._getNavigationTab()
-        mainTabs.append(('Navigation', navigationTab))
+        # # Navigation Tab
+        # navigationTab = self._getNavigationTab()
+        # mainTabs.append(('Navigation', navigationTab))
 
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)
@@ -97,7 +97,7 @@ class VisualisationV2:
 
         # Fetch satellite list
         channelList = self.database.fetchTable('channel')
-        satelliteList = {f"{channel['satellite_id']}":channel["physical_id"] for channel in channelList}
+        satelliteList = {f"{channel['satellite_id']}":channel["id"] for channel in channelList}
         checkboxes_prn = pn.widgets.ToggleGroup(options=satelliteList, behavior='radio', button_type="success", width=200)
 
         selections = pn.Column('### Satellites and signals', checkboxes_prn)
@@ -109,12 +109,12 @@ class VisualisationV2:
             
             acqLayout   = self._getAcquisitionLayout(channelID)
             trackLayout = self._getTrackingLayout(channelID)
-            measLayout  = self._getGNSSMeasurementLayout(channelID)
+            #measLayout  = self._getGNSSMeasurementLayout(channelID)
             
             return pn.Tabs(
                 ('Acquisition', acqLayout),
-                ('Tracking', trackLayout),
-                ('GNSS Measurements', measLayout)
+                ('Tracking', trackLayout)
+                #('GNSS Measurements', measLayout)
             )
         layout = pn.Column(selections, tabs)
 
@@ -316,7 +316,7 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             x_range=figDLL.x_range,
-            y_range=Range1d(-20e3, 20e3))
+            y_range=Range1d(-25e3, 25e3))
         figIPrompt.line(x='time', y='iprompt', source=source, line_width=lineWidth)
         figIPrompt.scatter(x='time', y='iprompt', source=source, marker='dot')
         figIPrompt.yaxis.axis_label = "Correlation amplitude"
@@ -333,7 +333,7 @@ class VisualisationV2:
             background_fill_color=self.backgroundColor,\
             height=height, width=width, tools=tools,
             x_range=figDLL.x_range,
-            y_range=Range1d(-20e3, 20e3))
+            y_range=Range1d(-25e3, 25e3))
         figQPrompt.line(x='time', y='qprompt', source=source, line_width=lineWidth)
         figQPrompt.scatter(x='time', y='qprompt', source=source, marker='dot')
         figQPrompt.yaxis.axis_label = "Correlation amplitude"

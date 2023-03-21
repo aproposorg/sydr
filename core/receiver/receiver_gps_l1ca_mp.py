@@ -61,8 +61,9 @@ class ReceiverGPSL1CA(Receiver):
         self.satelliteDict = {}
         self.channelsStatus = {}
         for prn in self.prnList:
-            cid = self.channelManager.requestTracking(prn)
-            self.channelsStatus[cid] = ChannelStatusL1CA(cid, prn)
+            channel = self.channelManager.requestTracking(prn)
+            self.addChannelDatabase(channel)
+            self.channelsStatus[channel.channelID] = ChannelStatusL1CA(channel.channelID, prn)
             self.satelliteDict[prn] = Satellite(GNSSSystems.GPS, prn)
 
         self.nextMeasurementTime = Time()

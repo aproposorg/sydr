@@ -85,7 +85,7 @@ def LoopFiltersCoefficients(loopNoiseBandwidth:float, dampingRatio:float, loopGa
 
 # =====================================================================================================================
 
-def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequency:float, remainingCarrier:float, \
+def EPL_nonvector(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequency:float, remainingCarrier:float, \
         remainingCode:float, codeStep:float, correlatorsSpacing:tuple):
     
     rfData = np.squeeze(rfData)
@@ -107,6 +107,34 @@ def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequenc
             codeIdx = int(np.ceil(remainingCode + correlatorsSpacing[i] + idx*codeStep))
             correlatorResults[i*2]   += code[codeIdx] * iSignal
             correlatorResults[i*2+1] += code[codeIdx] * qSignal
+    
+    return correlatorResults
+
+# =====================================================================================================================
+
+def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequency:float, remainingCarrier:float, \
+        remainingCode:float, codeStep:float, correlatorsSpacing:tuple):
+    
+    rfData = np.squeeze(rfData)
+    
+    nbSamples = len(rfData)
+    correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # Generate replica
+    time = np.arange(0.0, nbSamples) / samplingFrequency
+    replica = np.exp(1j * (-(carrierFrequency * 2.0 * np.pi * time) + remainingCarrier))
+
+    # Mix replica
+    signal = replica * rfData
+    iSignal = np.real(signal)
+    qSignal = np.imag(signal)
+
+    # Perform correlation
+    for i in range(len(correlatorsSpacing)):
+        shift = remainingCode + correlatorsSpacing[i]
+        codeIdx = np.ceil(np.linspace(shift, codeStep * nbSamples + shift, nbSamples, endpoint=False)).astype(int)
+        correlatorResults[i*2]   = np.sum(code[codeIdx] * iSignal)
+        correlatorResults[i*2+1] = np.sum(code[codeIdx] * qSignal)
     
     return correlatorResults
 

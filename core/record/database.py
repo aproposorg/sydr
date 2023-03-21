@@ -10,6 +10,7 @@ from core.measurements import GNSSPosition
 from core.satellite.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
 from core.utils.time import Time
+from core.channel.channel import ChannelMessage
 
 #from core.io.RINEXNav import RINEXNav
 
@@ -31,7 +32,8 @@ class DatabaseHandler:
         self.columns = {} # Dictionnary containing the column list for each table
         self.dictBuffer = {} # Dictionnary buffering the object to be send to DB, this is to limit DB interations
 
-        self.maxSizeDictBuffer = 1000
+        self.sizeDictBuffer = 0
+        self.maxSizeDictBuffer = 1000000
 
         # Initialise database content
         self._initialise()
@@ -48,20 +50,19 @@ class DatabaseHandler:
             self.dictBuffer[table] = []
         
         self.dictBuffer[table].append(data)
+        self.sizeDictBuffer += len(data)
 
         # Commit changes
-        if len(self.dictBuffer.keys()) > self.maxSizeDictBuffer:
-            self.commit
+        if self.sizeDictBuffer > self.maxSizeDictBuffer:
+            self.commit()
 
         return
-
 
     # -------------------------------------------------------------------------
 
     def commit(self):
         """ 
         """
-
         for table, inserts in self.dictBuffer.items(): 
             for data in inserts: 
                 columns = ""
@@ -79,6 +80,8 @@ class DatabaseHandler:
                             mtype = "TEXT"
                         elif isinstance(val, list) or isinstance(val, np.ndarray):
                             mtype = "BLOB"
+                        elif isinstance(val, ChannelMessage):
+                            continue
                         else:
                             raise TypeError("Unknown type given in database.")
                         
@@ -102,6 +105,7 @@ class DatabaseHandler:
                 self.cursor.executemany(sqlstr, insertList)
         self.connection.commit()
         self.dictBuffer = {}
+        self.sizeDictBuffer = 0
 
         return
     

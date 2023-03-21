@@ -102,22 +102,20 @@ class ChannelManager():
         # Loop through channels to find a free one
         # TODO handle case where there is no free channel
         channel : Channel
-        cid = -1
         success = False
         for channel in self.channels.values():
             if channel.channelState is ChannelState.IDLE:
                 channel.setSatellite(satelliteID)
                 channel.start()
-                cid = channel.channelID
                 success = True
                 break
         
         if success:
-            logging.getLogger(__name__).debug(f"CID {cid} initialised to satellite [G{satelliteID}].")
+            logging.getLogger(__name__).debug(f"CID {channel.channelID} initialised to satellite [G{satelliteID}].")
         else:
             raise Warning(f"Could not find an IDLE channel for tracking satellite [G{satelliteID}].")
         
-        return cid
+        return channel
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -193,8 +191,9 @@ class ChannelManager():
         self._sharedMemory.close()
         self._sharedMemory.unlink()
 
-        for chan in self.channels:
-            chan.terminate()
+        # channel : Channel
+        # for channel in self.channels:
+        #     channel.terminate()
 
         return
     

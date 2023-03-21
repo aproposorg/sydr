@@ -25,6 +25,7 @@ class Receiver(ABC):
     receiverState : ReceiverState
     
     clock : Clock
+    samplesCounter : int
     coordinate : Coordinate
 
     # Processing
@@ -52,6 +53,7 @@ class Receiver(ABC):
         self.clock = Clock()
         self.coordinate = Coordinate()
         self.channelManager = ChannelManager(self.rfSignal)
+        self.samplesCounter = 0
 
         # Create GUI
         if not (gui is None):
@@ -75,6 +77,7 @@ class Receiver(ABC):
 
             # Update clock
             self.clock.addTime(msPerLoop * 1e-3)
+            self.samplesCounter += msPerLoop * self.rfSignal.samplesPerMs
 
             # Process the data
             results = self.channelManager.run()
@@ -166,7 +169,7 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
+        result["time_sample"]  = self.samplesCounter
 
         self.database.addData("acquisition", result)
 
@@ -199,7 +202,7 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
+        result["time_sample"]  = self.samplesCounter
 
         self.database.addData("tracking", result)
 
@@ -232,6 +235,7 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
+        result["time_sample"]  = self.samplesCounter
         #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
         self.database.addData("decoding", result)
@@ -241,6 +245,23 @@ class Receiver(ABC):
 
         return
     
+    # -------------------------------------------------------------------------
+
+    def addChannelDatabase(self, channel:Channel):
+        
+        mdict = {
+            "id"           : channel.channelID,
+            "system"       : channel.gnssSignal.getSystem(),
+            "satellite_id" : channel.satelliteID,
+            "signal"       : channel.gnssSignal.signalType,
+            "start_time"   : time.time(),
+            "start_sample" : self.samplesCounter
+        }
+
+        self.database.addData("channel", mdict)
+
+        return
+
     # -------------------------------------------------------------------------
     
     def _updateGUI(self):
