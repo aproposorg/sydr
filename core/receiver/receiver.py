@@ -79,6 +79,13 @@ class Receiver(ABC):
             # Process the data
             results = self.channelManager.run()
 
+            # Wait for processing to finish 
+            # timeoutFlag = self.channelManager.eventDone.wait(timeout=300)
+            # if not timeoutFlag:
+            #     logging.getLogger(__name__).warning(f"Channel manager timeout, exiting run.")
+            #     return
+            # self.channelManager.eventDone.clear()
+
             # Process the results
             self._processChannelResults(results)
 
@@ -159,12 +166,12 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
+        #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
         self.database.addData("acquisition", result)
 
-        logging.getLogger(__name__).debug(
-            f"Logged acquisition results in database for CID {channel.channelID} (G{channel.satelliteID})")
+        # logging.getLogger(__name__).debug(
+        #     f"Logged acquisition results in database for CID {channel.channelID} (G{channel.satelliteID})")
 
         return
 
@@ -192,12 +199,12 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
+        #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
         self.database.addData("tracking", result)
 
-        logging.getLogger(__name__).debug(
-            f"Logged tracking results in database for CID {channel.channelID} (G{channel.satelliteID})")
+        # logging.getLogger(__name__).debug(
+        #     f"Logged tracking results in database for CID {channel.channelID} (G{channel.satelliteID})")
 
         return
 
@@ -225,12 +232,12 @@ class Receiver(ABC):
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
         result["time"]         = time.time()
-        result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
+        #result["time_sample"]  = float(self.sampleCounter - result["unprocessed_samples"])
 
         self.database.addData("decoding", result)
 
-        logging.getLogger(__name__).debug(
-            f"Logged decoding results in database for CID {channel.channelID} (G{channel.satelliteID})")
+        # logging.getLogger(__name__).debug(
+        #     f"Logged decoding results in database for CID {channel.channelID} (G{channel.satelliteID})")
 
         return
     

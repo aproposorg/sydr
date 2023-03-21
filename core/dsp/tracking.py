@@ -87,11 +87,12 @@ def LoopFiltersCoefficients(loopNoiseBandwidth:float, dampingRatio:float, loopGa
 
 def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequency:float, remainingCarrier:float, \
         remainingCode:float, codeStep:float, correlatorsSpacing:tuple):
-
+    
+    rfData = np.squeeze(rfData)
+    
     nbSamples = len(rfData)
-
     correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    for idx in nbSamples:
+    for idx in range(nbSamples):
         # Generate replica
         temp = -(carrierFrequency * 2.0 * np.pi * (idx/samplingFrequency)) + remainingCarrier
         replica = np.exp(1j * temp)
@@ -103,9 +104,9 @@ def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequenc
 
         # Perform correlation
         for i in range(len(correlatorsSpacing)):
-            codeIdx = np.ceil(remainingCode + correlatorsSpacing[i] + idx*codeStep)
-            correlatorResults[i*2]   += code[codeIdx] * iSignal[idx]
-            correlatorResults[i*2+1] += code[codeIdx] * qSignal[idx]
+            codeIdx = int(np.ceil(remainingCode + correlatorsSpacing[i] + idx*codeStep))
+            correlatorResults[i*2]   += code[codeIdx] * iSignal
+            correlatorResults[i*2+1] += code[codeIdx] * qSignal
     
     return correlatorResults
 
@@ -125,6 +126,8 @@ def DLL_NNEML(iEarly:float, qEarly:float, iLate:float, qLate:float, NCO_code:flo
     NCO_code += tau2 / tau1 * (newCodeError - NCO_codeError)
     NCO_code += pdi / tau1 * newCodeError
 
+    NCO_codeError = newCodeError
+
     return NCO_code, NCO_codeError
 
 # =====================================================================================================================
@@ -141,6 +144,8 @@ def PLL_costa(iPrompt:float, qPrompt:float, NCO_carrier:float, NCO_carrierError:
     # Update NCO frequency
     NCO_carrier += tau2 / tau1 * (newCarrierError - NCO_carrierError)
     NCO_carrier += pdi / tau1 * newCarrierError
+
+    NCO_carrierError = newCarrierError
 
     return NCO_carrier, NCO_carrierError
 

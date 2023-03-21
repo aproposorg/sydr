@@ -72,7 +72,18 @@ class CircularBuffer:
         if self.maxSize % shift != 0:
             raise ValueError("Data shift need to be a multiple from the max buffer size.")
 
+        # Update buffer data
         self.buffer[:, self.idxWrite:self.idxWrite + shift] = data
+        
+        # Shift other variables
+        self.shiftIdxWrite(shift)
+
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def shiftIdxWrite(self, shift:int):
+        
         self.idxWrite += shift
         self.size = self.idxWrite
 
@@ -85,7 +96,7 @@ class CircularBuffer:
                 self.idxWrite %= self.maxSize
             if self.size > self.maxSize:
                 self.size = self.maxSize
-
+        
         return
     
     # -----------------------------------------------------------------------------------------------------------------
@@ -111,5 +122,16 @@ class CircularBuffer:
             return np.concatenate((self.buffer[:, idxStart:], self.buffer[:, :idxStop]), axis=1)
         else: 
             return self.buffer[:, idxStart:idxStop]
-    
+        
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def getNbUnreadSamples(self, currentSample:int):
+        """
+        """
+        
+        if currentSample <= self.idxWrite:
+            return self.idxWrite - currentSample
+        else:
+            return self.maxSize - currentSample + self.idxWrite
+
     # -----------------------------------------------------------------------------------------------------------------

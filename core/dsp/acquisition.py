@@ -25,6 +25,8 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
         None
     """
 
+    rfData = np.squeeze(rfData)
+
     phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
     frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerStep)
 
@@ -92,7 +94,7 @@ def TwoCorrelationPeakComparison(correlationMap:np.array, samplesPerCode:int, sa
     # Find first correlation peak
     peak_1 = np.amax(correlationMap)
     idx = np.where(correlationMap == peak_1)
-    idxHighestPeak = (int(idx[0]), int(idx(1)))
+    idxHighestPeak = (int(idx[0]), int(idx[1]))
 
     # Find second correlation peak
     exclude = list((int(idxHighestPeak[1] - samplesPerCodeChip), int(idxHighestPeak[1] + samplesPerCodeChip)))

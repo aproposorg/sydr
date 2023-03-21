@@ -18,6 +18,7 @@ from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
 from core.dsp.tracking import TrackingFlags
 
+import time 
 
 # =============================================================================
 @unique
@@ -67,7 +68,8 @@ class Channel(ABC, multiprocessing.Process):
     rfSignal     : RFSignal       # RF signal parameters
     rfBuffer     : CircularBuffer # Circular buffer for limited data storage
     
-    nbUnprocessedSamples : int    # Number of samples waiting to be processed
+    unprocessedSamples : int    # Number of samples waiting to be processed
+    currentSample      : int    # Current sample in RF Buffer
 
     # Satellite and GNSS signal
     gnssSignal   : GNSSSignal     # GNSS signal parameters 
@@ -115,6 +117,7 @@ class Channel(ABC, multiprocessing.Process):
         self.resultQueue = resultQueue
         self.eventRun = multiprocessing.Event()
         self.eventDone = multiprocessing.Event()
+        self.currentSample = 0
         self.unprocessedSamples = 0
         self.rfSignal = rfSignal
 
@@ -132,7 +135,12 @@ class Channel(ABC, multiprocessing.Process):
         """
         self.satelliteID = satelliteID
         self.channelState = ChannelState.ACQUIRING
-        self.code = self.gnssSignal.getCode(satelliteID, self.rfSignal.samplingFrequency)
+        
+        # Get the satellite PRN code
+        code = self.gnssSignal.getCode(satelliteID)
+        # Code saved include previous and post code bit for correlation purposes
+        self.code = np.r_[code[-1], code, code[0]]
+
         return
     
     # -------------------------------------------------------------------------
@@ -153,7 +161,6 @@ class Channel(ABC, multiprocessing.Process):
         """
         
         while True:
-
             # Wait for ChannelManager event signal
             timeoutFlag = self.eventRun.wait(timeout=self.TIMEOUT)
             self.eventRun.clear()
@@ -165,6 +172,7 @@ class Channel(ABC, multiprocessing.Process):
             
             # Update samples tracker
             self.unprocessedSamples += self.rfSignal.samplesPerMs
+            self.rfBuffer.shiftIdxWrite(self.rfSignal.samplesPerMs) # Update our copy of buffer
 
             # Process the data according to the current channel state
             results = self._processHandler()
@@ -273,6 +281,8 @@ class Channel(ABC, multiprocessing.Process):
         
         return _packet
     
+    # -------------------------------------------------------------------------
+
 # =============================================================================
 
 # TODO update variables

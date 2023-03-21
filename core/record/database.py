@@ -1,5 +1,4 @@
 from datetime import datetime
-from distutils.log import error
 import logging
 import os
 import sqlite3
@@ -51,7 +50,7 @@ class DatabaseHandler:
         self.dictBuffer[table].append(data)
 
         # Commit changes
-        if len(self.dictBuffer.keys) > self.maxSizeDictBuffer:
+        if len(self.dictBuffer.keys()) > self.maxSizeDictBuffer:
             self.commit
 
         return
@@ -337,7 +336,7 @@ class DatabaseHandler:
         try:
             data = fetchedData[idx]
         except IndexError:
-            error("No broadcast ephemeris found in database.")
+            raise IndexError("No broadcast ephemeris found in database.")
 
         ephemeris            = BRDCEphemeris()
         ephemeris.system     = GNSSSystems[data[1]]

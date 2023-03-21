@@ -110,6 +110,8 @@ class ReceiverGPSL1CA(Receiver):
                 self.channelsStatus[channel.channelID].trackingFlags = packet['tracking_flags']
                 self.channelsStatus[channel.channelID].tow           = packet['tow']
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
+            elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE):
+                continue
             else:
                 raise ValueError(
                     f"Unknown channel message '{packet['type']}' received from channel {channel.channelID}.")

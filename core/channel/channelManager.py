@@ -25,6 +25,7 @@ class ChannelManager():
 
     # Communication
     resultQueue : multiprocessing.Queue()
+    eventDone : multiprocessing.Event()
 
     # RF
     rfSignal : RFSignal
@@ -58,8 +59,9 @@ class ChannelManager():
         self._sharedMemory = shared_memory.SharedMemory(create=True, size=nbytes)
         self.sharedBuffer = CircularBuffer(buffersize, dtype, self._sharedMemory)
 
-        # RF queue
+        # Communication
         self.resultQueue = multiprocessing.Queue()
+        self.eventDone = multiprocessing.Event()
 
         return
 
@@ -154,10 +156,13 @@ class ChannelManager():
         # Start the channels
         for chan in self.channels.values():
             chan.eventRun.set()
+            #logging.getLogger(__name__).debug(f"CID {chan.channelID} processing started.")
 
         # Wait for channels to be done
         for chan in self.channels.values():
             chan.eventDone.wait()
+            chan.eventDone.clear()
+            #logging.getLogger(__name__).debug(f"CID {chan.channelID} processing finished.")
 
         # Process results
         _results = []
@@ -172,6 +177,9 @@ class ChannelManager():
         
         # Flatten list
         results = [element for sublist in _results for element in sublist]
+
+        # Signal receiver that processing is done
+        self.eventDone.set()
 
         return results
     

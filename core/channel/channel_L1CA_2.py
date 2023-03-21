@@ -133,9 +133,7 @@ class ChannelL1CA(Channel):
         self.track_pll_pdi = float(configuration['pll_pdi'])
         
         self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
-
-        self.track_requiredSamples = int(self.rfSignal.samplingFrequency * 1e-3)
+        self.track_requiredSamples = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
 
         self.trackFlags = TrackingFlags.UNKNOWN
 
@@ -149,15 +147,16 @@ class ChannelL1CA(Channel):
         """
             
         # Check if sufficient data in buffer
-        if self.unprocessedSamples < self.acq_requiredSamples:
+        if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.acq_requiredSamples:
             return
-            
-        codeFFT = np.conj(np.fft.fft(self.code))
+        
+        code = self.gnssSignal.getUpsampledCode(self.code[1:-1], self.rfSignal.samplingFrequency)
+        codeFFT = np.conj(np.fft.fft(code))
         samplesPerCode = round(self.rfSignal.samplingFrequency * self.gnssSignal.codeBits / self.gnssSignal.codeFrequency)
         samplesPerCodeChip = round(self.rfSignal.samplingFrequency / self.gnssSignal.codeFrequency)
 
         # Parallel Code Phase Search method (PCPS)
-        correlationMap = PCPS(rfData = self.rfBuffer.buffer[-self.acq_requiredSamples:], 
+        correlationMap = PCPS(rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
                               interFrequency = self.rfSignal.interFrequency,
                               samplingFrequency = self.rfSignal.samplingFrequency,
                               codeFFT=codeFFT,
@@ -170,12 +169,21 @@ class ChannelL1CA(Channel):
         indices, peakRatio = TwoCorrelationPeakComparison(correlationMap=correlationMap,
                                                           samplesPerCode=samplesPerCode,
                                                           samplesPerCodeChip=samplesPerCodeChip)
-        
-        dopplerShift = self.acq_dopplerRange[0]  + self.acq_dopplerSteps * indices[0] 
+
+        # Update variables
+        dopplerShift = -((-self.acq_dopplerRange) + self.acq_dopplerSteps * indices[0])
         self.codeOffset = int(np.round(indices[1]))
         self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
         self.initialFrequency = self.rfSignal.interFrequency + dopplerShift
         # TODO Can we merge the two variables inside the loop?
+
+        # Update index
+        #self.currentSample = (self.currentSample + self.track_requiredSamples) - self.codeOffset
+        self.currentSample = self.rfBuffer.size - 2 * self.track_requiredSamples + (self.codeOffset + 1)
+        
+        # Switch channel state to tracking
+        # TODO Test if succesful acquisition
+        self.channelState = ChannelState.TRACKING
 
         # Results sent back to the receiver
         results = super().prepareResultsAcquisition()
@@ -195,27 +203,31 @@ class ChannelL1CA(Channel):
     def runTracking(self):
 
         # Check if sufficient data in buffer
-        if self.unprocessedSamples < self.track_requiredSamples:
+        if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.track_requiredSamples:
             return
 
         # Correlators
-        correlatorResults = EPL(rfData = self.rfBuffer.buffer[-self.track_requiredSamples:],
+        correlatorResults = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
                                 code = self.code,
                                 samplingFrequency=self.rfSignal.samplingFrequency,
-                                carrierFrequency=self.gnssSignal.carrierFrequency,
+                                carrierFrequency=self.carrierFrequency,
                                 remainingCarrier=self.NCO_remainingCarrier,
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.track_correlatorsSpacing)
         iPrompt_new = correlatorResults[2]
         qPrompt_new = correlatorResults[3]
+
+        # Compute remaining carrier phase
+        self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
+        self.NCO_remainingCarrier %= (2*np.pi)
         
         # Delay Lock Loop 
         self.NCO_code, self.NCO_codeError = DLL_NNEML(
             iEarly=correlatorResults[0], qEarly=correlatorResults[1], 
             iLate=correlatorResults[4], qLate=correlatorResults[5],
-            NCOcode=self.NCO_code, NCOcodeError=self.NCO_codeError, 
-            tau1=self.dll_tau1, tau2=self.dll_tau2, pdi=self.dll_pdi)
+            NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
+            tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
         # Update NCO code frequency
         self.codeFrequency = self.gnssSignal.codeFrequency - self.NCO_code
         
@@ -223,7 +235,7 @@ class ChannelL1CA(Channel):
         self.NCO_carrier, self.NCO_carrierError = PLL_costa(
             iPrompt=correlatorResults[2], qPrompt=correlatorResults[3],
             NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
-            tau1=self.pll_tau1, tau2=self.pll_tau2, pdi=self.pll_pdi)
+            tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
         # Update NCO carrier frequency
         self.carrierFrequency = self.initialFrequency + self.NCO_carrier
 
@@ -240,14 +252,16 @@ class ChannelL1CA(Channel):
 
         # Update some variables
         # TODO Previously linespace, check if correct
-        nbSamples = len(self.rfBuffer.buffer) # TODO Should be the same as samplesRequired no?
-        self.sampleCounter += nbSamples
+        self.sampleCounter += self.track_requiredSamples
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
-        self.NCO_remainingCode += nbSamples * self.codeStep - self.gnssSignal.codeBits
+        self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - self.gnssSignal.codeBits
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
-        self.samplesRequired = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
-        
+
+        # Update index
+        self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
+        self.track_requiredSamples = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
+
         # Results sent back to the receiver
         results = super().prepareResultsTracking()
         results["i_early"]           = correlatorResults[0]
@@ -273,7 +287,7 @@ class ChannelL1CA(Channel):
             return
         
         # Check if new bit to decode
-        if not (self.lnav_nbPrompt == LNAV_MS_PER_BIT):
+        if not (self.nbPrompt == LNAV_MS_PER_BIT):
             # No new bit, nothing to do
             return
         
@@ -360,11 +374,7 @@ class ChannelL1CA(Channel):
 
         elif self.channelState == ChannelState.ACQUIRING:
             self.addResult(results, self.runAcquisition())
-            
         elif self.channelState == ChannelState.TRACKING:
-            if self.isAcquired:
-                self.isAcquired = False # Reset the flag, otherwise we log acquisition each loop
-            # Track
             self.addResult(results, self.runTracking())
             self.addResult(results, self.runDecoding())
         else:
