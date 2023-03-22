@@ -63,6 +63,9 @@ class DatabaseHandler:
     def commit(self):
         """ 
         """
+
+        logging.getLogger(__name__).info(f"Writtin to database.")
+
         for table, inserts in self.dictBuffer.items(): 
             for data in inserts: 
                 columns = ""
