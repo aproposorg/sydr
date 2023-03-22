@@ -6,6 +6,7 @@ from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelS
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
+from core.dsp.cn0 import NWPR
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.gnsssignal import GNSSSignal, GNSSSignalType
@@ -19,6 +20,7 @@ class ChannelL1CA(Channel):
     initialFrequency : float
     iPrompt          : np.array
     qPrompt          : np.array
+    nbPrompt         : int
     navBitsBuffer    : np.array
     navBitsSamples   : np.array
     trackFlags       : TrackingFlags
@@ -51,7 +53,6 @@ class ChannelL1CA(Channel):
     navBitsBuffer    : np.array
     navBitBufferSize : int
     navBitsCounter   : int
-    nbPrompt         : int
     subframeFlags    : list
     tow              : int
 
@@ -74,9 +75,12 @@ class ChannelL1CA(Channel):
         self.NCO_carrierError     = 0.0
         self.NCO_remainingCarrier = 0.0
 
-        self.iPrompt = 0.0
-        self.qPrompt = 0.0
-        self.nbPrompt = 0.0
+        # Save one bit length of prompt values
+        self.iPrompt = np.squeeze(np.empty((1, 20)))
+        self.qPrompt = np.squeeze(np.empty((1, 20)))
+        self.nbPrompt = 0
+        self.iPromptAvg = 0.0
+        self.qPromptAvg = 0.0
 
         self.sampleCounter = 0
         self.codeCounter = 0
@@ -205,6 +209,8 @@ class ChannelL1CA(Channel):
         # Check if sufficient data in buffer
         if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.track_requiredSamples:
             return
+        
+        normalisedPower = np.nan
 
         # Correlators
         correlatorResults = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
@@ -215,8 +221,6 @@ class ChannelL1CA(Channel):
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.track_correlatorsSpacing)
-        iPrompt_new = correlatorResults[2]
-        qPrompt_new = correlatorResults[3]
 
         # Compute remaining carrier phase
         self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
@@ -240,18 +244,29 @@ class ChannelL1CA(Channel):
         self.carrierFrequency = self.initialFrequency + self.NCO_carrier
 
         # Check if bit sync
+        iPrompt = correlatorResults[2]
+        qPrompt = correlatorResults[3]
         if not (self.trackFlags & TrackingFlags.BIT_SYNC):
             # if not bit sync yet, check if there is a bit inversion
             if self.trackFlags & TrackingFlags.CODE_LOCK:
-                if np.sign(self.iPrompt) != np.sign(iPrompt_new):
+                if np.sign(self.iPrompt[-1]) != np.sign(iPrompt):
                     self.trackFlags |= TrackingFlags.BIT_SYNC
+        else:
+            # if bit sync already, update prompt correlator history
+            self.iPrompt[self.nbPrompt] = iPrompt
+            self.qPrompt[self.nbPrompt] = qPrompt
+            self.nbPrompt += 1
+
+            # Compute Normalised Power ratio (for CN0 estimation)
+            if self.nbPrompt == LNAV_MS_PER_BIT:
+                # Compute normalised power
+                normalisedPower = NWPR(self.iPrompt, self.qPrompt)
+                self.nbPrompt = 0 # TODO remove otherwise no decoding
 
         # TODO Check if tracking was succesful an update the flags
-        # TODO Add more flags
         self.trackFlags |= TrackingFlags.CODE_LOCK
 
         # Update some variables
-        # TODO Previously linespace, check if correct
         self.sampleCounter += self.track_requiredSamples
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
@@ -273,13 +288,16 @@ class ChannelL1CA(Channel):
         results["dll"]               = self.NCO_code
         results["pll"]               = self.NCO_carrier
         results["carrier_frequency"] = self.carrierFrequency
-        results["code_frequency"]    = self.codeFrequency        
+        results["code_frequency"]    = self.codeFrequency       
+        results["normalised_power"]  = normalisedPower
 
         return results
     
     # -------------------------------------------------------------------------
 
     def runDecoding(self):
+        
+        return # TODO For debugging purposes, should be debugged later
         
         # Check if time to decode the bit
         if not (self.trackFlags & TrackingFlags.BIT_SYNC):
@@ -293,7 +311,10 @@ class ChannelL1CA(Channel):
         
         # Convert prompt correlator to bits
         self.navBitsCounter += 1
-        self.navBitsBuffer[self.navBitsCounter-1] = Prompt2Bit(self.lnav_iPrompt_sum) # TODO Check if this function work
+        self.navBitsBuffer[self.navBitsCounter-1] = Prompt2Bit(np.mean(self.iPrompt)) # TODO Check if this function work
+
+        # Clear prompt buffer, no need to clear the elements we just reset the index
+        self.nbPrompt = 0
 
         # Check if minimum number of bits decoded
         # Need at least the preambule bits plus the previous 2 bit to perform checks plus the 2 words afterwards.

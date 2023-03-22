@@ -73,25 +73,6 @@ class ReceiverGPSL1CA(Receiver):
         self.gui.updateMainStatus(stage=f'Processing {self.name}', status='RUNNING')
 
         return
-
-    # -----------------------------------------------------------------------------------------------------------------
-
-    def run(self):
-        """
-        Start the processing.
-
-        Args:
-            None
-
-        Returns:
-            None
-        
-        Raises:
-            None
-        """
-        super().run()
-
-        return
     
     # -----------------------------------------------------------------------------------------------------------------
 

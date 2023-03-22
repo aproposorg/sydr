@@ -62,8 +62,7 @@ class Receiver(ABC):
         return
 
     # -------------------------------------------------------------------------
-
-    @abstractmethod
+    
     def run(self):
         logging.getLogger(__name__).info(f"Processing in receiver {self.name} started.")
         self.receiverState = ReceiverState.INIT
@@ -97,6 +96,9 @@ class Receiver(ABC):
 
             # Update GUI
             self._updateGUI()
+
+        # Commit database
+        self.database.commit()
 
         return
     
