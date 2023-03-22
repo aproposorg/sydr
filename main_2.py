@@ -9,7 +9,7 @@ import core.logger as logger
 
 def main():
     """ 
-    Main function
+    Main function 
     """
 
     # Configuration
@@ -24,22 +24,19 @@ def main():
     # Create logger
     logger.configureLogger(name=__name__, filepath='./config/logging.ini')
 
-    # Create receiver
-    receiver = ReceiverGPSL1CA(receiverConfig, overwrite=True, gui=gui)
+    # # Create receiver
+    # receiver = ReceiverGPSL1CA(receiverConfig, overwrite=True, gui=gui)
 
-    # Run receiver
-    receiver.run()
+    # # Run receiver
+    # receiver.run()
+
+    # # Closing receiver to free database and memory
+    # receiver.close()
 
     # Create report
-    benchmarkConfigFile = './config/benchmark.ini'
-    visual = VisualisationV2(benchmarkConfigFile, receiver.rfSignal)
-    visual.setDatabase(receiver.database)
-    visual.setConfig(receiverConfigFile)
     gui.updateMainStatus(stage='Create report', status='RUNNING')
-    visual.run()
-
-    # Closing receiver to free database and memory
-    receiver.close()
+    visual = VisualisationV2(receiverConfig)
+    visual.run()    
 
     gui.updateMainStatus(stage=f'PROCESSING COMPLETED', status='DONE')
 

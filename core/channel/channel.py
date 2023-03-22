@@ -13,12 +13,12 @@ from abc import ABC, abstractmethod
 from queue import Empty
 from enum import Enum, unique
 
-from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
+from core.signal.gnsssignal import GenerateGPSGoldCode
 from core.utils.circularbuffer import CircularBuffer
 from core.dsp.tracking import TrackingFlags
-
-import time 
+from core.utils.constants import GPS_L1CA_CODE_MS
+from core.utils.enumerations import GNSSSystems, GNSSSignalType
 
 # =============================================================================
 @unique
@@ -72,8 +72,9 @@ class Channel(ABC, multiprocessing.Process):
     currentSample      : int    # Current sample in RF Buffer
 
     # Satellite and GNSS signal
-    gnssSignal   : GNSSSignal     # GNSS signal parameters 
+    systemID     : GNSSSystems
     satelliteID  : np.uint8       # Satellite ID
+    signalID     : GNSSSignalType
     
     # Channel - Manager communication
     resultQueue : multiprocessing.Queue  # Queue to place the results of the channel processing
@@ -126,7 +127,7 @@ class Channel(ABC, multiprocessing.Process):
         self.codeSinceTOW = 0
 
         return
-
+    
     # -------------------------------------------------------------------------
 
     def setSatellite(self, satelliteID:np.uint8):
@@ -135,11 +136,6 @@ class Channel(ABC, multiprocessing.Process):
         """
         self.satelliteID = satelliteID
         self.channelState = ChannelState.ACQUIRING
-        
-        # Get the satellite PRN code
-        code = self.gnssSignal.getCode(satelliteID)
-        # Code saved include previous and post code bit for correlation purposes
-        self.code = np.r_[code[-1], code, code[0]]
 
         return
     
@@ -226,7 +222,7 @@ class Channel(ABC, multiprocessing.Process):
         Time since the last TOW in milliseconds.
         """
         timeSinceTOW = 0
-        timeSinceTOW += self.codeSinceTOW * self.gnssSignal.codeMs # Add number of code since TOW
+        timeSinceTOW += self.codeSinceTOW * GPS_L1CA_CODE_MS # Add number of code since TOW
         timeSinceTOW += self.unprocessedSamples / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
         return timeSinceTOW
     

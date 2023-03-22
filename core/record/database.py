@@ -64,7 +64,7 @@ class DatabaseHandler:
         """ 
         """
 
-        logging.getLogger(__name__).info(f"Writtin to database.")
+        logging.getLogger(__name__).info(f"Writting results to database.")
 
         for table, inserts in self.dictBuffer.items(): 
             for data in inserts: 

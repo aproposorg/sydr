@@ -253,9 +253,9 @@ class Receiver(ABC):
         
         mdict = {
             "id"           : channel.channelID,
-            "system"       : channel.gnssSignal.getSystem(),
+            "system"       : channel.systemID,
             "satellite_id" : channel.satelliteID,
-            "signal"       : channel.gnssSignal.signalType,
+            "signal"       : channel.signalID,
             "start_time"   : time.time(),
             "start_sample" : self.samplesCounter
         }

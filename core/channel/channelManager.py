@@ -6,7 +6,6 @@ from multiprocessing import shared_memory
 from queue import Empty
 
 from core.channel.channel import Channel, ChannelState
-from core.signal.gnsssignal import GNSSSignal
 from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
 

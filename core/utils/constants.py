@@ -68,3 +68,4 @@ GPS_L1CA_NAME = "GPS L1 C/A"       # String representation
 GPS_L1CA_CARRIER_FREQ = 1575.42e6  # [Hz] Carrier frequency in [MHz]
 GPS_L1CA_CODE_SIZE_BITS = 1023     # Number bit per C/A code    
 GPS_L1CA_CODE_FREQ = 1.023e6       # [Hz] C/A code frequency 
+GPS_L1CA_CODE_MS = 1               # Number of code per millisecond of signal

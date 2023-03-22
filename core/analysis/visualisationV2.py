@@ -14,11 +14,11 @@ import pymap3d as pm
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
-from core.signal.gnsssignal import GNSSSignal
 from core.utils.enumerations import GNSSSignalType
 from core.record.database import DatabaseHandler
 from core.receiver.receiver_abstract import ReceiverAbstract
 from core.signal.rfsignal import RFSignal
+from core.utils.constants import GPS_L1CA_CODE_SIZE_BITS
 
 hv.extension("bokeh")
 pn.extension(sizing_mode="stretch_width")
@@ -28,44 +28,35 @@ class VisualisationV2:
     receiver : ReceiverAbstract
     database : DatabaseHandler
 
-    def __init__(self, configfile, rfSignal:RFSignal):
-        self.rfSignal = rfSignal
+    def __init__(self, configuration:configparser.ConfigParser):
+        """
+        """
 
-        config = configparser.ConfigParser()
-        config.read(configfile)
-
-        self.outfolder = config.get('DEFAULT', 'outfolder')
-
-        # Receiver
+        # Configuration
+        self.outfolder = configuration['DEFAULT']['outfolder']
         self.referencePosition = np.array([
-            config.getfloat('RECEIVER', 'reference_position_x'), \
-            config.getfloat('RECEIVER', 'reference_position_y'), \
-            config.getfloat('RECEIVER', 'reference_position_z')])
+            float(configuration['DEFAULT']['reference_position_x']),
+            float(configuration['DEFAULT']['reference_position_y']),
+            float(configuration['DEFAULT']['reference_position_z'])])
+        
+        # Channel configuration
+        # TODO Modify for more channels
+        self.channelConfig = configparser.ConfigParser()
+        self.channelConfig.read(configuration['CHANNELS']['gps_l1ca'])
+
+        # RF Signal
+        self.rfSignal = RFSignal(configuration['RFSIGNAL'])
+
+        # Database
+        receiverName = str(configuration['DEFAULT']['name'])
+        self.database = DatabaseHandler(f"{self.outfolder}/{receiverName}.db", overwrite=False)
 
         # Bokeh parameters
         self.backgroundColor = "#fafafa"
         self.tooltips = [("x", "$x{8.3f}"), ("y", "$y{8.3f}")]
 
-        # TODO Move to config
-        self.samplingFrequency = 10e6
-
         logging.getLogger(__name__).info(f"VisualisationV2 initialized.")
 
-        pass
-
-    # -------------------------------------------------------------------------
-
-    def setDatabase(self, database):
-        self.database = database
-        return
-
-    # -------------------------------------------------------------------------
-
-    def setConfig(self, configFilePath):
-        config = configparser.ConfigParser()
-        config.read(configFilePath)
-        if config.getboolean('SIGNAL', 'GPS_L1_CA_enabled', fallback=False):
-            self.gnssSignal  = GNSSSignal(config.get('SIGNAL', 'GPS_L1_CA_path'), GNSSSignalType.GPS_L1_CA)
         return
 
     # -------------------------------------------------------------------------
@@ -144,10 +135,10 @@ class VisualisationV2:
         # TODO Find a way to display the multiple results in case of re-acquisition
         acquisition = dataList[0]
 
-        dopplerRange = self.gnssSignal.config.getfloat('ACQUISITION', 'doppler_range')
-        dopplerSteps = self.gnssSignal.config.getfloat('ACQUISITION', 'doppler_steps')
+        dopplerRange = float(self.channelConfig['ACQUISITION']['doppler_range'])
+        dopplerSteps = float(self.channelConfig['ACQUISITION']['doppler_steps'])
         frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerSteps)
-        codeBins =  np.linspace(0, self.gnssSignal.codeBits, np.size(acquisition["correlation_map"], axis=1))
+        codeBins =  np.linspace(0, GPS_L1CA_CODE_SIZE_BITS, np.size(acquisition["correlation_map"], axis=1))
 
         height = 300
         width = 500
@@ -199,8 +190,8 @@ class VisualisationV2:
         
         # Parameter table
         titleParameters = Div(text="<h3>Detailed configuration<h3>")
-        parameters = [key for key, value in self.gnssSignal.config.items('ACQUISITION')]
-        values = [value for key, value in self.gnssSignal.config.items('ACQUISITION')]
+        parameters = [key for key, value in self.channelConfig.items('ACQUISITION')]
+        values = [value for key, value in self.channelConfig.items('ACQUISITION')]
         dfParameters = pd.DataFrame({
             'Parameters' : parameters,
             'Values' : values
@@ -250,7 +241,7 @@ class VisualisationV2:
         pll = np.full(size, np.nan)
         i = 0
         for dsp in dataList:
-            time[i]    = dsp["time_sample"] / self.samplingFrequency
+            time[i]    = dsp["time_sample"] / self.rfSignal.samplingFrequency
             iprompt[i] = dsp["i_prompt"]
             qprompt[i] = dsp["q_prompt"]
             dll[i] = dsp["dll"]
@@ -382,7 +373,7 @@ class VisualisationV2:
         dopplerNoise = np.full(size, np.nan)
         idx = 0 
         for data in dataList:
-            time[idx] = data["time_sample"] / self.samplingFrequency
+            time[idx] = data["time_sample"] / self.rfSignal.samplingFrequency
             pseudorange[idx] = data["value"]
             idx += 1
         pseudorangeRate[1:] = pseudorange[1:] - pseudorange[:-1]
@@ -394,7 +385,7 @@ class VisualisationV2:
         dopplerNoise = np.full(size, np.nan)
         idx = 0 
         for data in dataList:
-            time[idx] = data["time_sample"] / self.samplingFrequency
+            time[idx] = data["time_sample"] / self.rfSignal.samplingFrequency
             doppler[idx] = data["value"]
 
             idx += 1
@@ -551,7 +542,7 @@ class VisualisationV2:
         time = []
         timeSample = []
         for position in positionList:
-            timeSample.append(position.timeSample / self.samplingFrequency)
+            timeSample.append(position.timeSample / self.rfSignal.samplingFrequency)
             time.append(position.time.datetime)
             recpos.append(position.coordinate.vecpos())
             recclk.append(position.clockError)

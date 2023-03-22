@@ -1,20 +1,16 @@
 from abc import ABC
 from typing import Dict
 import numpy as np
-from core.channel.channel_abstract import ChannelState
+
 
 import core.utils.constants as constants
 from core.satellite.ephemeris import BRDCEphemeris
-from core.utils.enumerations import GNSSSignalType, GNSSSystems
-from core.measurements import DSPEpochs, DSPmeasurement
-from core.decoding.message_abstract import NavigationMessageAbstract
-from core.decoding.message_lnav import LNAV
+from core.utils.enumerations import GNSSSystems
 
 class Satellite(ABC):
 
     system      : GNSSSystems
     svid        : int
-    dspEpochs   : Dict[GNSSSignalType, DSPmeasurement]
     ephemeris   : list
     navMessage  : dict
 
@@ -31,7 +27,6 @@ class Satellite(ABC):
         
         self.system = system
         self.svid = svid
-        self.dspEpochs   = {}
         self.navMessages  = {}
 
         self.isTOWDecoded = False
@@ -154,19 +149,4 @@ class Satellite(ABC):
         return corrTime
 
     # ------------------------------------------------------------ 
-
-    def addDSPMeasurement(self, msProcessed, samplesProcessed, chan):
-        state      = chan.state
-        signal     = chan.gnssSignal.signalType
-
-        # Check if signal exist, otherwise initialize
-        if signal not in self.dspEpochs:
-            self.dspEpochs[signal] = DSPEpochs(self.svid, signal)
-        
-        if state == ChannelState.ACQUIRING:
-            self.dspEpochs[signal].addAcquisition(msProcessed, samplesProcessed, chan)
-        elif state == ChannelState.TRACKING:
-            self.dspEpochs[signal].addTracking(msProcessed, samplesProcessed, chan)
-        
-        return
         

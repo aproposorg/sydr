@@ -7,10 +7,12 @@ from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
 from core.dsp.cn0 import NWPR
-from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
+from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE, GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS
 from core.utils.circularbuffer import CircularBuffer
-from core.signal.gnsssignal import GNSSSignal, GNSSSignalType
 from core.signal.rfsignal import RFSignal
+from core.signal.gnsssignal import UpsampleCode
+from core.signal.gnsssignal import GenerateGPSGoldCode
+from core.utils.enumerations import GNSSSystems, GNSSSignalType
 
 class ChannelL1CA(Channel):
 
@@ -90,13 +92,29 @@ class ChannelL1CA(Channel):
         self.navBitsCounter = 0
         self.tow = 0
 
-        # Set signal parameters
-        # TODO Change to constants
-        self.gnssSignal = GNSSSignal(self.configuration['DEFAULT']['signal'], GNSSSignalType.GPS_L1_CA)
-
         # Initialisation from configuration
         self.setAcquisition(configuration['ACQUISITION'])
         self.setTracking(configuration['TRACKING'])
+
+        return
+    
+    # -------------------------------------------------------------------------
+
+    def setSatellite(self, satelliteID:np.uint8):
+        """
+        Set the GNSS signal and satellite tracked by the channel.
+        """
+        super().setSatellite(satelliteID)
+
+        # Set GNSS system
+        self.systemID = GNSSSystems.GPS
+        self.signalID = GNSSSignalType.GPS_L1_CA
+        
+        # Get the satellite PRN code
+        code = GenerateGPSGoldCode(satelliteID)
+
+        # Code saved include previous and post code bit for correlation purposes
+        self.code = np.r_[code[-1], code, code[0]]
 
         return
     
@@ -136,8 +154,8 @@ class ChannelL1CA(Channel):
         self.track_dll_pdi = float(configuration['dll_pdi'])
         self.track_pll_pdi = float(configuration['pll_pdi'])
         
-        self.codeStep = self.gnssSignal.codeFrequency / self.rfSignal.samplingFrequency
-        self.track_requiredSamples = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
+        self.codeStep = GPS_L1CA_CODE_FREQ / self.rfSignal.samplingFrequency
+        self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
 
         self.trackFlags = TrackingFlags.UNKNOWN
 
@@ -154,10 +172,10 @@ class ChannelL1CA(Channel):
         if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.acq_requiredSamples:
             return
         
-        code = self.gnssSignal.getUpsampledCode(self.code[1:-1], self.rfSignal.samplingFrequency)
+        code = UpsampleCode(self.code[1:-1], self.rfSignal.samplingFrequency)
         codeFFT = np.conj(np.fft.fft(code))
-        samplesPerCode = round(self.rfSignal.samplingFrequency * self.gnssSignal.codeBits / self.gnssSignal.codeFrequency)
-        samplesPerCodeChip = round(self.rfSignal.samplingFrequency / self.gnssSignal.codeFrequency)
+        samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
+        samplesPerCodeChip = round(self.rfSignal.samplingFrequency / GPS_L1CA_CODE_FREQ)
 
         # Parallel Code Phase Search method (PCPS)
         correlationMap = PCPS(rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
@@ -233,7 +251,7 @@ class ChannelL1CA(Channel):
             NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
             tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
         # Update NCO code frequency
-        self.codeFrequency = self.gnssSignal.codeFrequency - self.NCO_code
+        self.codeFrequency = GPS_L1CA_CODE_FREQ - self.NCO_code
         
         # Phase Lock Loop
         self.NCO_carrier, self.NCO_carrierError = PLL_costa(
@@ -270,12 +288,12 @@ class ChannelL1CA(Channel):
         self.sampleCounter += self.track_requiredSamples
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
-        self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - self.gnssSignal.codeBits
+        self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
 
         # Update index
         self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
-        self.track_requiredSamples = int(np.ceil((self.gnssSignal.codeBits - self.NCO_remainingCode) / self.codeStep))
+        self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
 
         # Results sent back to the receiver
         results = super().prepareResultsTracking()
