@@ -238,8 +238,8 @@ def LNAV_CheckPreambule(bits:np.array):
     # TODO Could do bitwise operations instead of table comparison?
     
     subframeFound = False
-    if (bits[2:LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS).all() \
-        or (bits[2:LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS_INV).all():
+    if all(bits[2:2+LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS) \
+        or all(bits[2:2+LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS_INV):
 
         # Need to convert the '0' into '-1' for the parity check function
         convertedBits = np.array([-1 if x == 0 else 1 for x in bits[:2*LNAV_WORD_SIZE]])
