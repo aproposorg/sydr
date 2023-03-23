@@ -1,4 +1,11 @@
-
+# -*- coding: utf-8 -*-
+# ============================================================================
+# Implementation of Channel for GPS L1 C/A signals
+# Author: Antoine GRENIER (TAU)
+# Date: 2022.03.23
+# References: 
+# =============================================================================
+# PACKAGES
 import multiprocessing
 import numpy as np
 
@@ -13,6 +20,8 @@ from core.signal.rfsignal import RFSignal
 from core.signal.gnsssignal import UpsampleCode
 from core.signal.gnsssignal import GenerateGPSGoldCode
 from core.utils.enumerations import GNSSSystems, GNSSSignalType
+
+# =====================================================================================================================
 
 class ChannelL1CA(Channel):
 
@@ -58,8 +67,26 @@ class ChannelL1CA(Channel):
     subframeFlags    : list
     tow              : int
 
+    # -----------------------------------------------------------------------------------------------------------------
+
     def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, rfSignal:RFSignal,
                  configuration:dict):
+        """
+        Constructor for ChannelL1CA class. 
+
+        Args:
+            cid (int): Channel ID.
+            sharedBuffer (CircularBuffer): Circular buffer with the RF data.
+            resultQueue (multiprocessing.Queue): Queue to place the results of the channel processing
+            rfSignal (RFSignal): RFSignal object for RF configuration.
+            configuration (dict): Configuration dictionnary for channel.
+
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
         
         # Super init
         super().__init__(cid, sharedBuffer, resultQueue, rfSignal, configuration)
@@ -98,11 +125,20 @@ class ChannelL1CA(Channel):
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def setSatellite(self, satelliteID:np.uint8):
         """
         Set the GNSS signal and satellite tracked by the channel.
+
+        Args:
+            satelliteID (int): ID (PRN code) of the satellite.
+        
+        Returns:
+            None
+        
+        Raises:
+            None
         """
         super().setSatellite(satelliteID)
 
@@ -118,10 +154,20 @@ class ChannelL1CA(Channel):
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def setAcquisition(self, configuration:dict):
         """
+        Set parameters for acquisition operations.
+
+        Args:
+            configuration (dict): Configuration dictionnary.
+        
+        Returns:
+            None
+        
+        Raises:
+            None
         """
         
         self.acq_dopplerRange           = float(configuration['doppler_range'])
@@ -135,9 +181,21 @@ class ChannelL1CA(Channel):
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def setTracking(self, configuration:dict):
+        """
+        Set parameters for tracking operations.
+
+        Args:
+            configuration (dict): Configuration dictionnary.
+        
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
 
         self.track_correlatorsSpacing = [float(configuration['correlator_early']),
                                          float(configuration['correlator_prompt']),
@@ -161,11 +219,20 @@ class ChannelL1CA(Channel):
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def runAcquisition(self):
         """
-        Perform the acquisition process with the current RF data.
+        Perform the acquisition operations, using the PCPS method.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
         """
             
         # Check if sufficient data in buffer
@@ -208,7 +275,7 @@ class ChannelL1CA(Channel):
         self.channelState = ChannelState.TRACKING
 
         # Results sent back to the receiver
-        results = super().prepareResultsAcquisition()
+        results = self.prepareResultsAcquisition()
         results["carrierFrequency"]  = self.carrierFrequency
         results["codeOffset"]        = self.codeOffset
         results["frequency_idx"]     = indices[0]
@@ -220,9 +287,21 @@ class ChannelL1CA(Channel):
 
         return results
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def runTracking(self):
+        """
+        Perform the tracking operations, using the EPL method.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
 
         # Check if sufficient data in buffer
         if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.track_requiredSamples:
@@ -296,7 +375,7 @@ class ChannelL1CA(Channel):
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
 
         # Results sent back to the receiver
-        results = super().prepareResultsTracking()
+        results = self.prepareResultsTracking()
         results["i_early"]           = correlatorResults[0]
         results["q_early"]           = correlatorResults[1]
         results["i_prompt"]          = correlatorResults[2]
@@ -311,9 +390,21 @@ class ChannelL1CA(Channel):
 
         return results
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def runDecoding(self):
+        """
+        Perform the decoding operations.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
         
         return # TODO For debugging purposes, should be debugged later
         
@@ -380,7 +471,7 @@ class ChannelL1CA(Channel):
             self.trackFlags |= (TrackingFlags.EPH_DECODED & TrackingFlags.EPH_KNOWN)
 
         # Results sent back to the receiver
-        results = super().prepareResultsDecoding()
+        results = self.prepareResultsDecoding()
         results["type"] = MessageType.GPS_LNAV
         results["subframe_id"] = subframeID
         results["tow"] = self.tow
@@ -394,13 +485,21 @@ class ChannelL1CA(Channel):
 
         return
 
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def _processHandler(self):
         """
-        Handle the RF Data based on the current channel state. 
-        Basic acquisition -> tracking -> decoding stages. See documentations 
-        for the complete machine state.
+        Handle the RF Data based on the current channel state. Basic acquisition -> tracking -> decoding stages.
+        See documentations for the complete machine state.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
         """
         super()._processHandler()
 
@@ -421,21 +520,97 @@ class ChannelL1CA(Channel):
 
         return results
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def addResult(self, resultsList, result):
+        """
+        Check if result is not None.
+
+        Args:
+            resultsList (list): List of results.
+            result (dict): Result object to test.
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+
         if result is not None:
             resultsList.append(result)
+        
         return resultsList
+    
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def prepareResultsAcquisition(self):
+        """
+        Prepare the acquisition result to be sent. 
 
-    # -------------------------------------------------------------------------
+        Args:
+            None
+        
+        Returns: 
+            None
 
-# =============================================================================
+        Raises:
+            None
+        """
+
+        mdict = super().prepareResults()
+        mdict["type"] = ChannelMessage.ACQUISITION_UPDATE
+
+        return mdict
+    
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def prepareResultsTracking(self):
+        """
+        Prepare the tracking result to be sent. 
+        
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+
+        mdict = super().prepareResults()
+        mdict["type"] = ChannelMessage.TRACKING_UPDATE
+
+        return mdict
+    
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def prepareResultsDecoding(self):
+        """
+        Prepare the decoding result to be sent. 
+        
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+
+        mdict = super().prepareResults()
+        mdict["type"] = ChannelMessage.DECODING_UPDATE
+
+        return mdict
+
+# =====================================================================================================================
 
 class ChannelStatusL1CA(ChannelStatus):
     def __init__(self, channelID:int, satelliteID:int):
         super().__init__(channelID, satelliteID)
         self.subframeFlags = [False, False, False, False, False]
 
-# =============================================================================
+# =====================================================================================================================
     

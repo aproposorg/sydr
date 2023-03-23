@@ -2,7 +2,7 @@
 # ============================================================================
 # Abstract class for channel definition.
 # Author: Antoine GRENIER (TAU)
-# Date: 2022.05.04
+# Date: 2022.03.23
 # References: 
 # =============================================================================
 # PACKAGES
@@ -10,46 +10,15 @@ import logging
 import multiprocessing
 import numpy as np
 from abc import ABC, abstractmethod
-from queue import Empty
-from enum import Enum, unique
 
 from core.signal.rfsignal import RFSignal
-from core.signal.gnsssignal import GenerateGPSGoldCode
 from core.utils.circularbuffer import CircularBuffer
 from core.dsp.tracking import TrackingFlags
 from core.utils.constants import GPS_L1CA_CODE_MS
-from core.utils.enumerations import GNSSSystems, GNSSSignalType
+from core.utils.enumerations import GNSSSystems, GNSSSignalType, ChannelState, ChannelMessage
 
-# =============================================================================
-@unique
-class ChannelState(Enum):
-    """
-    Enumeration class for channel state according to the defined state machine architecture.
-    """
-    OFF           = 0
-    IDLE          = 1
-    ACQUIRING     = 2
-    TRACKING      = 3
+# =====================================================================================================================
 
-    def __str__(self):
-        return str(self.name)
-
-# =============================================================================
-@unique
-class ChannelMessage(Enum):
-    """
-    Enumeration class for message types sent by the channel to the main thread.
-    """
-    END_OF_PIPE        = 0
-    CHANNEL_UPDATE     = 1
-    ACQUISITION_UPDATE = 2
-    TRACKING_UPDATE    = 3
-    DECODING_UPDATE    = 4
-
-    def __str__(self):
-        return str(self.name)
-
-# =============================================================================
 class Channel(ABC, multiprocessing.Process):
     """
     Abstract class for Channel object definition.
@@ -85,7 +54,7 @@ class Channel(ABC, multiprocessing.Process):
     week : int
     codeSinceTOW : int
 
-    # =========================================================================
+    # -----------------------------------------------------------------------------------------------------------------
 
     @abstractmethod
     def __init__(self, cid:int, sharedBuffer:CircularBuffer, resultQueue:multiprocessing.Queue, rfSignal:RFSignal,
@@ -97,6 +66,8 @@ class Channel(ABC, multiprocessing.Process):
             cid (int): Channel ID.
             sharedBuffer (CircularBuffer): Circular buffer with the RF data.
             resultQueue (multiprocessing.Queue): Queue to place the results of the channel processing
+            rfSignal (RFSignal): RFSignal object for RF configuration.
+            configuration (dict): Configuration dictionnary for channel.
 
         Returns:
             None
@@ -128,18 +99,27 @@ class Channel(ABC, multiprocessing.Process):
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
-    def setSatellite(self, satelliteID:np.uint8):
+    def setSatellite(self, satelliteID:int):
         """
         Set the GNSS signal and satellite tracked by the channel.
+
+        Args:
+            satelliteID (int): ID (PRN code) of the satellite.
+        
+        Returns:
+            None
+        
+        Raises:
+            None
         """
         self.satelliteID = satelliteID
         self.channelState = ChannelState.ACQUIRING
 
         return
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def run(self):
         """
@@ -153,7 +133,6 @@ class Channel(ABC, multiprocessing.Process):
 
         Raises:
             None
-
         """
         
         while True:
@@ -181,92 +160,85 @@ class Channel(ABC, multiprocessing.Process):
 
             # Signal channel manager
             self.eventDone.set()
-            
         
         return
 
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     @abstractmethod
     def _processHandler(self):
         """
         Abstract method, handle the RF Data based on the current channel state.
-        """
-        return
 
-    # -------------------------------------------------------------------------
-
-    def send(self, commType:ChannelMessage, dictToSend:dict=None):
-        """
-        Send a packet to main program through a defined pipe.
-        """
-        if commType == ChannelMessage.CHANNEL_UPDATE:
-            _packet = (commType, self.channelState, self.trackFlags, self.tow, self.getTimeSinceTOW())
-        elif commType in \
-            (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE, ChannelMessage.DECODING_UPDATE):
-            for results in dictToSend:
-
-                results["unprocessed_samples"] = int(self.unprocessedSamples)
-                _packet = (commType, dictToSend)
-        else:
-            raise ValueError(f"Channel communication {commType} is not valid.")
+        Args:
+            None
         
-        self.communicationPipe[0].send(_packet)
+        Returns:
+            None
 
+        Raises:
+            None
+        """
         return
 
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def getTimeSinceTOW(self):
         """
-        Time since the last TOW in milliseconds.
+        Return current time since the last TOW in milliseconds.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
         """
         timeSinceTOW = 0
         timeSinceTOW += self.codeSinceTOW * GPS_L1CA_CODE_MS # Add number of code since TOW
         timeSinceTOW += self.unprocessedSamples / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
         return timeSinceTOW
     
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def prepareResults(self):
+        """
+        Prepare the result packet sent by the channel. This method is suppose to be the basis of the other results 
+        methods.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+
+        # Create result dictionnary
         mdict = {
             "cid" : self.channelID
         }
         return mdict
     
-    # -------------------------------------------------------------------------
-    
-    def prepareResultsAcquisition(self):
-        """
-        Prepare the acquisition result to be sent. 
-        """
-        mdict = self.prepareResults()
-        mdict["type"] = ChannelMessage.ACQUISITION_UPDATE
-        return mdict
-    
-    # -------------------------------------------------------------------------
-    
-    def prepareResultsTracking(self):
-        """
-        Prepare the tracking result to be sent. 
-        """
-        mdict = self.prepareResults()
-        mdict["type"] = ChannelMessage.TRACKING_UPDATE
-        return mdict
-    
-    # -------------------------------------------------------------------------
-    
-    def prepareResultsDecoding(self):
-        """
-        Prepare the decoding result to be sent. 
-        """
-        mdict = self.prepareResults()
-        mdict["type"] = ChannelMessage.DECODING_UPDATE
-        return mdict
-    
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def prepareChannelUpdate(self):
+        """
+        Prepare the channel update.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
         
         _packet = self.prepareResults()
         _packet['type'] = ChannelMessage.CHANNEL_UPDATE
@@ -276,14 +248,13 @@ class Channel(ABC, multiprocessing.Process):
         _packet['time_since_tow'] = self.getTimeSinceTOW() 
         
         return _packet
-    
-    # -------------------------------------------------------------------------
 
-# =============================================================================
+# =====================================================================================================================
 
-# TODO update variables
-
-class ChannelStatus():
+class ChannelStatus(ABC):
+    """
+    Abstract class for ChannelStatus handling.
+    """
 
     def __init__(self, channelID:int, satelliteID:int):
 
@@ -300,10 +271,5 @@ class ChannelStatus():
 
         return
 
-    def fromChannel(self, channel:Channel):
-        self.cid = channel.channelID
-        self.svid = channel.satelliteID
-        return self
-
-# =============================================================================
+# =====================================================================================================================
 # END OF FILE
