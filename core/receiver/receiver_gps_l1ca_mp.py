@@ -26,11 +26,8 @@ class ReceiverGPSL1CA(Receiver):
     """
     
     configuration : dict
-
     satelliteDict : dict
-
     channelsStatus : dict
-
     nextMeasurementTime : Time
 
     def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
@@ -77,6 +74,19 @@ class ReceiverGPSL1CA(Receiver):
     # -----------------------------------------------------------------------------------------------------------------
 
     def _processChannelResults(self, results:list):
+        """
+        Process the results from channels.
+
+        Args:
+            results (list): List of results (dictionnary).
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
+
         super()._processChannelResults(results)
 
         for packet in results:
@@ -104,7 +114,16 @@ class ReceiverGPSL1CA(Receiver):
 
     def computeGNSSMeasurements(self):
         """
-        
+        Process the channels' results to produce GNSS measurements.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            None
         """
         super().computeGNSSMeasurements()
 

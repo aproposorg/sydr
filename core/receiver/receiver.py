@@ -1,7 +1,5 @@
 
 from abc import ABC, abstractmethod
-import numpy as np
-import configparser
 import logging
 import time
 
@@ -18,6 +16,9 @@ from core.channel.channel import Channel, ChannelMessage
 # =============================================================================
 
 class Receiver(ABC):
+    """
+    Abstract class for Receiver object definition
+    """
     
     configuration : dict
 
@@ -37,6 +38,20 @@ class Receiver(ABC):
     gui : EnlightenGUI
 
     def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
+        """
+        Constructor for Receiver class.
+
+        Args: 
+            configuration (dict): Configuration dictionnary.
+            overwrite (bool): Boolean to overwrite previous database results.
+            gui (EnlightenGUI): GUI object.
+
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
         self.configuration = configuration
         
         # Load configuration
@@ -64,6 +79,19 @@ class Receiver(ABC):
     # -------------------------------------------------------------------------
     
     def run(self):
+        """
+        Run receiver processing.
+
+        Args:
+            None
+        
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
+        
         logging.getLogger(__name__).info(f"Processing in receiver {self.name} started.")
         self.receiverState = ReceiverState.INIT
 
@@ -80,13 +108,6 @@ class Receiver(ABC):
 
             # Process the data
             results = self.channelManager.run()
-
-            # Wait for processing to finish 
-            # timeoutFlag = self.channelManager.eventDone.wait(timeout=300)
-            # if not timeoutFlag:
-            #     logging.getLogger(__name__).warning(f"Channel manager timeout, exiting run.")
-            #     return
-            # self.channelManager.eventDone.clear()
 
             # Process the results
             self._processChannelResults(results)
@@ -105,17 +126,40 @@ class Receiver(ABC):
     # -------------------------------------------------------------------------
 
     @abstractmethod
-    def _processChannelResults(self, results):
+    def _processChannelResults(self, results:list):
         """
-        Abstract method to process the results from channels.
+        Abstract method to process the channels' results.
+
+        Args:
+            results (list): List of results (dictionnary).
+
+        Returns:
+            None
+
+        Raises:
+            None
         """
+
         self._updateDatabaseFromChannels(results)
+        
         return
     
     # -------------------------------------------------------------------------
 
     @abstractmethod
     def computeGNSSMeasurements(self):
+        """
+        Abstract method to process the channels' results to produce GNSS measurements.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
         return
 
     # -------------------------------------------------------------------------
@@ -250,6 +294,18 @@ class Receiver(ABC):
     # -------------------------------------------------------------------------
 
     def addChannelDatabase(self, channel:Channel):
+        """
+        Save channel parameters to database.
+
+        Args:
+            channel (Channel): Channel object.
+
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
         
         mdict = {
             "id"           : channel.channelID,
@@ -267,6 +323,18 @@ class Receiver(ABC):
     # -------------------------------------------------------------------------
     
     def _updateGUI(self):
+        """
+        Update the GUI with current status.
+
+        Args:
+            None
+        
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
         self.gui.updateReceiverGUI(self)
         return
     

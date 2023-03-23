@@ -34,7 +34,6 @@ class ChannelL1CA(Channel):
     nbPrompt         : int
     navBitsBuffer    : np.array
     navBitsSamples   : np.array
-    trackFlags       : TrackingFlags
     
     sampleCounter    : int
     codeCounter      : int
@@ -608,7 +607,23 @@ class ChannelL1CA(Channel):
 # =====================================================================================================================
 
 class ChannelStatusL1CA(ChannelStatus):
+    """
+    class for ChannelStatusL1CA handling.
+    """
     def __init__(self, channelID:int, satelliteID:int):
+        """
+        Constructor for ChannelStatusL1CA class. 
+
+        Args:
+            channelID (int): Channel ID
+            satellite (int): Satellite PRN code
+            
+        Returns:
+            None
+
+        Raises:
+            None
+        """
         super().__init__(channelID, satelliteID)
         self.subframeFlags = [False, False, False, False, False]
 

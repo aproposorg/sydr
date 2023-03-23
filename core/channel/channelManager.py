@@ -12,6 +12,9 @@ from core.utils.circularbuffer import CircularBuffer
 # =====================================================================================================================
 
 class ChannelManager():
+    """
+    ChannelManager class to handle the channel processing and dissemination of RF data to channels.
+    """
 
     TIMEOUT = 100
 
@@ -24,7 +27,6 @@ class ChannelManager():
 
     # Communication
     resultQueue : multiprocessing.Queue()
-    eventDone : multiprocessing.Event()
 
     # RF
     rfSignal : RFSignal
@@ -60,7 +62,6 @@ class ChannelManager():
 
         # Communication
         self.resultQueue = multiprocessing.Queue()
-        self.eventDone = multiprocessing.Event()
 
         return
 
@@ -95,7 +96,16 @@ class ChannelManager():
 
     def requestTracking(self, satelliteID:int):
         """
+        Setup an available channel to track of a specific satellite.
+
+        Args:
+            satelliteID (int): Satellite PRN code.
         
+        Returns:
+            None
+
+        Raises:
+            None
         """
         
         # Loop through channels to find a free one
@@ -175,9 +185,6 @@ class ChannelManager():
         # Flatten list
         results = [element for sublist in _results for element in sublist]
 
-        # Signal receiver that processing is done
-        self.eventDone.set()
-
         return results
     
     # -----------------------------------------------------------------------------------------------------------------
@@ -186,13 +193,19 @@ class ChannelManager():
         """
         Close the ChannelManager, kill the processes and free the memory allocations made for the buffer. 
         Should be called once at the end of the scenario when exiting the program.
+
+        Args:
+            None
+
+        Returns:
+            None
+        
+        Raises:
+            None
         """
+
         self._sharedMemory.close()
         self._sharedMemory.unlink()
-
-        # channel : Channel
-        # for channel in self.channels:
-        #     channel.terminate()
 
         return
     

@@ -31,7 +31,7 @@ class Channel(ABC, multiprocessing.Process):
     # IDs
     channelID    : np.uint8       # Channel ID
     channelState : ChannelState   # Current channel state
-    trackFlags   : TrackingFlags
+    trackFlags   : TrackingFlags  # Tracking flags handling the current status
 
     # RF signal
     rfSignal     : RFSignal       # RF signal parameters
@@ -41,9 +41,9 @@ class Channel(ABC, multiprocessing.Process):
     currentSample      : int    # Current sample in RF Buffer
 
     # Satellite and GNSS signal
-    systemID     : GNSSSystems
+    systemID     : GNSSSystems    # GNSS system ID
     satelliteID  : np.uint8       # Satellite ID
-    signalID     : GNSSSignalType
+    signalID     : GNSSSignalType # GNSS signal ID
     
     # Channel - Manager communication
     resultQueue : multiprocessing.Queue  # Queue to place the results of the channel processing
@@ -257,6 +257,19 @@ class ChannelStatus(ABC):
     """
 
     def __init__(self, channelID:int, satelliteID:int):
+        """
+        Constructor for ChannelStatus class. 
+
+        Args:
+            channelID (int): Channel ID
+            satellite (int): Satellite PRN code
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
 
         self.channelID = channelID
         self.satelliteID = satelliteID
