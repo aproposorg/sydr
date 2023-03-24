@@ -8,11 +8,12 @@
 # PACKAGES
 import multiprocessing
 import numpy as np
+import logging
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
-from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeSubframe, MessageType
+from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW, MessageType
 from core.dsp.cn0 import NWPR
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE, GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS
 from core.utils.circularbuffer import CircularBuffer
@@ -25,7 +26,7 @@ from core.utils.enumerations import GNSSSystems, GNSSSignalType
 
 class ChannelL1CA(Channel):
 
-    MIN_CONVERGENCE_TIME = 100 # Number of millisecond given to tracking filters convergence, before checking bit sync
+    MIN_CONVERGENCE_TIME = 0 # Number of millisecond given to tracking filters convergence, before checking bit sync
 
     codeOffset       : int
     codeFrequency    : float
@@ -67,6 +68,7 @@ class ChannelL1CA(Channel):
     navBitsCounter   : int
     subframeFlags    : list
     tow              : int
+    preambuleFound   : bool
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -115,7 +117,9 @@ class ChannelL1CA(Channel):
         self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
         self.navBitsBuffer = np.squeeze(np.empty((1, self.navBitBufferSize), dtype=int))
         self.navBitsCounter = 0
+        self.subframeFlags = [False, False, False, False, False]
         self.tow = 0
+        self.preambuleFound = False
 
         # Initialisation from configuration
         self.setAcquisition(configuration['ACQUISITION'])
@@ -224,6 +228,7 @@ class ChannelL1CA(Channel):
 
         self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
         self.correlatorsBuffer = np.empty((self.maxSizeCorrelatorBuffer, len(self.track_correlatorsSpacing)*2))
+        self.correlatorsBuffer[:, :] = 0.0
         self.nbPrompt = 0
 
         return
@@ -327,8 +332,6 @@ class ChannelL1CA(Channel):
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.track_correlatorsSpacing)
-        self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
-        self.nbPrompt += 1
 
         # Compute remaining carrier phase
         self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
@@ -356,8 +359,8 @@ class ChannelL1CA(Channel):
         if not (self.trackFlags & TrackingFlags.BIT_SYNC):
             # if not bit sync yet, check if there is a bit inversion
             if (self.trackFlags & TrackingFlags.CODE_LOCK) \
-                and (self.codeCounter < self.MIN_CONVERGENCE_TIME) \
-                and np.sign(self.correlatorsBuffer[self.nbPrompt, self.IDX_I_PROMPT]) != np.sign(iPrompt):
+                and (self.codeCounter > self.MIN_CONVERGENCE_TIME)\
+                and np.sign(self.correlatorsBuffer[self.nbPrompt-1, self.IDX_I_PROMPT]) != np.sign(iPrompt):
                     self.trackFlags |= TrackingFlags.BIT_SYNC
                     self.nbPrompt = 0
         else:
@@ -370,6 +373,8 @@ class ChannelL1CA(Channel):
 
         # TODO Check if tracking was succesful an update the flags
         self.trackFlags |= TrackingFlags.CODE_LOCK
+        self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
+        self.nbPrompt += 1
 
         # Update some variables
         self.sampleCounter += self.track_requiredSamples
@@ -439,56 +444,73 @@ class ChannelL1CA(Channel):
         # Check if first subframe found
         if not(self.trackFlags & TrackingFlags.SUBFRAME_SYNC):
             idx = self.navBitsCounter - minBits
-            if not LNAV_CheckPreambule(self.navBitsBuffer[idx:idx + 2*LNAV_WORD_SIZE]):
+            print(f"{idx} {self.navBitsBuffer[idx+2:idx+2+8]}")
+            if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
                 # Preambule not found
+                if self.navBitsCounter == self.navBitBufferSize:
+                    # shift bit values, could be done with circular buffer but it should only be performed until the
+                    # subframe has been found
+                    _navBitsBuffer = np.empty_like(self.navBitsBuffer)
+                    _navBitsBuffer[:-1] = self.navBitsBuffer[1:]
+                    self.navBitsBuffer = _navBitsBuffer
+                    self.navBitsCounter -= 1
                 return
             
-            # Flush previous bits
-            _newbuffer = np.empty_like(self.navBitsBuffer)
-            _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
-            self.navBitsBuffer = _newbuffer
-            self.navBitsCounter = minBits
-    	    
-            # Update tracking flags 
-            self.trackFlags |= TrackingFlags.SUBFRAME_SYNC # OR logic
-        
+            logging.getLogger(__name__).debug(f"CID {self.channelID} preambule found.")
+            
+            # Check if preambule was found before and the new one is the next subframe
+            if self.preambuleFound and idx == LNAV_SUBFRAME_SIZE:
+                # Update tracking flags 
+                self.trackFlags |= TrackingFlags.SUBFRAME_SYNC # OR logic
+                logging.getLogger(__name__).debug(f"CID {self.channelID} subframe sync.")
+            else:
+                # Flush previous bits
+                _newbuffer = np.empty_like(self.navBitsBuffer)
+                _newbuffer[minBits:] = 0
+                _newbuffer[:minBits] = self.navBitsBuffer[idx:idx + 2*LNAV_WORD_SIZE + 2]
+                self.navBitsBuffer = _newbuffer
+                self.navBitsCounter = minBits
+                self.preambuleFound = True
+            
         # Check if complete subframe can be decoded
         if self.navBitsCounter < self.navBitBufferSize:
             return
         
         # Check if the beginning of the new subframe match the preambule
         idx = self.navBitsCounter - minBits
-        if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+        if not LNAV_CheckPreambule(self.navBitsBuffer[idx:idx + 2*LNAV_WORD_SIZE+2]):
             # Preambule not found, reset counter and flag
             self.navBitsCounter = 0
             self.trackFlags ^= TrackingFlags.SUBFRAME_SYNC # XOR logic
             return
         
         # Decode only essential in subframe
-        self.tow, subframeID = LNAV_DecodeSubframe(self.navBitsBuffer[2:], self.navBitsBuffer[1])
-        self.subframeFlags[subframeID] = True
+        self.tow, subframeID, subframeBits = LNAV_DecodeTOW(self.navBitsBuffer[2:2+LNAV_SUBFRAME_SIZE], self.navBitsBuffer[1])
+        self.subframeFlags[subframeID-1] = True
         
         # Update tracking flags
         # TODO Add success check?
-        self.trackFlags |= (TrackingFlags.TOW_DECODED & TrackingFlags.TOW_KNOWN)
+        self.trackFlags |= TrackingFlags.TOW_DECODED 
+        self.trackFlags |= TrackingFlags.TOW_KNOWN
 
         if not (self.trackFlags & TrackingFlags.EPH_DECODED) and all(self.subframeFlags[0:3]):
-            self.trackFlags |= (TrackingFlags.EPH_DECODED & TrackingFlags.EPH_KNOWN)
+            self.trackFlags |= TrackingFlags.EPH_DECODED 
+            self.trackFlags |= TrackingFlags.EPH_KNOWN
 
         # Results sent back to the receiver
         results = self.prepareResultsDecoding()
-        results["type"] = MessageType.GPS_LNAV
+        results["type"] = ChannelMessage.DECODING_UPDATE
         results["subframe_id"] = subframeID
         results["tow"] = self.tow
-        results["bits"] = self.navBitBufferSize
+        results["bits"] = subframeBits
 
         # Flush decoded bits
         _newbuffer = np.empty_like(self.navBitsBuffer)
-        _newbuffer[:minBits] = self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]
+        _newbuffer[:minBits] = self.navBitsBuffer[idx:idx + minBits]
         self.navBitsBuffer = _newbuffer
         self.navBitsCounter = minBits
 
-        return
+        return results
 
     # -----------------------------------------------------------------------------------------------------------------
 

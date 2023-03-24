@@ -4,7 +4,7 @@ from termcolor import colored
 
 from core.utils.time import Clock
 from core.utils.coordinate import Coordinate
-from core.channel.channel import Channel
+from core.channel.channel import Channel, ChannelStatus
 from core.channel.channel_L1CA_2 import ChannelL1CA
 from core.dsp.tracking import TrackingFlags
 
@@ -97,7 +97,7 @@ class EnlightenGUI():
         
         # Receiver channels status and progress
         self.channels_progress_bars_dict = {}
-        channel : Channel # Typing for syntax completion 
+        channel : ChannelStatus # Typing for syntax completion 
         for channel in receiver.channelsStatus.values():
             self.channels_progress_bars_dict[channel.channelID] = self.manager.counter(
                 bar_format = CHANNEL_BAR_FORMAT, 
@@ -141,7 +141,7 @@ class EnlightenGUI():
         self.receiver_progress_bar.update(state=f"{receiver.receiverState}")
 
         # Update channel progress bars
-        channel : Channel # Typing for syntax completion 
+        channel : ChannelStatus # Typing for syntax completion 
         for channel in receiver.channelsStatus.values():
             self.channels_progress_bars_dict[channel.channelID].update(
                 state = f"{channel.channelState}", 

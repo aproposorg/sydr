@@ -95,11 +95,12 @@ class ReceiverGPSL1CA(Receiver):
             if packet['type'] == ChannelMessage.DECODING_UPDATE:
                 satellite : Satellite
                 satellite = self.satelliteDict[channel.satelliteID]
-                satellite.addSubframe(packet['subframe_id'], packet['bits'])
+                satellite.addSubframe(packet['bits'])
+                self.channelsStatus[channel.channelID].subframeFlags[packet['subframe_id']-1] = True
                 continue
             elif packet['type'] == ChannelMessage.CHANNEL_UPDATE:
                 self.channelsStatus[channel.channelID].state         = packet['state']
-                self.channelsStatus[channel.channelID].trackingFlags = packet['tracking_flags']
+                self.channelsStatus[channel.channelID].trackFlags    = packet['tracking_flags']
                 self.channelsStatus[channel.channelID].tow           = packet['tow']
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
             elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE):

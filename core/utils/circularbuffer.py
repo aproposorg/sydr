@@ -11,6 +11,7 @@ class CircularBuffer:
 
     buffer        : list
     idxWrite      : int
+    idxRead       : int
     size          : int
     maxSize       : int
     full          : bool
@@ -100,8 +101,17 @@ class CircularBuffer:
         return
     
     # -----------------------------------------------------------------------------------------------------------------
+    
+    def shiftIdxRead(self, shift:int):
 
-    def getSlice(self, idxStart:int, samplesRequired:int):
+        self.idxRead += shift
+        self.idxRead %= self.maxSize
+
+        return
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def getSlice(self, idxStart:int=None, samplesRequired:int=0):
         """
         Get a data slice of the buffer, providing the starting index and the amount of samples needed.
 
@@ -115,6 +125,9 @@ class CircularBuffer:
         Raises:
             None
         """
+
+        if idxStart is None:
+            idxStart = self.idxRead
 
         idxStop = (idxStart + samplesRequired) % self.maxSize
 
