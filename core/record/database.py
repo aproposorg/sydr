@@ -53,8 +53,8 @@ class DatabaseHandler:
         self.sizeDictBuffer += len(data)
 
         # Commit changes
-        if self.sizeDictBuffer > self.maxSizeDictBuffer:
-            self.commit()
+        # if self.sizeDictBuffer > self.maxSizeDictBuffer:
+        #     self.commit()
 
         return
 

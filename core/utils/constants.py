@@ -54,7 +54,7 @@ UNI_SIGMA = '\u03C3'
 
 # LNAV (GPS)
 LNAV_PREAMBULE_BITS     = [1, 0, 0, 0, 1, 0, 1, 1] # Preambule bit sequence
-LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 1] # Inverse preambule bit sequence
+LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 0] # Inverse preambule bit sequence
 LNAV_PREAMBULE_SIZE = 8   # Number of bits in preambule
 LNAV_MS_PER_BIT     = 20  # Number of milliseconds per navigation bits
 LNAV_SUBFRAME_SIZE  = 300 # Number of bits per subframe

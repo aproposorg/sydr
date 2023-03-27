@@ -444,13 +444,13 @@ class ChannelL1CA(Channel):
         # Check if first subframe found
         if not(self.trackFlags & TrackingFlags.SUBFRAME_SYNC):
             idx = self.navBitsCounter - minBits
-            print(f"{idx} {self.navBitsBuffer[idx+2:idx+2+8]}")
-            if not LNAV_CheckPreambule(self.navBitsBuffer[idx-2:idx + 2*LNAV_WORD_SIZE]):
+            #print(f"{idx} {self.navBitsBuffer[idx+2:idx+2+8]}")
+            if not LNAV_CheckPreambule(self.navBitsBuffer[idx:idx + minBits]):
                 # Preambule not found
                 if self.navBitsCounter == self.navBitBufferSize:
                     # shift bit values, could be done with circular buffer but it should only be performed until the
                     # subframe has been found
-                    _navBitsBuffer = np.empty_like(self.navBitsBuffer)
+                    _navBitsBuffer = np.empty_like(self.navBitsBuffer   )
                     _navBitsBuffer[:-1] = self.navBitsBuffer[1:]
                     self.navBitsBuffer = _navBitsBuffer
                     self.navBitsCounter -= 1
@@ -485,7 +485,9 @@ class ChannelL1CA(Channel):
             return
         
         # Decode only essential in subframe
-        self.tow, subframeID, subframeBits = LNAV_DecodeTOW(self.navBitsBuffer[2:2+LNAV_SUBFRAME_SIZE], self.navBitsBuffer[1])
+        self.tow, subframeID, subframeBits = LNAV_DecodeTOW(
+            self.navBitsBuffer[2:2+LNAV_SUBFRAME_SIZE], 
+            self.navBitsBuffer[1])
         self.subframeFlags[subframeID-1] = True
         
         # Update tracking flags

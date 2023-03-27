@@ -99,7 +99,7 @@ class ReceiverGPSL1CA(Receiver):
                 self.channelsStatus[channel.channelID].subframeFlags[packet['subframe_id']-1] = True
                 continue
             elif packet['type'] == ChannelMessage.CHANNEL_UPDATE:
-                self.channelsStatus[channel.channelID].state         = packet['state']
+                self.channelsStatus[channel.channelID].channelState  = packet['state']
                 self.channelsStatus[channel.channelID].trackFlags    = packet['tracking_flags']
                 self.channelsStatus[channel.channelID].tow           = packet['tow']
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']

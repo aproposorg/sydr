@@ -24,14 +24,14 @@ def main():
     # Create logger
     logger.configureLogger(name=__name__, filepath='./config/logging.ini')
 
-    # # Create receiver
-    # receiver = ReceiverGPSL1CA(receiverConfig, overwrite=True, gui=gui)
+    # Create receiver
+    receiver = ReceiverGPSL1CA(receiverConfig, overwrite=True, gui=gui)
 
-    # # Run receiver
-    # receiver.run()
+    # Run receiver
+    receiver.run()
 
-    # # Closing receiver to free database and memory
-    # receiver.close()
+    # Closing receiver to free database and memory
+    receiver.close()
 
     # Create report
     gui.updateMainStatus(stage='Create report', status='RUNNING')
