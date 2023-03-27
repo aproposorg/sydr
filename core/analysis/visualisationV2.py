@@ -68,9 +68,9 @@ class VisualisationV2:
         measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
 
-        # # Navigation Tab
-        # navigationTab = self._getNavigationTab()
-        # mainTabs.append(('Navigation', navigationTab))
+        # Navigation Tab
+        navigationTab = self._getNavigationTab()
+        mainTabs.append(('Navigation', navigationTab))
 
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)
@@ -100,12 +100,12 @@ class VisualisationV2:
             
             acqLayout   = self._getAcquisitionLayout(channelID)
             trackLayout = self._getTrackingLayout(channelID)
-            #measLayout  = self._getGNSSMeasurementLayout(channelID)
+            measLayout  = self._getGNSSMeasurementLayout(channelID)
             
             return pn.Tabs(
                 ('Acquisition', acqLayout),
-                ('Tracking', trackLayout)
-                #('GNSS Measurements', measLayout)
+                ('Tracking', trackLayout),
+                ('GNSS Measurements', measLayout)
             )
         layout = pn.Column(selections, tabs)
 

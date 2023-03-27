@@ -12,15 +12,16 @@ import logging
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
-from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, TrackingFlags
-from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW, MessageType
+from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients
+from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from core.dsp.cn0 import NWPR
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE, GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
 from core.signal.gnsssignal import UpsampleCode
 from core.signal.gnsssignal import GenerateGPSGoldCode
-from core.utils.enumerations import GNSSSystems, GNSSSignalType
+from core.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags
+from core.utils.constants import GPS_L1CA_CODE_MS
 
 # =====================================================================================================================
 
@@ -535,17 +536,19 @@ class ChannelL1CA(Channel):
         # Check channel state
         #self.logger.debug(f"CID {self.cid} is in {self.state} state")
 
-        results = []
+        _results = []
         if self.channelState == ChannelState.IDLE:
             raise Warning(f"Tracking channel {self.channelID} is in IDLE.")
-
         elif self.channelState == ChannelState.ACQUIRING:
-            self.addResult(results, self.runAcquisition())
+            _results.append(self.runAcquisition())
         elif self.channelState == ChannelState.TRACKING:
-            self.addResult(results, self.runTracking())
-            self.addResult(results, self.runDecoding())
+            _results.append(self.runTracking())
+            _results.append(self.runDecoding())
         else:
             raise ValueError(f"Channel state {self.state} is not valid.")
+        
+        # Remove None objects
+        results = [i for i in _results if i is not None]
         
         # Check correlator history
         if self.nbPrompt == self.maxSizeCorrelatorBuffer:
@@ -577,6 +580,28 @@ class ChannelL1CA(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
     
+    def getTimeSinceTOW(self):
+        """
+        Return current time since the last TOW in milliseconds.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+        
+        timeSinceTOW = 0
+        timeSinceTOW += self.codeSinceTOW * GPS_L1CA_CODE_MS # Add number of code since TOW
+        timeSinceTOW += self.rfBuffer.getNbUnreadSamples(self.currentSample) / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
+        
+        return timeSinceTOW
+
+    # -----------------------------------------------------------------------------------------------------------------
+
     def prepareResultsAcquisition(self):
         """
         Prepare the acquisition result to be sent. 
@@ -637,6 +662,31 @@ class ChannelL1CA(Channel):
         mdict["type"] = ChannelMessage.DECODING_UPDATE
 
         return mdict
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def prepareChannelUpdate(self):
+        """
+        Prepare the channel update.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+        
+        _packet = self.prepareResults()
+        _packet['type'] = ChannelMessage.CHANNEL_UPDATE
+        _packet['state'] = self.channelState
+        _packet['tracking_flags'] = self.trackFlags
+        _packet['tow'] = self.tow
+        _packet['time_since_tow'] = self.getTimeSinceTOW() 
+        
+        return _packet
 
 # =====================================================================================================================
 

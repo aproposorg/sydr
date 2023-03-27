@@ -9,7 +9,7 @@ from core.io.RINEXNav import RINEXNav
 from core.measurements import GNSSPosition
 from core.satellite.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
-from core.utils.time import Time
+from core.utils.time import Time, fromDatetime
 from core.channel.channel import ChannelMessage
 
 #from core.io.RINEXNav import RINEXNav
@@ -337,7 +337,7 @@ class DatabaseHandler:
 
         idx = 0
         for eph in fetchedData:
-            if time <= Time.fromDatetime(datetime.strptime(eph[3], ("%Y-%m-%d %H:%M:%S.%f"))):
+            if time <= fromDatetime(datetime.strptime(eph[3], ("%Y-%m-%d %H:%M:%S.%f"))):
                 break
             idx += 1
         try:
@@ -348,7 +348,7 @@ class DatabaseHandler:
         ephemeris            = BRDCEphemeris()
         ephemeris.system     = GNSSSystems[data[1]]
         ephemeris.svid       = data[2]
-        ephemeris.time       = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
+        ephemeris.time       = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
         ephemeris.ura        = data[4]
         ephemeris.health     = data[5]
         ephemeris.weekNumber = data[6]
@@ -432,9 +432,9 @@ class DatabaseHandler:
             position.id           = data[0]
             position.timeSample   = data[2]
             if len(data[3]) < 20:
-                position.time = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S")))
+                position.time = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S")))
             else:
-                position.time = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
+                position.time = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
             position.coordinate.x = data[4]
             position.coordinate.y = data[5]
             position.coordinate.z = data[6]

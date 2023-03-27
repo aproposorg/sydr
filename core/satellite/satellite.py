@@ -21,7 +21,6 @@ class Satellite(ABC):
     isEphemerisDecoded : bool
 
     lastPosition : np.array
-    lastBRDCEphemeris : BRDCEphemeris
 
     def __init__(self, system:GNSSSystems, svid:int):
         
@@ -32,7 +31,7 @@ class Satellite(ABC):
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
 
-        self.ephemeris = []
+        self.ephemeris = BRDCEphemeris()
         self.partialEphemeris = BRDCEphemeris()
         
         self.subframeTOW = 0 # Used when navigation message is decoded from signal
@@ -42,9 +41,8 @@ class Satellite(ABC):
     # -------------------------------------------------------------------------
 
     def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
-        self.ephemeris.append(ephemeris)
+        self.ephemeris = ephemeris
         self.isEphemerisDecoded = True
-        self.lastBRDCEphemeris = ephemeris
         return
     
     # -------------------------------------------------------------------------
@@ -69,7 +67,7 @@ class Satellite(ABC):
             satellitePosition : numpy.array(3)
             Satellite position in ECEF 
         """        
-        eph = self.lastBRDCEphemeris
+        eph = self.ephemeris
 
         # Compute difference between current time and orbit reference time
         # Check for week rollover at the same time
@@ -122,7 +120,7 @@ class Satellite(ABC):
         return satellitePosition, satelliteClockCorrection
 
     def getTGD(self):
-        return self.lastBRDCEphemeris.tgd
+        return self.ephemeris.tgd
     
     @staticmethod
     def timeCheck(time):

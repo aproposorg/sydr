@@ -319,7 +319,7 @@ def LNAV_DecodeSubframe(subframeBits:np.array, d30star:int, ephemeris:BRDCEpheme
     # Identify the subframe
     if subframeID == 1:
         # It contains WN, SV clock corrections, health and accuracy
-        ephemeris.weekNumber    = bin2dec(subframeBits[60:70]) + GPS_WEEK_ROLLOVER * 1024
+        ephemeris.week          = bin2dec(subframeBits[60:70]) + GPS_WEEK_ROLLOVER * 1024
         ephemeris.ura           = bin2dec(subframeBits[72:76])
         ephemeris.health        = bin2dec(subframeBits[76:82])
         ephemeris.iodc          = bin2dec(subframeBits[82:84] + subframeBits[211:218])  # TODO Check IODC consistency

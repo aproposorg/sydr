@@ -9,14 +9,19 @@
 
 import configparser
 import logging
+import numpy as np
+import math
 
 from core.receiver.receiver import Receiver
-from core.utils.enumerations import ReceiverState
 from core.channel.channel_L1CA_2 import ChannelL1CA, ChannelStatusL1CA
-from core.channel.channel import ChannelMessage
+from core.channel.channel import ChannelMessage, ChannelStatus
 from core.enlightengui import EnlightenGUI
 from core.satellite.satellite import Satellite, GNSSSystems
 from core.utils.time import Time
+from core.utils.constants import AVG_TRAVEL_TIME_MS, SPEED_OF_LIGHT
+from core.utils.enumerations import ReceiverState, GNSSMeasurementType, TrackingFlags
+from core.utils.geodesy import correctEarthRotation
+from core.measurements import GNSSmeasurements
 
 # =====================================================================================================================
 
@@ -26,9 +31,9 @@ class ReceiverGPSL1CA(Receiver):
     """
     
     configuration : dict
-    satelliteDict : dict
-    channelsStatus : dict
     nextMeasurementTime : Time
+
+    approxPosition : list
 
     def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
         """
@@ -46,6 +51,11 @@ class ReceiverGPSL1CA(Receiver):
         """
         super().__init__(configuration, overwrite, gui)
 
+        self.approxPosition = np.array([
+            float(configuration['DEFAULT']['approx_position_x']),\
+            float(configuration['DEFAULT']['approx_position_y']),
+            float(configuration['DEFAULT']['approx_position_z'])])
+
         # Set satellites to track
         self.prnList = list(map(int, self.configuration.get('SATELLITES', 'include_prn').split(',')))
 
@@ -55,8 +65,6 @@ class ReceiverGPSL1CA(Receiver):
         self.channelManager.addChannel(ChannelL1CA, channelConfig, len(self.prnList))
 
         # Set satellites to track
-        self.satelliteDict = {}
-        self.channelsStatus = {}
         for prn in self.prnList:
             channel = self.channelManager.requestTracking(prn)
             self.addChannelDatabase(channel)
@@ -135,5 +143,214 @@ class ReceiverGPSL1CA(Receiver):
         # # TODO
         
         return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def computeGNSSMeasurements(self):
+        """
+        Abstract method to process the channels' results to produce GNSS measurements.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        Raises:
+            None
+        """
+
+        # Check all channels ready 
+        # TODO To be adapted to process with 4 satellites right away
+        channel : ChannelStatus
+        for channel in self.channelsStatus.values():
+            if not (channel.trackFlags & TrackingFlags.TOW_DECODED) \
+                or not (channel.trackFlags & TrackingFlags.EPH_DECODED):
+                return
+        
+        # Check current receiver state
+        if self.receiverState == ReceiverState.NAVIGATION:
+            if self.clock < self.nextMeasurementTime:
+                # Not yet time to compute measusurement
+                return
+
+        # Find earliest signal
+        maxTOW = -1
+        for channel in self.channelsStatus.values():
+            # This assumes all the channels were given the same number of samples to process
+            if maxTOW < channel.timeSinceTOW:
+                maxTOW = channel.timeSinceTOW
+                earliestChannel = channel
+        
+        # Update received time
+        if not self.clock.isInitialised:
+            tow = earliestChannel.tow + earliestChannel.timeSinceTOW / 1e3
+            week = self.satelliteDict[earliestChannel.satelliteID].ephemeris.week
+            receivedTime = tow + AVG_TRAVEL_TIME_MS / 1e3
+            self.clock.fromGPSTime(week, receivedTime)
+            self.clock.isInitialised = True
+            self.nextMeasurementTime.setGPSTime(week, math.ceil(receivedTime))
+        else:
+            timeResidual = (self.clock - self.nextMeasurementTime).total_seconds()
+            receivedTime = self.clock.getGPSSeconds() - timeResidual
+            tow = earliestChannel.tow + earliestChannel.timeSinceTOW / 1e3 - timeResidual
+            week = self.clock.gpstime.week_number
+            self.nextMeasurementTime.fromGPSTime(week, receivedTime + (1/self.measurementFrequency))
+        
+        # Compute GNSS measurements
+        gnssMeasurementsList = []
+        for channel in self.channelsStatus.values():
+            satellite : Satellite = self.satelliteDict[channel.satelliteID]
+            
+            # Compute transmission time
+            relativeTime = (earliestChannel.timeSinceTOW - channel.timeSinceTOW) * 1e-3
+            transmitTime = tow - relativeTime
+
+            # Compute pseudoranges
+            pseudoranges = (receivedTime - transmitTime) * SPEED_OF_LIGHT
+
+            # Compute satellite positions and clock errors
+            satellitePosition, satelliteClock = satellite.computePosition(transmitTime)
+
+            # Apply corrections
+            # TODO Ionosphere, troposhere ...
+            correctedPseudoranges  = pseudoranges
+            correctedPseudoranges += satelliteClock * SPEED_OF_LIGHT # Satellite clock error
+            correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT  # Total Group Delay (TODO this is frequency dependant)
+
+            # logging.getLogger(__name__).debug(
+            #     f"SVID {channel.satelliteID}, timeSinceLastTOW {channel.timeSinceTOW}, relativeTime {relativeTime}, " +\
+            #     f"transmitTime {transmitTime}, pseudoranges {pseudoranges}, " +\
+            #     f"correctedPseudoranges {correctedPseudoranges}")
+            
+            # Pseudorange
+            time = Time()
+            time.fromGPSTime(self.clock.gpstime.week_number, receivedTime)
+            if self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE]:
+                gnssMeasurements = GNSSmeasurements()
+                gnssMeasurements.channel  = channel
+                gnssMeasurements.time     = time
+                gnssMeasurements.mtype    = GNSSMeasurementType.PSEUDORANGE
+                gnssMeasurements.value    = correctedPseudoranges
+                gnssMeasurements.rawValue = pseudoranges
+                gnssMeasurements.residual = 0.0
+                gnssMeasurements.enabled  = self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE]
+                gnssMeasurementsList.append(gnssMeasurements)
+
+            # Doppler
+            # TODO
+
+        # Compute position and measurements
+        self.computeReceiverPosition(self.clock.gpstime.week_number, receivedTime, gnssMeasurementsList)
+
+        # Update receiver state
+        self.receiverState = ReceiverState.NAVIGATION
+
+        coord = self.position.coordinate
+        logging.getLogger(__name__).info(f"New measurements computed (Receiver time: {receivedTime:.3f})")
+        logging.getLogger(__name__).debug(f"Position=({coord.x:12.4f} {coord.y:12.4f} {coord.z:12.4f}), precision=({coord.xPrecison:8.4f} {coord.yPrecison:8.4f} {coord.zPrecison:8.4f})")
+        logging.getLogger(__name__).debug(f"Clock error={self.position.clockError: 12.4f}")
+        logging.getLogger(__name__).debug(f"Receiver clock : ({self.clock.gpstime.week_number} {self.clock.gpstime.seconds} {self.clock.gpstime.femtoseconds})")
+        logging.getLogger(__name__).debug(f"-------------------------------")
+
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def computeReceiverPosition(self, week, time, measurements):
+        """
+        """
+        satellite : Satellite
+        meas : GNSSmeasurements
+
+        nbMeasurements = len(measurements)
+        G = np.zeros((nbMeasurements, 4))
+        W = np.zeros((nbMeasurements, nbMeasurements))
+        Ql = np.zeros((nbMeasurements, nbMeasurements))
+        y = np.zeros(nbMeasurements)
+        self.navigation.setState(self.approxPosition, 0.0)
+        for i in range(10):
+            x = self.navigation.x
+
+            if np.linalg.norm(self.navigation.dX) < 1e-6:
+                break
+            # Make matrices
+            idx = 0
+            for meas in measurements:
+                if not meas.enabled:
+                    continue
+                if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
+                    travelTime = meas.value / SPEED_OF_LIGHT
+    	            
+                    transmitTime = time - travelTime
+                    satellite = self.satelliteDict[meas.channel.satelliteID]
+                    satpos, satclock = satellite.computePosition(transmitTime)
+                    satpos = correctEarthRotation(travelTime, np.transpose(satpos))
+                    
+                    # Geometric range
+                    p = np.sqrt((x[0] - satpos[0])**2 + (x[1] - satpos[1])**2 + (x[2] - satpos[2])**2)
+
+                    # Observation vector
+                    y[idx] = meas.value - p - x[3]
+
+                    # Design matrix
+                    G[idx, 0] = (x[0] - satpos[0]) / p
+                    G[idx, 1] = (x[1] - satpos[1]) / p
+                    G[idx, 2] = (x[2] - satpos[2]) / p
+                    G[idx, 3] = 1
+
+                    # Weight matrix
+                    # TODO Implement sigma for each measurements
+                    _SIGMA_PSEUDORANGE = 1.0
+                    Ql[idx, idx] = _SIGMA_PSEUDORANGE
+                else:
+                    # TODO Adapt to other measurement types
+                    continue
+
+                idx += 1 
+            
+            # Least Squares
+            self.navigation.G = G
+            self.navigation.y = y
+            self.navigation.W = W
+            self.navigation.Ql = Ql
+
+            success = self.navigation.compute()
+        
+        # Correct after minimisation
+        idx = 0
+        for meas in measurements:
+            meas.residual = self.navigation.v[idx]
+            if meas.mtype == GNSSMeasurementType.PSEUDORANGE:
+                meas.value -= self.navigation.x[3]
+            else:
+                # TODO Adapt to other measurement types
+                pass
+            if meas.enabled:
+                self.position.measurements.append(meas)
+            
+            logging.getLogger(__name__).debug(
+                f"CID {meas.channel.channelID} SVID {meas.channel.satelliteID:02d} {meas.mtype:11} " + \
+                f"{meas.value:13.4f} (residual: {meas.residual: .4f}, enabled: {meas.enabled})")
+
+            idx += 1
+
+        if success:
+            _time = Time()
+            _time.fromGPSTime(week, time)
+            state = self.navigation.x
+            statePrecision = self.navigation.getStatePrecision()
+            self.position.time = _time
+            self.position.coordinate.setCoordinates(state[0], state[1], state[2])
+            self.position.coordinate.setPrecision(statePrecision[0], statePrecision[1], statePrecision[2])
+            self.position.clockError = self.navigation.x[3]
+            self.position.id += 1
+
+            self.clock.applyCorrection(-self.position.clockError / SPEED_OF_LIGHT)
+            self.addPositionDatabase(self.position, measurements)
+        
+        return
+
+    # -------------------------------------------------------------------------
 
 

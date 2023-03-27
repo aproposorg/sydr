@@ -6,7 +6,8 @@ from core.utils.time import Clock
 from core.utils.coordinate import Coordinate
 from core.channel.channel import Channel, ChannelStatus
 from core.channel.channel_L1CA_2 import ChannelL1CA
-from core.dsp.tracking import TrackingFlags
+from core.utils.enumerations import TrackingFlags
+from core.measurements import GNSSPosition
 
 # =====================================================================================================================
 
@@ -22,7 +23,7 @@ RECEIVER_BAR_FORMAT = u'{desc}{desc_pad}[{state:^10}] {percentage:3.0f}%|{bar}| 
                       u'{count:{len_total}d}/{total:d} ' + \
                       u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
 
-CHANNEL_BAR_FORMAT = u'{desc} |{prn}| [{state:^10} {tow} SUBFRAMES:{sf1}{sf2}{sf3}{sf4}{sf5}] ' + \
+CHANNEL_BAR_FORMAT = u'{desc} |{prn}| [{state:^8} {tow} SUBFRAMES:{sf1}{sf2}{sf3}{sf4}{sf5}] ' + \
                      u'{percentage:3.0f}%|{bar}| ' + \
                      u'{count:{len_total}d}/{total:d} ' + \
                      u'[{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]'
@@ -126,16 +127,16 @@ class EnlightenGUI():
         
         # Update receiver status
         clock : Clock = receiver.clock
-        coordinate : Coordinate = receiver.coordinate
+        position : GNSSPosition = receiver.position
         self.receiver_status_bar.update(
               datetime = str(receiver.clock.datetime)[:-3], 
               gpstime  = f"{clock.getGPSWeek()} {clock.getGPSSeconds():.3f}",
-              x        = coordinate.x,
-              y        = coordinate.y,
-              z        = coordinate.z,
-              sx       = coordinate.xPrecison,
-              sy       = coordinate.yPrecison,
-              sz       = coordinate.zPrecison)
+              x        = position.coordinate.x,
+              y        = position.coordinate.y,
+              z        = position.coordinate.z,
+              sx       = position.coordinate.xPrecison,
+              sy       = position.coordinate.yPrecison,
+              sz       = position.coordinate.zPrecison)
         
         # Update the receiver progress bar counter
         self.receiver_progress_bar.update(state=f"{receiver.receiverState}")

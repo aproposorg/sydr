@@ -13,8 +13,7 @@ from abc import ABC, abstractmethod
 
 from core.signal.rfsignal import RFSignal
 from core.utils.circularbuffer import CircularBuffer
-from core.dsp.tracking import TrackingFlags
-from core.utils.constants import GPS_L1CA_CODE_MS
+from core.utils.enumerations import TrackingFlags
 from core.utils.enumerations import GNSSSystems, GNSSSignalType, ChannelState, ChannelMessage
 
 # =====================================================================================================================
@@ -37,7 +36,6 @@ class Channel(ABC, multiprocessing.Process):
     rfSignal     : RFSignal       # RF signal parameters
     rfBuffer     : CircularBuffer # Circular buffer for limited data storage
     
-    unprocessedSamples : int    # Number of samples waiting to be processed
     currentSample      : int    # Current sample in RF Buffer
 
     # Satellite and GNSS signal
@@ -90,7 +88,6 @@ class Channel(ABC, multiprocessing.Process):
         self.eventRun = multiprocessing.Event()
         self.eventDone = multiprocessing.Event()
         self.currentSample = 0
-        self.unprocessedSamples = 0
         self.rfSignal = rfSignal
 
         self.tow = 0
@@ -146,7 +143,6 @@ class Channel(ABC, multiprocessing.Process):
                 break
             
             # Update samples tracker
-            self.unprocessedSamples += self.rfSignal.samplesPerMs
             self.rfBuffer.shiftIdxWrite(self.rfSignal.samplesPerMs) # Update our copy of buffer
 
             # Process the data according to the current channel state
@@ -180,26 +176,6 @@ class Channel(ABC, multiprocessing.Process):
             None
         """
         return
-
-    # -----------------------------------------------------------------------------------------------------------------
-
-    def getTimeSinceTOW(self):
-        """
-        Return current time since the last TOW in milliseconds.
-
-        Args:
-            None
-        
-        Returns: 
-            None
-
-        Raises:
-            None
-        """
-        timeSinceTOW = 0
-        timeSinceTOW += self.codeSinceTOW * GPS_L1CA_CODE_MS # Add number of code since TOW
-        timeSinceTOW += self.unprocessedSamples / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
-        return timeSinceTOW
     
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -224,31 +200,6 @@ class Channel(ABC, multiprocessing.Process):
         }
         return mdict
     
-    # -----------------------------------------------------------------------------------------------------------------
-
-    def prepareChannelUpdate(self):
-        """
-        Prepare the channel update.
-
-        Args:
-            None
-        
-        Returns: 
-            None
-
-        Raises:
-            None
-        """
-        
-        _packet = self.prepareResults()
-        _packet['type'] = ChannelMessage.CHANNEL_UPDATE
-        _packet['state'] = self.channelState
-        _packet['tracking_flags'] = self.trackFlags
-        _packet['tow'] = self.tow
-        _packet['time_since_tow'] = self.getTimeSinceTOW() 
-        
-        return _packet
-
 # =====================================================================================================================
 
 class ChannelStatus(ABC):
