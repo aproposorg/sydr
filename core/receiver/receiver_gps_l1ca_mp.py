@@ -111,6 +111,7 @@ class ReceiverGPSL1CA(Receiver):
                 self.channelsStatus[channel.channelID].trackFlags    = packet['tracking_flags']
                 self.channelsStatus[channel.channelID].tow           = packet['tow']
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
+                self.channelsStatus[channel.channelID].unprocessedSamples = packet['unprocessed_samples']
             elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE):
                 continue
             else:
@@ -176,11 +177,17 @@ class ReceiverGPSL1CA(Receiver):
 
         # Find earliest signal
         maxTOW = -1
+        towlist = []
         for channel in self.channelsStatus.values():
             # This assumes all the channels were given the same number of samples to process
             if maxTOW < channel.timeSinceTOW:
                 maxTOW = channel.timeSinceTOW
                 earliestChannel = channel
+            towlist.append(int(channel.tow))
+
+        # Check that all the signals have the same TOW
+        if not all(x==towlist[0] for x in towlist):
+            return
         
         # Update received time
         if not self.clock.isInitialised:
@@ -218,10 +225,10 @@ class ReceiverGPSL1CA(Receiver):
             correctedPseudoranges += satelliteClock * SPEED_OF_LIGHT # Satellite clock error
             correctedPseudoranges += satellite.getTGD() * SPEED_OF_LIGHT  # Total Group Delay (TODO this is frequency dependant)
 
-            # logging.getLogger(__name__).debug(
-            #     f"SVID {channel.satelliteID}, timeSinceLastTOW {channel.timeSinceTOW}, relativeTime {relativeTime}, " +\
-            #     f"transmitTime {transmitTime}, pseudoranges {pseudoranges}, " +\
-            #     f"correctedPseudoranges {correctedPseudoranges}")
+            logging.getLogger(__name__).debug(
+                f"SVID {channel.satelliteID:02d}, timeSinceLastTOW {channel.timeSinceTOW:.4f}, relativeTime {relativeTime:.6f}, " +\
+                f"transmitTime {transmitTime:.4f}, unprocessed samples {channel.unprocessedSamples}, " +\
+                f"pseudoranges {pseudoranges:.3f}, correctedPseudoranges {correctedPseudoranges:.3f}")
             
             # Pseudorange
             time = Time()

@@ -36,7 +36,6 @@ class ChannelL1CA(Channel):
     navBitsBuffer    : np.array
     navBitsSamples   : np.array
     
-    sampleCounter    : int
     codeCounter      : int
     
     correlatorsBuffer       : np.array
@@ -112,7 +111,6 @@ class ChannelL1CA(Channel):
         self.iPromptAvg = 0.0
         self.qPromptAvg = 0.0
 
-        self.sampleCounter = 0
         self.codeCounter = 0
 
         self.navBitBufferSize = LNAV_SUBFRAME_SIZE + 2 * LNAV_WORD_SIZE + 2
@@ -282,8 +280,10 @@ class ChannelL1CA(Channel):
         # TODO Can we merge the two variables inside the loop?
 
         # Update index
-        #self.currentSample = (self.currentSample + self.track_requiredSamples) - self.codeOffset
-        self.currentSample = self.rfBuffer.size - 2 * self.track_requiredSamples + (self.codeOffset + 1)
+        self.currentSample  = self.currentSample + self.acq_requiredSamples
+        self.currentSample -= self.track_requiredSamples
+        self.currentSample += self.codeOffset + 1
+        #self.currentSample = self.rfBuffer.size - 2 * self.track_requiredSamples + (self.codeOffset + 1)
         
         # Switch channel state to tracking
         # TODO Test if succesful acquisition
@@ -378,7 +378,6 @@ class ChannelL1CA(Channel):
         self.nbPrompt += 1
 
         # Update some variables
-        self.sampleCounter += self.track_requiredSamples
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
         self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
@@ -457,8 +456,6 @@ class ChannelL1CA(Channel):
                     self.navBitsCounter -= 1
                 return
             
-            logging.getLogger(__name__).debug(f"CID {self.channelID} preambule found.")
-            
             # Check if preambule was found before and the new one is the next subframe
             if self.preambuleFound and idx == LNAV_SUBFRAME_SIZE:
                 # Update tracking flags 
@@ -486,10 +483,13 @@ class ChannelL1CA(Channel):
             return
         
         # Decode only essential in subframe
-        self.tow, subframeID, subframeBits = LNAV_DecodeTOW(
+        tow, subframeID, subframeBits = LNAV_DecodeTOW(
             self.navBitsBuffer[2:2+LNAV_SUBFRAME_SIZE], 
             self.navBitsBuffer[1])
         self.subframeFlags[subframeID-1] = True
+
+        # Reset code loop counter
+        self.codeSinceTOW = 0
         
         # Update tracking flags
         # TODO Add success check?
@@ -504,7 +504,7 @@ class ChannelL1CA(Channel):
         results = self.prepareResultsDecoding()
         results["type"] = ChannelMessage.DECODING_UPDATE
         results["subframe_id"] = subframeID
-        results["tow"] = self.tow
+        results["tow"] = tow
         results["bits"] = subframeBits
 
         # Flush decoded bits
@@ -512,6 +512,14 @@ class ChannelL1CA(Channel):
         _newbuffer[:minBits] = self.navBitsBuffer[idx:idx + minBits]
         self.navBitsBuffer = _newbuffer
         self.navBitsCounter = minBits
+
+        # Align TOW to current bits
+        self.tow = tow
+        self.tow += self.navBitsCounter * LNAV_MS_PER_BIT * 1e-3
+
+        logging.getLogger(__name__).debug(f"CID {self.channelID} subframe {subframeID} decoded "+\
+                                          f"(TOW: {tow}, current: {self.tow}).")
+
 
         return results
 
@@ -557,28 +565,6 @@ class ChannelL1CA(Channel):
         return results
     
     # -----------------------------------------------------------------------------------------------------------------
-
-    def addResult(self, resultsList, result):
-        """
-        Check if result is not None.
-
-        Args:
-            resultsList (list): List of results.
-            result (dict): Result object to test.
-        
-        Returns: 
-            None
-
-        Raises:
-            None
-        """
-
-        if result is not None:
-            resultsList.append(result)
-        
-        return resultsList
-    
-    # -----------------------------------------------------------------------------------------------------------------
     
     def getTimeSinceTOW(self):
         """
@@ -596,8 +582,8 @@ class ChannelL1CA(Channel):
         
         timeSinceTOW = 0
         timeSinceTOW += self.codeSinceTOW * GPS_L1CA_CODE_MS # Add number of code since TOW
-        timeSinceTOW += self.rfBuffer.getNbUnreadSamples(self.currentSample) / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples 
-        
+        timeSinceTOW += self.rfBuffer.getNbUnreadSamples(self.currentSample) / (self.rfSignal.samplingFrequency/1e3) # Add number of unprocessed samples
+
         return timeSinceTOW
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -685,6 +671,7 @@ class ChannelL1CA(Channel):
         _packet['tracking_flags'] = self.trackFlags
         _packet['tow'] = self.tow
         _packet['time_since_tow'] = self.getTimeSinceTOW() 
+        _packet['unprocessed_samples'] = self.rfBuffer.getNbUnreadSamples(self.currentSample)
         
         return _packet
 

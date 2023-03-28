@@ -263,7 +263,7 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
         d30star (int): Bit (0/1) for inversion check.
     
     Returns
-        tow (int): Time of Week, corrected to current subframe.
+        tow (int): Time of Week, non-corrected.
         subframeID (int): Subframe ID.
 
     Raises:
@@ -281,7 +281,7 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
     subframeID = bin2dec(subframeBits[49:52])
     
     tow  = bin2dec(subframeBits[30:47]) * 6 
-    tow -= 6 # Remove 6 seconds to correct to current subframe (see LNAV_DecodeSubframe)
+    #tow -= 6 # Remove 6 seconds to correct to current subframe (see LNAV_DecodeSubframe)
 
     return tow, subframeID, subframeBits
 

@@ -131,7 +131,7 @@ class Channel(ABC, multiprocessing.Process):
         Raises:
             None
         """
-        
+        self.unprocessedSamples = 0
         while True:
             # Wait for ChannelManager event signal
             timeoutFlag = self.eventRun.wait(timeout=self.TIMEOUT)
@@ -230,6 +230,7 @@ class ChannelStatus(ABC):
         self.tow = 0
         self.timeSinceTOW = 0
         self.subframeFlags = []
+        self.unprocessedSamples = 0
         
         self.isTOWDecoded = False
 
