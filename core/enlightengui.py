@@ -5,7 +5,7 @@ from termcolor import colored
 from core.utils.time import Clock
 from core.utils.coordinate import Coordinate
 from core.channel.channel import Channel, ChannelStatus
-from core.channel.channel_L1CA_2 import ChannelL1CA
+from core.channel.channel_l1ca import ChannelL1CA
 from core.utils.enumerations import TrackingFlags
 from core.measurements import GNSSPosition
 

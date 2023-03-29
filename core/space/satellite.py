@@ -4,7 +4,7 @@ import numpy as np
 
 
 import core.utils.constants as constants
-from core.satellite.ephemeris import BRDCEphemeris
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
 
 class Satellite(ABC):

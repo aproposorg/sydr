@@ -9,13 +9,13 @@ from core.utils.enumerations import ReceiverState, ChannelMessage, TrackingFlags
 from core.utils.constants import AVG_TRAVEL_TIME_MS, SPEED_OF_LIGHT
 from core.signal.rfsignal import RFSignal
 from core.channel.channelManager import ChannelManager
-from core.record.database import DatabaseHandler
+from core.io.database import DatabaseHandler
 from core.utils.time import Clock, Time
 from core.measurements import GNSSPosition
 from core.utils.coordinate import Coordinate
 from core.enlightengui import EnlightenGUI
 from core.channel.channel import Channel, ChannelStatus
-from core.satellite.satellite import Satellite
+from core.space.satellite import Satellite
 from core.measurements import GNSSmeasurements
 from core.navigation.lse import LeastSquareEstimation
 

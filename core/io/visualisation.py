@@ -15,17 +15,17 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
 from core.utils.enumerations import GNSSSignalType
-from core.record.database import DatabaseHandler
-from core.receiver.receiver_abstract import ReceiverAbstract
+from core.io.database import DatabaseHandler
+from core.receiver.receiver import Receiver
 from core.signal.rfsignal import RFSignal
 from core.utils.constants import GPS_L1CA_CODE_SIZE_BITS
 
 hv.extension("bokeh")
 pn.extension(sizing_mode="stretch_width")
 
-class VisualisationV2:
+class Visualisation:
 
-    receiver : ReceiverAbstract
+    receiver : Receiver
     database : DatabaseHandler
 
     def __init__(self, configuration:configparser.ConfigParser):

@@ -7,7 +7,7 @@ import pickle
 
 from core.io.RINEXNav import RINEXNav
 from core.measurements import GNSSPosition
-from core.satellite.ephemeris import BRDCEphemeris
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
 from core.utils.time import Time, fromDatetime
 from core.channel.channel import ChannelMessage

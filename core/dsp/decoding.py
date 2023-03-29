@@ -2,7 +2,7 @@
 import numpy as np
 from enum import Enum, unique
 
-from core.satellite.ephemeris import BRDCEphemeris
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.constants import PI, GPS_WEEK_ROLLOVER, \
     LNAV_PREAMBULE_SIZE, LNAV_PREAMBULE_BITS, LNAV_PREAMBULE_BITS_INV, LNAV_WORD_SIZE
 

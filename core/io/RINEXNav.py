@@ -14,8 +14,8 @@
 from datetime import date, datetime
 import numpy as np
 import copy
-from core.satellite.ephemeris import BRDCEphemeris, Ephemeris
-from core.satellite.satellite import Satellite
+from core.space.ephemeris import BRDCEphemeris, Ephemeris
+from core.space.satellite import Satellite
 from core.utils.enumerations import GNSSSystems
 from core.utils.time import Time
 

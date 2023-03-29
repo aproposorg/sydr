@@ -13,10 +13,10 @@ import numpy as np
 import math
 
 from core.receiver.receiver import Receiver
-from core.channel.channel_L1CA_2 import ChannelL1CA, ChannelStatusL1CA
+from core.channel.channel_l1ca import ChannelL1CA, ChannelStatusL1CA
 from core.channel.channel import ChannelMessage, ChannelStatus
 from core.enlightengui import EnlightenGUI
-from core.satellite.satellite import Satellite, GNSSSystems
+from core.space.satellite import Satellite, GNSSSystems
 from core.utils.time import Time
 from core.utils.constants import AVG_TRAVEL_TIME_MS, SPEED_OF_LIGHT
 from core.utils.enumerations import ReceiverState, GNSSMeasurementType, TrackingFlags
