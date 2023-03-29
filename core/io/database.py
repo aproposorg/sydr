@@ -1,5 +1,4 @@
 from datetime import datetime
-from distutils.log import error
 import logging
 import os
 import sqlite3
@@ -8,9 +7,10 @@ import pickle
 
 from core.io.RINEXNav import RINEXNav
 from core.measurements import GNSSPosition
-from core.satellite.ephemeris import BRDCEphemeris
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
-from core.utils.time import Time
+from core.utils.time import Time, fromDatetime
+from core.channel.channel import ChannelMessage
 
 #from core.io.RINEXNav import RINEXNav
 
@@ -32,6 +32,9 @@ class DatabaseHandler:
         self.columns = {} # Dictionnary containing the column list for each table
         self.dictBuffer = {} # Dictionnary buffering the object to be send to DB, this is to limit DB interations
 
+        self.sizeDictBuffer = 0
+        self.maxSizeDictBuffer = 1000000
+
         # Initialise database content
         self._initialise()
 
@@ -47,15 +50,21 @@ class DatabaseHandler:
             self.dictBuffer[table] = []
         
         self.dictBuffer[table].append(data)
+        self.sizeDictBuffer += len(data)
+
+        # Commit changes
+        # if self.sizeDictBuffer > self.maxSizeDictBuffer:
+        #     self.commit()
 
         return
-
 
     # -------------------------------------------------------------------------
 
     def commit(self):
         """ 
         """
+
+        logging.getLogger(__name__).info(f"Committing to database.")
 
         for table, inserts in self.dictBuffer.items(): 
             for data in inserts: 
@@ -74,6 +83,8 @@ class DatabaseHandler:
                             mtype = "TEXT"
                         elif isinstance(val, list) or isinstance(val, np.ndarray):
                             mtype = "BLOB"
+                        elif isinstance(val, ChannelMessage):
+                            continue
                         else:
                             raise TypeError("Unknown type given in database.")
                         
@@ -97,6 +108,7 @@ class DatabaseHandler:
                 self.cursor.executemany(sqlstr, insertList)
         self.connection.commit()
         self.dictBuffer = {}
+        self.sizeDictBuffer = 0
 
         return
     
@@ -225,12 +237,12 @@ class DatabaseHandler:
 
         sqlstr = """CREATE TABLE IF NOT EXISTS gpsbrdc (
                         id INTEGER PRIMARY KEY,
-                        system TEXT,
-                        svid INTEGER,
+                        system_id TEXT,
+                        satellite_id INTEGER,
                         datetime TEXT,
                         ura INTEGER,
                         health INTEGER,
-                        weeknumber INTEGER,
+                        week INTEGER,
                         iode INTEGER,
                         iodc INTEGER,
                         toe INTEGER,
@@ -256,7 +268,7 @@ class DatabaseHandler:
                         iDot FLOAT
                         );
                     """
-        self.columns["gpsbrdc"] = ["id", "system", "svid", "datetime", "ura", "health", "weeknumber", "iode", "iodc", "toe", "toc", "tgd", \
+        self.columns["gpsbrdc"] = ["id", "system_id", "satellite_id", "datetime", "ura", "health", "week", "iode", "iodc", "toe", "toc", "tgd", \
             "af2", "af1", "af0", "ecc", "sqrtA", "crs", "deltan", "m0", "cuc", "cus", "cic", "omega0", "cis", \
             "i0", "crc", "omega", "omegaDot", "iDot"]
         self.cursor.execute(sqlstr)
@@ -273,15 +285,15 @@ class DatabaseHandler:
         # Add entries
         data = {}
         for key, satellite in nav.satelliteDict.items():
-            for ephemeris in satellite.ephemeris:
+            for ephemeris in satellite:
                 data = {}
-                data["svid"]       = ephemeris.svid
-                data["system"]     = ephemeris.system
+                data["satellite_id"]= ephemeris.satelliteID
+                data["system_id"]   = ephemeris.systemID
                 data["datetime"]   = ephemeris.time
                 data["ura"]        = ephemeris.ura   
                 data["iode"]       = ephemeris.iode    
                 data["iodc"]       = ephemeris.iodc    
-                data["weeknumber"] = ephemeris.weekNumber
+                data["week"]       = ephemeris.week
                 data["toe"]        = ephemeris.toe     
                 data["toc"]        = ephemeris.toc     
                 data["tgd"]        = ephemeris.tgd     
@@ -320,26 +332,26 @@ class DatabaseHandler:
 
     def fetchBRDC(self, time:Time, system:GNSSSystems, svid:int):
 
-        str = f"SELECT * FROM gpsbrdc WHERE svid={svid} AND system='{system}';"
+        str = f"SELECT * FROM gpsbrdc WHERE satellite_id={svid} AND system_id='{system}';"
         fetchedData = self.cursor.execute(str).fetchall()
 
         idx = 0
         for eph in fetchedData:
-            if time <= Time.fromDatetime(datetime.strptime(eph[3], ("%Y-%m-%d %H:%M:%S.%f"))):
+            if time <= fromDatetime(datetime.strptime(eph[3], ("%Y-%m-%d %H:%M:%S.%f"))):
                 break
             idx += 1
         try:
             data = fetchedData[idx]
         except IndexError:
-            error("No broadcast ephemeris found in database.")
+            raise IndexError("No broadcast ephemeris found in database.")
 
         ephemeris            = BRDCEphemeris()
-        ephemeris.system     = GNSSSystems[data[1]]
-        ephemeris.svid       = data[2]
-        ephemeris.time       = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
+        ephemeris.systemID   = GNSSSystems[data[1]]
+        ephemeris.satelliteID= data[2]
+        ephemeris.time       = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
         ephemeris.ura        = data[4]
         ephemeris.health     = data[5]
-        ephemeris.weekNumber = data[6]
+        ephemeris.week       = data[6]
         ephemeris.iode       = data[7]
         ephemeris.iodc       = data[8]
         ephemeris.toe        = data[9]
@@ -420,9 +432,9 @@ class DatabaseHandler:
             position.id           = data[0]
             position.timeSample   = data[2]
             if len(data[3]) < 20:
-                position.time = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S")))
+                position.time = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S")))
             else:
-                position.time = Time.fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
+                position.time = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
             position.coordinate.x = data[4]
             position.coordinate.y = data[5]
             position.coordinate.z = data[6]
@@ -479,6 +491,17 @@ class DatabaseHandler:
             
             dataList.append(dataDict)
         return dataList
+    
+
+    # -------------------------------------------------------------------------
+
+    def close(self):
+        
+        self.commit()
+
+        self.connection.close()
+        
+        return
     
 if __name__=="__main__":
     db = DatabaseHandler('./.results/REC1.db', overwrite=False)

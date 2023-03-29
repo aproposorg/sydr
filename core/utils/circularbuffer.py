@@ -1,6 +1,7 @@
 
 import numpy as np
 from multiprocessing import shared_memory
+import multiprocessing
 
 class CircularBuffer:
     """
@@ -10,6 +11,7 @@ class CircularBuffer:
 
     buffer        : list
     idxWrite      : int
+    idxRead       : int
     size          : int
     maxSize       : int
     full          : bool
@@ -71,7 +73,18 @@ class CircularBuffer:
         if self.maxSize % shift != 0:
             raise ValueError("Data shift need to be a multiple from the max buffer size.")
 
+        # Update buffer data
         self.buffer[:, self.idxWrite:self.idxWrite + shift] = data
+        
+        # Shift other variables
+        self.shiftIdxWrite(shift)
+
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def shiftIdxWrite(self, shift:int):
+        
         self.idxWrite += shift
         self.size = self.idxWrite
 
@@ -84,12 +97,21 @@ class CircularBuffer:
                 self.idxWrite %= self.maxSize
             if self.size > self.maxSize:
                 self.size = self.maxSize
-
+        
         return
     
     # -----------------------------------------------------------------------------------------------------------------
+    
+    def shiftIdxRead(self, shift:int):
 
-    def getSlice(self, idxStart:int, samplesRequired:int):
+        self.idxRead += shift
+        self.idxRead %= self.maxSize
+
+        return
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def getSlice(self, idxStart:int=None, samplesRequired:int=0):
         """
         Get a data slice of the buffer, providing the starting index and the amount of samples needed.
 
@@ -104,11 +126,25 @@ class CircularBuffer:
             None
         """
 
+        if idxStart is None:
+            idxStart = self.idxRead
+
         idxStop = (idxStart + samplesRequired) % self.maxSize
 
         if idxStop < idxStart:
             return np.concatenate((self.buffer[:, idxStart:], self.buffer[:, :idxStop]), axis=1)
         else: 
             return self.buffer[:, idxStart:idxStop]
-    
+        
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def getNbUnreadSamples(self, currentSample:int):
+        """
+        """
+        
+        if currentSample <= self.idxWrite:
+            return self.idxWrite - currentSample
+        else:
+            return self.maxSize - currentSample + self.idxWrite
+
     # -----------------------------------------------------------------------------------------------------------------

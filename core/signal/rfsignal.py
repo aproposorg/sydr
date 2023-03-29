@@ -2,28 +2,92 @@ import configparser
 import numpy as np
 
 class RFSignal:
-    def __init__(self, configfile):
-        # Initialise from config file
-        config = configparser.ConfigParser()
-        config.read(configfile)
 
-        self.filepath          = config.get       ('RF_FILE', 'filepath')
-        self.samplingFrequency = config.getfloat  ('RF_FILE', 'sampling_frequency')
-        self.isComplex         = config.getboolean('RF_FILE', 'iscomplex')
-        self.interFrequency    = config.getfloat  ('RF_FILE', 'intermediate_frequency')
+    CHUNCK_SIZE_MS = 120 # Number of milliseconds per loaded chunck, ~100ms was found optimal given the tested hardware
+    
+    chunck : np.array
+    chunckMsCounter : int
 
-        # Find data type
-        dataSize = config.getint  ('RF_FILE', 'data_size')
+    samplesPerMs : int
+
+    def __init__(self, configuration:dict):
+        """
+        Constructor for RFSignal class. 
+        
+        Args:
+            configuration (dict): Configuration dictionnary.
+
+        Returns:
+            None
+        
+        Raises:
+            None
+        """
+        
+        # Read configuration
+        self.filepath          = str  (configuration['filepath'])
+        self.samplingFrequency = float(configuration['sampling_frequency'])
+        self.isComplex         = bool (configuration['is_complex'])
+        self.interFrequency    = float(configuration['intermediate_frequency'])
+        
+        dataSize = int(configuration['data_size'])
+        
+        # Find file data type
         if dataSize   == 8:
-            self.dataType = np.int8
+            self.fileDataType = np.int8
         elif dataSize == 16:
-            self.dataType = np.int16
+            self.fileDataType = np.int16
         else:
             raise ValueError(f"Data type of {dataSize} bit(s) is not valid.")
         
-        self.file_id = None
+        # Check if I/Q or real data
+        if self.isComplex:
+            self.dtype = np.complex128
+        else:
+            self.dtype = self.fileDataType
+
+        self.file_id         = None
+        self.samplesPerMs    = int(self.samplingFrequency * 1e-3)
+        self.chunck          = np.empty((1, self.CHUNCK_SIZE_MS * self.samplesPerMs))
+        self.chunckMsCounter = self.CHUNCK_SIZE_MS
 
         return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def getMilliseconds(self, nbMilliseconds:int):
+        """
+        Return the next millisecond(s) of data. The amount of millisecond requested is assumed to be a multiple of the 
+        CHUNCK_SIZE_MS variable. 
+
+        Args:
+            nbMilliseconds (int) : Number of milliseconds to requested. 
+
+        Returns:
+            chunck (np.array) : RF data array.
+
+        Raises:
+            ValueError: The number of millisecond requested should be a multiple of the chunck size for optimal read.
+
+        """
+
+        if self.CHUNCK_SIZE_MS % nbMilliseconds:
+            raise ValueError(f"The number of millisecond requested should be a multiple of the chunck size for " + 
+                             f"optimal read ({nbMilliseconds} not multiple of {self.CHUNCK_SIZE_MS}).")
+        
+        # Check if new data needs to be loaded
+        if self.chunckMsCounter == self.CHUNCK_SIZE_MS:
+            self.chunck = self.readFile(timeLength=self.CHUNCK_SIZE_MS, keep_open=True)
+            self.chunckMsCounter = 0
+
+        startIdx = self.chunckMsCounter*self.samplesPerMs
+        stopIdx = self.chunckMsCounter*self.samplesPerMs + self.samplesPerMs * nbMilliseconds
+
+        self.chunckMsCounter += nbMilliseconds
+
+        return self.chunck[startIdx:stopIdx]
+    
+    # -----------------------------------------------------------------------------------------------------------------
 
     def readFile(self, timeLength, skip=0, keep_open=False):
         """
@@ -35,21 +99,24 @@ class RFSignal:
         Returns
             data (numpy.array): Data from file read.
 
+        Raises:
+            None
+
         """
 
         if self.isComplex:
             chunck = int(2 * (timeLength*1e-3) * self.samplingFrequency)
-            offset = int(np.dtype(self.dataType).itemsize * skip * 2)
+            offset = int(np.dtype(self.fileDataType).itemsize * skip * 2)
         else:
             chunck = int((timeLength*1e-3) * self.samplingFrequency)
-            offset = int(np.dtype(self.dataType).itemsize * skip)
+            offset = int(np.dtype(self.fileDataType).itemsize * skip)
         
         # Read data from file
         if self.file_id is None:
             fid = open(self.filepath, 'rb')
         else: 
             fid = self.file_id
-        data = np.fromfile(fid, self.dataType, offset=offset, count=chunck)
+        data = np.fromfile(fid, self.fileDataType, offset=offset, count=chunck)
 
         if keep_open:
             self.file_id = fid
@@ -63,6 +130,8 @@ class RFSignal:
             data           = data_real+ 1j * data_imaginary
 
         return data
+    
+    # -----------------------------------------------------------------------------------------------------------------
 
     def readFileBySamples(self, nb_values, skip=0, keep_open=False):
         """
@@ -109,6 +178,8 @@ class RFSignal:
             data           = data_real+ 1j * data_imaginary
 
         return data
+    
+    # -----------------------------------------------------------------------------------------------------------------
 
     def closeFile(self):
         if self.file_id is not None:
@@ -119,6 +190,8 @@ class RFSignal:
         
 
         return
+    
+    # -----------------------------------------------------------------------------------------------------------------
 
     def getCurrentSampleIndex(self):
         if not self.file_id is None:
@@ -129,3 +202,5 @@ class RFSignal:
         else:
             raise Warning("Signal file not open, cannot return current cursor position.")
             return -1
+        
+    # =================================================================================================================

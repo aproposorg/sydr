@@ -54,8 +54,18 @@ UNI_SIGMA = '\u03C3'
 
 # LNAV (GPS)
 LNAV_PREAMBULE_BITS     = [1, 0, 0, 0, 1, 0, 1, 1] # Preambule bit sequence
-LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 1] # Inverse preambule bit sequence
+LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 0] # Inverse preambule bit sequence
 LNAV_PREAMBULE_SIZE = 8   # Number of bits in preambule
 LNAV_MS_PER_BIT     = 20  # Number of milliseconds per navigation bits
 LNAV_SUBFRAME_SIZE  = 300 # Number of bits per subframe
 LNAV_WORD_SIZE      = 30  # Number of bits per word
+
+
+# =====================================================================================================================
+# GNSS SIGNALS
+
+GPS_L1CA_NAME = "GPS L1 C/A"       # String representation
+GPS_L1CA_CARRIER_FREQ = 1575.42e6  # [Hz] Carrier frequency in [MHz]
+GPS_L1CA_CODE_SIZE_BITS = 1023     # Number bit per C/A code    
+GPS_L1CA_CODE_FREQ = 1.023e6       # [Hz] C/A code frequency 
+GPS_L1CA_CODE_MS = 1               # Number of code per millisecond of signal

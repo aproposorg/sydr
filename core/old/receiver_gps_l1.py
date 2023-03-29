@@ -22,13 +22,13 @@ from core.channel.channel_l1ca import ChannelL1CA, ChannelStatusL1CA
 from core.measurements import GNSSPosition, GNSSmeasurements
 from core.navigation.lse import LeastSquareEstimation
 from core.receiver.receiver_abstract import ReceiverAbstract, ReceiverState
-from core.record.database import DatabaseHandler
+from core.io.databaseort DatabaseHandler
 from core.signal.gnsssignal import GNSSSignal
 from core.utils.clock import Clock
 from core.utils.coordinate import Coordinate
 from core.utils.enumerations import GNSSMeasurementType, GNSSSignalType, GNSSSystems
 from core.signal.rfsignal import RFSignal
-from core.satellite.satellite import Satellite
+from core.space.satellite import Satellite
 from core.utils.constants import AVG_TRAVEL_TIME_MS, EARTH_ROTATION_RATE, SPEED_OF_LIGHT
 from core.utils.time import Time
 

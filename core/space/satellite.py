@@ -1,20 +1,16 @@
 from abc import ABC
 from typing import Dict
 import numpy as np
-from core.channel.channel_abstract import ChannelState
+
 
 import core.utils.constants as constants
-from core.satellite.ephemeris import BRDCEphemeris
-from core.utils.enumerations import GNSSSignalType, GNSSSystems
-from core.measurements import DSPEpochs, DSPmeasurement
-from core.decoding.message_abstract import NavigationMessageAbstract
-from core.decoding.message_lnav import LNAV
+from core.space.ephemeris import BRDCEphemeris
+from core.utils.enumerations import GNSSSystems
 
 class Satellite(ABC):
 
-    system      : GNSSSystems
-    svid        : int
-    dspEpochs   : Dict[GNSSSignalType, DSPmeasurement]
+    systemID    : GNSSSystems
+    satelliteID : int
     ephemeris   : list
     navMessage  : dict
 
@@ -25,21 +21,18 @@ class Satellite(ABC):
     isEphemerisDecoded : bool
 
     lastPosition : np.array
-    lastBRDCEphemeris : BRDCEphemeris
 
     def __init__(self, system:GNSSSystems, svid:int):
         
-        self.system = system
-        self.svid = svid
-        self.dspEpochs   = {}
+        self.systemID = system
+        self.satelliteID = svid
         self.navMessages  = {}
 
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
 
-        self.ephemeris = []
+        self.ephemeris = BRDCEphemeris()
         self.partialEphemeris = BRDCEphemeris()
-        self.subframes = []
         
         self.subframeTOW = 0 # Used when navigation message is decoded from signal
 
@@ -48,15 +41,13 @@ class Satellite(ABC):
     # -------------------------------------------------------------------------
 
     def addBRDCEphemeris(self, ephemeris:BRDCEphemeris):
-        self.ephemeris.append(ephemeris)
+        self.ephemeris = ephemeris
         self.isEphemerisDecoded = True
-        self.lastBRDCEphemeris = ephemeris
         return
     
     # -------------------------------------------------------------------------
 
-    def addSubframe(self, subframeID:int, subframeBits:np.array):
-        self.subframes.append((subframeID, subframeBits))
+    def addSubframe(self, subframeBits:np.array):
         self.partialEphemeris.fromSubframeBits(subframeBits)
         if self.partialEphemeris.checkFlags():
             self.addBRDCEphemeris(self.partialEphemeris)
@@ -76,7 +67,7 @@ class Satellite(ABC):
             satellitePosition : numpy.array(3)
             Satellite position in ECEF 
         """        
-        eph = self.lastBRDCEphemeris
+        eph = self.ephemeris
 
         # Compute difference between current time and orbit reference time
         # Check for week rollover at the same time
@@ -129,7 +120,7 @@ class Satellite(ABC):
         return satellitePosition, satelliteClockCorrection
 
     def getTGD(self):
-        return self.lastBRDCEphemeris.tgd
+        return self.ephemeris.tgd
     
     @staticmethod
     def timeCheck(time):
@@ -154,19 +145,4 @@ class Satellite(ABC):
         return corrTime
 
     # ------------------------------------------------------------ 
-
-    def addDSPMeasurement(self, msProcessed, samplesProcessed, chan):
-        state      = chan.state
-        signal     = chan.gnssSignal.signalType
-
-        # Check if signal exist, otherwise initialize
-        if signal not in self.dspEpochs:
-            self.dspEpochs[signal] = DSPEpochs(self.svid, signal)
-        
-        if state == ChannelState.ACQUIRING:
-            self.dspEpochs[signal].addAcquisition(msProcessed, samplesProcessed, chan)
-        elif state == ChannelState.TRACKING:
-            self.dspEpochs[signal].addTracking(msProcessed, samplesProcessed, chan)
-        
-        return
         

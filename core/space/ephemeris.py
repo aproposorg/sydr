@@ -17,8 +17,8 @@ class Ephemeris(ABC):
 # =============================================================================
 
 class BRDCEphemeris(Ephemeris):
-    system   : GNSSSystems
-    svid     : int
+    systemID   : GNSSSystems
+    satelliteID: int
     iode     : int
     iodc     : int
     toe      : float
@@ -48,7 +48,7 @@ class BRDCEphemeris(Ephemeris):
     
     time       : Time()
     tow        : int
-    weekNumber : int
+    week       : int
 
     subframe1Flag : bool
     subframe2Flag : bool
@@ -99,7 +99,7 @@ class BRDCEphemeris(Ephemeris):
         subframeID = utils.bin2dec(subframe[49:52])
         if subframeID == 1:
             # It contains WN, SV clock corrections, health and accuracy
-            self.weekNumber    = utils.bin2dec(subframe[60:70]) + constants.GPS_WEEK_ROLLOVER * 1024
+            self.week          = utils.bin2dec(subframe[60:70]) + constants.GPS_WEEK_ROLLOVER * 1024
             self.ura           = utils.bin2dec(subframe[72:76])
             self.health        = utils.bin2dec(subframe[76:82])
             self.iodc          = utils.bin2dec(subframe[82:84] + subframe[211:218])  # TODO Check IODC consistency
@@ -109,7 +109,6 @@ class BRDCEphemeris(Ephemeris):
             self.af1           = utils.twosComp2dec(subframe[248:264]) * 2 ** (- 43)
             self.af0           = utils.twosComp2dec(subframe[270:292]) * 2 ** (- 31)
             self.subframe1Flag = True
-            self.weekNumber   = self.weekNumber
         elif subframeID == 2:
             # It contains first part of ephemeris parameters
             self.iode          = utils.bin2dec(subframe[60:68]) # TODO Check IODE consistency

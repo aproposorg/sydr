@@ -2,7 +2,7 @@
 import numpy as np
 from enum import Enum, unique
 
-from core.satellite.ephemeris import BRDCEphemeris
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.constants import PI, GPS_WEEK_ROLLOVER, \
     LNAV_PREAMBULE_SIZE, LNAV_PREAMBULE_BITS, LNAV_PREAMBULE_BITS_INV, LNAV_WORD_SIZE
 
@@ -180,7 +180,7 @@ def ParityCheck(ndat):
                 ndat[20] * ndat[23] * ndat[24] * ndat[25]
 
     # --- Compare if the received parity is equal the calculated parity --------
-    if (parity == ndat[26:]).sum() == 6:
+    if all(parity == ndat[26:]):
         # Parity is OK. Function output is -1 or 1 depending if the data bits
         # must be inverted or not. The "ndat[2]" is D30* bit - the last  bit of
         # previous subframe.
@@ -213,7 +213,7 @@ def LNAV_WordsCheck(subframeBits:np.array, d30star:int):
         subframeBits[30*j:30*(j+1)] = phaseCheck(subframeBits[30*j:30*(j+1)], d30star)
         d30star = subframeBits[30*(j+1)-1]
 
-        return subframeBits
+    return subframeBits
 
 # =====================================================================================================================
 
@@ -238,11 +238,11 @@ def LNAV_CheckPreambule(bits:np.array):
     # TODO Could do bitwise operations instead of table comparison?
     
     subframeFound = False
-    if (bits[2:LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS).all() \
-        or (bits[2:LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS_INV).all():
+    if all(bits[2:2+LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS) \
+        or all(bits[2:2+LNAV_PREAMBULE_SIZE] == LNAV_PREAMBULE_BITS_INV):
 
         # Need to convert the '0' into '-1' for the parity check function
-        convertedBits = np.array([-1 if x == 0 else 1 for x in bits[:2*LNAV_WORD_SIZE]])
+        convertedBits = np.array([-1 if x == 0 else 1 for x in bits])
         
         if ParityCheck(convertedBits[:LNAV_WORD_SIZE+2]) and \
             ParityCheck(convertedBits[LNAV_WORD_SIZE:2*LNAV_WORD_SIZE+2]):
@@ -263,7 +263,7 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
         d30star (int): Bit (0/1) for inversion check.
     
     Returns
-        tow (int): Time of Week, corrected to current subframe.
+        tow (int): Time of Week, non-corrected.
         subframeID (int): Subframe ID.
 
     Raises:
@@ -272,7 +272,7 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
     """
 
     # Words check 
-    LNAV_WordsCheck(subframeBits, d30star)
+    subframeBits = LNAV_WordsCheck(subframeBits, d30star)
 
     # Concatenate the string 
     subframeBits = ''.join([str(i) for i in subframeBits])
@@ -281,9 +281,9 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
     subframeID = bin2dec(subframeBits[49:52])
     
     tow  = bin2dec(subframeBits[30:47]) * 6 
-    tow -= 6 # Remove 6 seconds to correct to current subframe (see LNAV_DecodeSubframe)
+    #tow -= 6 # Remove 6 seconds to correct to current subframe (see LNAV_DecodeSubframe)
 
-    return tow, subframeID
+    return tow, subframeID, subframeBits
 
 # =====================================================================================================================
 
@@ -319,7 +319,7 @@ def LNAV_DecodeSubframe(subframeBits:np.array, d30star:int, ephemeris:BRDCEpheme
     # Identify the subframe
     if subframeID == 1:
         # It contains WN, SV clock corrections, health and accuracy
-        ephemeris.weekNumber    = bin2dec(subframeBits[60:70]) + GPS_WEEK_ROLLOVER * 1024
+        ephemeris.week          = bin2dec(subframeBits[60:70]) + GPS_WEEK_ROLLOVER * 1024
         ephemeris.ura           = bin2dec(subframeBits[72:76])
         ephemeris.health        = bin2dec(subframeBits[76:82])
         ephemeris.iodc          = bin2dec(subframeBits[82:84] + subframeBits[211:218])  # TODO Check IODC consistency
