@@ -515,7 +515,7 @@ class ChannelL1CA(Channel):
 
         # Align TOW to current bits
         self.tow = tow
-        self.tow += (self.navBitsCounter-2) * LNAV_MS_PER_BIT * 1e-3
+        self.tow += self.navBitsCounter * LNAV_MS_PER_BIT * 1e-3
 
         logging.getLogger(__name__).debug(f"CID {self.channelID} subframe {subframeID} decoded "+\
                                           f"(TOW: {tow}, current: {self.tow}).")
