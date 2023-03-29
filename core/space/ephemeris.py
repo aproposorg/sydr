@@ -17,8 +17,8 @@ class Ephemeris(ABC):
 # =============================================================================
 
 class BRDCEphemeris(Ephemeris):
-    system   : GNSSSystems
-    svid     : int
+    systemID   : GNSSSystems
+    satelliteID: int
     iode     : int
     iodc     : int
     toe      : float
@@ -48,7 +48,7 @@ class BRDCEphemeris(Ephemeris):
     
     time       : Time()
     tow        : int
-    weekNumber : int
+    week       : int
 
     subframe1Flag : bool
     subframe2Flag : bool

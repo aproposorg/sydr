@@ -35,6 +35,8 @@ class ReceiverGPSL1CA(Receiver):
 
     approxPosition : list
 
+    isEphemerisAssited : bool
+
     def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
         """
         Constructor for ReceiverGPSL1CA class.
@@ -58,6 +60,11 @@ class ReceiverGPSL1CA(Receiver):
 
         # Set satellites to track
         self.prnList = list(map(int, self.configuration.get('SATELLITES', 'include_prn').split(',')))
+
+        # Assisted GNSS
+        self.isEphemerisAssited = bool(configuration['AGNSS']['broadcast_ephemeris_enabled'])
+        if self.isEphemerisAssited:
+            self.database.importRinexNav(configuration['AGNSS']['broadcast_ephemeris_path'])
 
         # Add channels in channel manager
         channelConfig = configparser.ConfigParser()
@@ -166,7 +173,7 @@ class ReceiverGPSL1CA(Receiver):
         channel : ChannelStatus
         for channel in self.channelsStatus.values():
             if not (channel.trackFlags & TrackingFlags.TOW_DECODED) \
-                or not (channel.trackFlags & TrackingFlags.EPH_DECODED):
+                or not ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.isEphemerisAssited)):
                 return
         
         # Check current receiver state
@@ -174,6 +181,11 @@ class ReceiverGPSL1CA(Receiver):
             if self.clock < self.nextMeasurementTime:
                 # Not yet time to compute measusurement
                 return
+            
+        # Check if ephemeris are provided from external source
+        if self.isEphemerisAssited:
+            for satellite in self.satelliteDict.values():
+                satellite.ephemeris = self.database.fetchBRDC(self.clock, satellite.systemID, satellite.satelliteID)
 
         # Find earliest signal
         maxTOW = -1
@@ -207,7 +219,8 @@ class ReceiverGPSL1CA(Receiver):
         # Compute GNSS measurements
         gnssMeasurementsList = []
         for channel in self.channelsStatus.values():
-            satellite : Satellite = self.satelliteDict[channel.satelliteID]
+            satellite : Satellite 
+            satellite = self.satelliteDict[channel.satelliteID]
             
             # Compute transmission time
             relativeTime = (earliestChannel.timeSinceTOW - channel.timeSinceTOW) * 1e-3

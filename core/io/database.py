@@ -64,7 +64,7 @@ class DatabaseHandler:
         """ 
         """
 
-        logging.getLogger(__name__).info(f"Writting results to database.")
+        logging.getLogger(__name__).info(f"Committing to database.")
 
         for table, inserts in self.dictBuffer.items(): 
             for data in inserts: 
@@ -237,12 +237,12 @@ class DatabaseHandler:
 
         sqlstr = """CREATE TABLE IF NOT EXISTS gpsbrdc (
                         id INTEGER PRIMARY KEY,
-                        system TEXT,
-                        svid INTEGER,
+                        system_id TEXT,
+                        satellite_id INTEGER,
                         datetime TEXT,
                         ura INTEGER,
                         health INTEGER,
-                        weeknumber INTEGER,
+                        week INTEGER,
                         iode INTEGER,
                         iodc INTEGER,
                         toe INTEGER,
@@ -268,7 +268,7 @@ class DatabaseHandler:
                         iDot FLOAT
                         );
                     """
-        self.columns["gpsbrdc"] = ["id", "system", "svid", "datetime", "ura", "health", "weeknumber", "iode", "iodc", "toe", "toc", "tgd", \
+        self.columns["gpsbrdc"] = ["id", "system_id", "satellite_id", "datetime", "ura", "health", "week", "iode", "iodc", "toe", "toc", "tgd", \
             "af2", "af1", "af0", "ecc", "sqrtA", "crs", "deltan", "m0", "cuc", "cus", "cic", "omega0", "cis", \
             "i0", "crc", "omega", "omegaDot", "iDot"]
         self.cursor.execute(sqlstr)
@@ -285,15 +285,15 @@ class DatabaseHandler:
         # Add entries
         data = {}
         for key, satellite in nav.satelliteDict.items():
-            for ephemeris in satellite.ephemeris:
+            for ephemeris in satellite:
                 data = {}
-                data["svid"]       = ephemeris.svid
-                data["system"]     = ephemeris.system
+                data["satellite_id"]= ephemeris.satelliteID
+                data["system_id"]   = ephemeris.systemID
                 data["datetime"]   = ephemeris.time
                 data["ura"]        = ephemeris.ura   
                 data["iode"]       = ephemeris.iode    
                 data["iodc"]       = ephemeris.iodc    
-                data["weeknumber"] = ephemeris.weekNumber
+                data["week"]       = ephemeris.week
                 data["toe"]        = ephemeris.toe     
                 data["toc"]        = ephemeris.toc     
                 data["tgd"]        = ephemeris.tgd     
@@ -332,7 +332,7 @@ class DatabaseHandler:
 
     def fetchBRDC(self, time:Time, system:GNSSSystems, svid:int):
 
-        str = f"SELECT * FROM gpsbrdc WHERE svid={svid} AND system='{system}';"
+        str = f"SELECT * FROM gpsbrdc WHERE satellite_id={svid} AND system_id='{system}';"
         fetchedData = self.cursor.execute(str).fetchall()
 
         idx = 0
@@ -346,12 +346,12 @@ class DatabaseHandler:
             raise IndexError("No broadcast ephemeris found in database.")
 
         ephemeris            = BRDCEphemeris()
-        ephemeris.system     = GNSSSystems[data[1]]
-        ephemeris.svid       = data[2]
+        ephemeris.systemID   = GNSSSystems[data[1]]
+        ephemeris.satelliteID= data[2]
         ephemeris.time       = fromDatetime(datetime.strptime(data[3], ("%Y-%m-%d %H:%M:%S.%f")))
         ephemeris.ura        = data[4]
         ephemeris.health     = data[5]
-        ephemeris.weekNumber = data[6]
+        ephemeris.week       = data[6]
         ephemeris.iode       = data[7]
         ephemeris.iodc       = data[8]
         ephemeris.toe        = data[9]

@@ -9,8 +9,8 @@ from core.utils.enumerations import GNSSSystems
 
 class Satellite(ABC):
 
-    system      : GNSSSystems
-    svid        : int
+    systemID    : GNSSSystems
+    satelliteID : int
     ephemeris   : list
     navMessage  : dict
 
@@ -24,8 +24,8 @@ class Satellite(ABC):
 
     def __init__(self, system:GNSSSystems, svid:int):
         
-        self.system = system
-        self.svid = svid
+        self.systemID = system
+        self.satelliteID = svid
         self.navMessages  = {}
 
         self.isTOWDecoded = False
