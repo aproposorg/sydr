@@ -62,7 +62,7 @@ class ReceiverGPSL1CA(Receiver):
         self.prnList = list(map(int, self.configuration.get('SATELLITES', 'include_prn').split(',')))
 
         # Assisted GNSS
-        self.isEphemerisAssited = bool(configuration['AGNSS']['broadcast_ephemeris_enabled'])
+        self.isEphemerisAssited = eval(configuration['AGNSS']['broadcast_ephemeris_enabled'])
         if self.isEphemerisAssited:
             self.database.importRinexNav(configuration['AGNSS']['broadcast_ephemeris_path'])
 
