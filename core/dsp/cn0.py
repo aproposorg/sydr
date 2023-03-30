@@ -16,14 +16,16 @@ def CN0_NWPR(iPrompt:float, qPrompt:float, nbPrompt):
 
 # =====================================================================================================================
 
-def NWPR(iPrompt:np.array, qPrompt:np.array):
+def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:float):
     """
     Narrow-band Wide-band Power Ratio (NWPR) estimation. I/Q prompt are assumed free of bit transition.
     See reference [Borre, 2023] for definition.
 
     Args:
-        iPrompt (np.array): In-Phase Prompt correlator results.
-        qPrompt (np.array): Quadraphase Prompt corrector results.
+        iPromptSum (float): Sum of In-Phase Prompt correlator results.
+        qPromptSum (float): Sum of Quadraphase Prompt correlator results.
+        iPromptSum2 (float): Sum of squares of In-Phase Prompt correlator results.
+        qPromptSum2 (float): Sum of squares of Quadraphase Prompt correlator results.
 
     Return: 
         normalisedPower (float): Normalised Power Ratio.
@@ -33,10 +35,10 @@ def NWPR(iPrompt:np.array, qPrompt:np.array):
     """
 
     # Narrow-Band Power (NBP) 
-    nbp = np.sum(iPrompt)**2 + np.sum(qPrompt)**2
+    nbp = iPromptSum**2 + qPromptSum**2
 
     # Wide-Band Power (WBP)
-    wbp = np.sum(np.square(iPrompt)) + np.sum(np.square(qPrompt))
+    wbp = iPromptSum2 + qPromptSum2
     
     # Normalised Power (NP)
     normalisedPower = nbp / wbp
