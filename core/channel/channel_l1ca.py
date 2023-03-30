@@ -236,8 +236,8 @@ class ChannelL1CA(Channel):
         self.trackFlags = TrackingFlags.UNKNOWN
 
         self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
-        #self.correlatorsBuffer = np.empty((self.maxSizeCorrelatorBuffer, len(self.track_correlatorsSpacing)*2))
-        #self.correlatorsBuffer[:, :] = 0.0
+        self.correlatorsBuffer = np.empty((self.maxSizeCorrelatorBuffer, len(self.track_correlatorsSpacing)*2))
+        self.correlatorsBuffer[:, :] = 0.0
 
         return
     
@@ -347,12 +347,33 @@ class ChannelL1CA(Channel):
         self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
         self.NCO_remainingCarrier %= (2*np.pi)
 
-        #self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
+        self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
+
+        # Check coherent integration
+        if self.codeCounter > self.track_coherentIntegration:
+            iEarly = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_I_EARLY])
+            qEarly = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_Q_EARLY])
+            iPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_I_PROMPT])
+            qPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_Q_PROMPT])
+            iLate = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_I_LATE])
+            qLate = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+                                            self.IDX_Q_LATE])
+        else:
+            iEarly  = correlatorResults[0]
+            qEarly  = correlatorResults[1]
+            iPrompt = correlatorResults[2]
+            qPrompt = correlatorResults[3]
+            iLate   = correlatorResults[4]
+            qLate   = correlatorResults[5]
         
         # Delay Lock Loop 
         self.NCO_code, self.NCO_codeError = DLL_NNEML(
-            iEarly=correlatorResults[0], qEarly=correlatorResults[1], 
-            iLate=correlatorResults[4], qLate=correlatorResults[5],
+            iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate,
             NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
             tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
         # Update NCO code frequency
@@ -360,7 +381,7 @@ class ChannelL1CA(Channel):
         
         # Phase Lock Loop
         self.NCO_carrier, self.NCO_carrierError = PLL_costa(
-            iPrompt=correlatorResults[2], qPrompt=correlatorResults[3],
+            iPrompt=iPrompt, qPrompt=qPrompt, 
             NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
             tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
         # Update NCO carrier frequency
