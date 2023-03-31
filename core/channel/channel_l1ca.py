@@ -348,21 +348,29 @@ class ChannelL1CA(Channel):
         self.NCO_remainingCarrier %= (2*np.pi)
 
         self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
+        self.iPrompt_sum += correlatorResults[2]
+        self.qPrompt_sum += correlatorResults[3]
+        self.iPrompt_sum2 += correlatorResults[2]
+        self.qPrompt_sum2 += correlatorResults[3]
+        self.nbPrompt += 1
 
         # Check coherent integration
-        if self.codeCounter > self.track_coherentIntegration:
-            iEarly = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+        runLoopDiscrimators = False
+        if self.nbPrompt >= self.track_coherentIntegration and self.track_coherentIntegration > 0 \
+            and self.trackFlags & TrackingFlags.BIT_SYNC:
+            iEarly  = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_I_EARLY])
-            qEarly = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+            qEarly  = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_Q_EARLY])
-            iPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+            iPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_I_PROMPT])
-            qPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+            qPrompt = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_Q_PROMPT])
-            iLate = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+            iLate   = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_I_LATE])
-            qLate = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration-1 : self.nbPrompt, 
+            qLate   = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_Q_LATE])
+            runLoopDiscrimators = True
         else:
             iEarly  = correlatorResults[0]
             qEarly  = correlatorResults[1]
@@ -370,22 +378,20 @@ class ChannelL1CA(Channel):
             qPrompt = correlatorResults[3]
             iLate   = correlatorResults[4]
             qLate   = correlatorResults[5]
-        
-        # Delay Lock Loop 
-        self.NCO_code, self.NCO_codeError = DLL_NNEML(
-            iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate,
-            NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
-            tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
-        # Update NCO code frequency
-        self.codeFrequency = GPS_L1CA_CODE_FREQ - self.NCO_code
-        
-        # Phase Lock Loop
-        self.NCO_carrier, self.NCO_carrierError = PLL_costa(
-            iPrompt=iPrompt, qPrompt=qPrompt, 
-            NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
-            tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
-        # Update NCO carrier frequency
-        self.carrierFrequency = self.initialFrequency + self.NCO_carrier
+            runLoopDiscrimators = False
+
+        if runLoopDiscrimators or self.codeCounter < 5:
+            # Delay Lock Loop 
+            self.NCO_code, self.NCO_codeError = DLL_NNEML(
+                iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate,
+                NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
+                tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
+            
+            # Phase Lock Loop
+            self.NCO_carrier, self.NCO_carrierError = PLL_costa(
+                iPrompt=iPrompt, qPrompt=qPrompt, 
+                NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
+                tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
 
         # Check if bit sync
         iPrompt = correlatorResults[2]
@@ -408,13 +414,10 @@ class ChannelL1CA(Channel):
         self.trackFlags |= TrackingFlags.CODE_LOCK
         self.iPrompt = iPrompt
         self.qPrompt = qPrompt
-        self.iPrompt_sum += correlatorResults[2]
-        self.qPrompt_sum += correlatorResults[3]
-        self.iPrompt_sum2 += correlatorResults[2]
-        self.qPrompt_sum2 += correlatorResults[3]
-        self.nbPrompt += 1
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
+        self.codeFrequency = GPS_L1CA_CODE_FREQ - self.NCO_code
+        self.carrierFrequency = self.initialFrequency + self.NCO_carrier
         self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
 
