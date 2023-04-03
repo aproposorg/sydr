@@ -221,11 +221,11 @@ class ChannelL1CA(Channel):
 
         self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
             loopNoiseBandwidth=float(configuration['dll_noise_bandwidth']),
-            dampingRatio=float(configuration['dll_dumping_ratio']),
+            dampingRatio=float(configuration['dll_damping_ratio']),
             loopGain=float(configuration['dll_loop_gain']))
         self.track_pll_tau1, self.track_pll_tau2 = LoopFiltersCoefficients(
             loopNoiseBandwidth=float(configuration['pll_noise_bandwidth']),
-            dampingRatio=float(configuration['pll_dumping_ratio']),
+            dampingRatio=float(configuration['pll_damping_ratio']),
             loopGain=float(configuration['pll_loop_gain']))
         self.track_dll_pdi = float(configuration['dll_pdi'])
         self.track_pll_pdi = float(configuration['pll_pdi'])
@@ -355,8 +355,13 @@ class ChannelL1CA(Channel):
         self.nbPrompt += 1
 
         # Check coherent integration
-        runLoopDiscrimators = False
-        if self.nbPrompt >= self.track_coherentIntegration and self.track_coherentIntegration > 0 \
+        if self.track_coherentIntegration == 0:
+            runLoopDiscrimators = True
+        else:
+            runLoopDiscrimators = False
+        
+        if self.track_coherentIntegration > 0 \
+            and self.nbPrompt % self.track_coherentIntegration == 0 \
             and self.trackFlags & TrackingFlags.BIT_SYNC:
             iEarly  = np.mean(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
                                             self.IDX_I_EARLY])
@@ -378,20 +383,19 @@ class ChannelL1CA(Channel):
             qPrompt = correlatorResults[3]
             iLate   = correlatorResults[4]
             qLate   = correlatorResults[5]
-            runLoopDiscrimators = False
-
-        if runLoopDiscrimators or self.codeCounter < 5:
+        
+        if runLoopDiscrimators or self.codeCounter < self.MIN_CONVERGENCE_TIME:
             # Delay Lock Loop 
             self.NCO_code, self.NCO_codeError = DLL_NNEML(
                 iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate,
                 NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
                 tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
             
-            # Phase Lock Loop
-            self.NCO_carrier, self.NCO_carrierError = PLL_costa(
-                iPrompt=iPrompt, qPrompt=qPrompt, 
-                NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
-                tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
+        # Phase Lock Loop
+        self.NCO_carrier, self.NCO_carrierError = PLL_costa(
+            iPrompt=iPrompt, qPrompt=qPrompt, 
+            NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
+            tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
 
         # Check if bit sync
         iPrompt = correlatorResults[2]

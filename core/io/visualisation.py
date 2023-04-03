@@ -98,11 +98,13 @@ class Visualisation:
         @pn.depends(checkboxes_prn.param.value)
         def tabs(channelID):
             
-            acqLayout   = self._getAcquisitionLayout(channelID)
-            trackLayout = self._getTrackingLayout(channelID)
-            measLayout  = self._getGNSSMeasurementLayout(channelID)
+            configLayout = self._getConfigurationLayout()
+            acqLayout    = self._getAcquisitionLayout(channelID)
+            trackLayout  = self._getTrackingLayout(channelID)
+            measLayout   = self._getGNSSMeasurementLayout(channelID)
             
             return pn.Tabs(
+                ('Configuration', configLayout),
                 ('Acquisition', acqLayout),
                 ('Tracking', trackLayout),
                 ('GNSS Measurements', measLayout)
@@ -110,6 +112,30 @@ class Visualisation:
         layout = pn.Column(selections, tabs)
 
         return layout
+    
+    # -------------------------------------------------------------------------
+
+    def _getConfigurationLayout(self):
+
+        # Parameter table
+        tableList = []
+        for section in self.channelConfig.sections():
+            titleParameters = Div(text=f"<h3>{section} configuration<h3>")
+            parameters = [key for key, value in self.channelConfig.items(section)]
+            values = [value for key, value in self.channelConfig.items(section)]
+            dfParameters = pd.DataFrame({
+                'Parameters' : parameters,
+                'Values' : values
+            })
+            source = ColumnDataSource(dfParameters)
+            columns = [
+                TableColumn(field="Parameters", title="Parameters"),
+                TableColumn(field="Values", title="Values")]
+            tableParameters = DataTable(source=source, columns=columns)
+            
+            tableList.append([titleParameters, tableParameters])
+
+        return layout(tableList)
     
     # -------------------------------------------------------------------------
 
@@ -495,6 +521,9 @@ class Visualisation:
         # Retrieve from database
         positionList = self.database.fetchPositions()
 
+        if not positionList:
+            return
+
         refpos = pm.ecef2geodetic( \
             self.referencePosition[0], \
             self.referencePosition[1], \
@@ -536,6 +565,8 @@ class Visualisation:
 
         # Retrieve from database
         positionList = self.database.fetchPositions()
+        if not positionList:
+            return
 
         recpos = []
         recclk = []
