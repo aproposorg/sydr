@@ -1,5 +1,4 @@
 
-
 import numpy as np
 
 # =====================================================================================================================
@@ -19,45 +18,45 @@ def generateReplica(time:np.array, nbSamples:int, carrierFrequency:float, remCar
 
 def getCorrelator(iSignal:np.array, qSignal:np.array, correlatorSpacing:float, code:np.array, remainingCode:float,\
                   codeStep:float, nbSamples:int):
-        """
-        Return the I and Q correlation of an RF signal with a sampled code.
-        """
+    """
+    Return the I and Q correlation of an RF signal with a sampled code.
+    """
 
-        idx = np.ceil(
-              np.linspace(remainingCode + correlatorSpacing, nbSamples * codeStep + remainingCode + correlatorSpacing, \
-                nbSamples, endpoint=False)).astype(int)
-        tmpCode = code[idx]
+    idx = np.ceil(
+            np.linspace(remainingCode + correlatorSpacing, nbSamples * codeStep + remainingCode + correlatorSpacing, \
+            nbSamples, endpoint=False)).astype(int)
+    tmpCode = code[idx]
 
-        iCorr  = np.sum(tmpCode * iSignal)
-        qCorr  = np.sum(tmpCode * qSignal)
+    iCorr  = np.sum(tmpCode * iSignal)
+    qCorr  = np.sum(tmpCode * qSignal)
 
-        return iCorr, qCorr
+    return iCorr, qCorr
 
 # =====================================================================================================================
 
 def LoopFiltersCoefficients(loopNoiseBandwidth:float, dampingRatio:float, loopGain:float):
-        """
-        Return the loop filters coefficients. See reference [Borre, 2007].
+    """
+    Return the loop filters coefficients. See reference [Borre, 2007].
 
-        Args:
-            loopNoiseBandwidth (float): Loop Noise Bandwith parameter
-            dampingRatio (float): Damping Ratio parameter, a.k.a. zeta
-            loopGain (float): Loop Gain parameter
-        
-        Returns
-            tau1 (float): Loop filter coefficient (1st)
-            tau2 (float): Loop filter coefficient (2nd)
+    Args:
+        loopNoiseBandwidth (float): Loop Noise Bandwith parameter
+        dampingRatio (float): Damping Ratio parameter, a.k.a. zeta
+        loopGain (float): Loop Gain parameter
+    
+    Returns
+        tau1 (float): Loop filter coefficient (1st)
+        tau2 (float): Loop filter coefficient (2nd)
 
-        Raises:
-            None
-        """
+    Raises:
+        None
+    """
 
-        Wn = loopNoiseBandwidth * 8.0 * dampingRatio / (4.0 * dampingRatio**2 +1)
-        
-        tau1 = loopGain / Wn**2
-        tau2 = 2.0 * dampingRatio / Wn
+    Wn = loopNoiseBandwidth * 8.0 * dampingRatio / (4.0 * dampingRatio**2 +1)
+    
+    tau1 = loopGain / Wn**2
+    tau2 = 2.0 * dampingRatio / Wn
 
-        return tau1, tau2
+    return tau1, tau2
 
 # =====================================================================================================================
 
@@ -116,41 +115,186 @@ def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequenc
 
 # =====================================================================================================================
 
-def DLL_NNEML(iEarly:float, qEarly:float, iLate:float, qLate:float, NCO_code:float, NCO_codeError:float, \
-              tau1:float, tau2:float, pdi:float):
+def DLL_NNEML(iEarly:float, qEarly:float, iLate:float, qLate:float):
     """
     Delay Lock Loop implementation, using a Normalize Noncoherent Early Minus Late (NNEML) discriminator.
     See reference [Borre, 2023], p.65
     """
 
-    newCodeError = (np.sqrt(iEarly**2 + qEarly**2) - np.sqrt(iLate**2 + qLate**2)) / \
-                   (np.sqrt(iEarly**2 + qEarly**2) + np.sqrt(iLate**2 + qLate**2))
-        
-    # Update NCO code
-    NCO_code += tau2 / tau1 * (newCodeError - NCO_codeError)
-    NCO_code += pdi / tau1 * newCodeError
+    codeError = (np.sqrt(iEarly**2 + qEarly**2) - np.sqrt(iLate**2 + qLate**2)) / \
+                (np.sqrt(iEarly**2 + qEarly**2) + np.sqrt(iLate**2 + qLate**2))
 
-    NCO_codeError = newCodeError
-
-    return NCO_code, NCO_codeError
+    return codeError
 
 # =====================================================================================================================
 
-def PLL_costa(iPrompt:float, qPrompt:float, NCO_carrier:float, NCO_carrierError:float, 
-              tau1:float, tau2:float, pdi:float):
+def PLL_costa(iPrompt:float, qPrompt:float):
     """
     Phase Lock Loop implementation, using a Costas discriminator. 
     See reference [Borre, 2023], p.59
     """
 
-    newCarrierError = np.arctan(qPrompt / iPrompt) / 2.0 / np.pi
+    phaseError = np.arctan(qPrompt / iPrompt) / 2.0 / np.pi
+
+    return phaseError
+
+# =====================================================================================================================
+
+def FLL_ATAN2(iPrompt:float, qPrompt:float, iPromptPrev:float, qPromptPrev:float, deltaT:float):
+
+    frequencyError = np.arctan2(iPrompt * iPromptPrev + qPrompt * qPromptPrev,
+                                iPromptPrev * qPrompt - iPrompt*qPromptPrev)
+    frequencyError /= deltaT 
+
+    return frequencyError
+
+# =====================================================================================================================
+
+def BorreLoopFilter(input:float, memory:float, tau1:float, tau2:float, pdi:float):
 
     # Update NCO frequency
-    NCO_carrier += tau2 / tau1 * (newCarrierError - NCO_carrierError)
-    NCO_carrier += pdi / tau1 * newCarrierError
+    output  = tau2 / tau1 * (input - memory)
+    output += pdi / tau1 * input
 
-    NCO_carrierError = newCarrierError
+    return output
 
-    return NCO_carrier, NCO_carrierError
+# =====================================================================================================================
+
+def firstOrderDLF(input, w0):
+    """
+    Perform a first order Digital Loop Filter (DLF).
+    See [Kaplan, 2006], p181.
+    """
+
+    output = input * w0
+
+    return output
+
+# =====================================================================================================================
+
+def secondOrferDLF(input, w0, a2, integrationTime, memory):
+    """
+    """
+
+    c1 = w0**2
+    c2 = a2 * w0
+
+    # First branch
+    _memoryUpdate = input * c1 * integrationTime
+    output = (_memoryUpdate + memory) / 2
+    memory += _memoryUpdate # TODO is it really an addition or we replace the previous memory?
+
+    # Second branch
+    output += input * c2
+
+    return output
+
+# =====================================================================================================================
+
+def thirdOrderDLF(input:float, w0:float, a3:float, b3:float, integrationTime:float, memory1:float, memory2:float):
+    """
+    """
+
+    c1 = w0**3
+    c2 = a3 * w0**2
+    c3 = b3 * w0
+
+    # First branch
+    _memoryUpdate = input * c1 * integrationTime
+    output = (_memoryUpdate + memory1) / 2
+    memory1 += _memoryUpdate
+
+    # Second branch
+    _memoryUpdate = (output + input * c2) * integrationTime
+    output = (_memoryUpdate + memory2) / 2
+    memory2 += _memoryUpdate
+
+    # Third branch
+    output += input * c3
+
+    return output, memory1, memory2
+
+# =====================================================================================================================
+
+def FLLassistedPLL_2ndOrder(phaseInput:float, freqInput:float, w0f:float, w0p:float, a2:float, integrationTime:float,
+                            velMemory:float):
+    """
+    Perform a Digital Loop Filter (DLF) for frequency tracking, using a 2nd order PLL assisted by 1st order FLL.
+    See [Kaplan, 2006], p180-182.
+
+    Args:
+        phaseInput (float): Phase error input
+        freqInput (float): Frequency error input
+        w0f (float): Loop filter natural radian frequency for FLL
+        w0p (float): Loop filter natural radian frequency for PLL
+        a2 (float): 2nd order DLF constant
+        integrationTime (float): Coherent integration time 
+        velMemory (float): Velocity accumulator memory
+
+    Returns:
+        output (float): Result from the loop filter
+        velMemory (float): Updated velocity accumulator memory
+
+    Raises:
+        None
+
+    """
+
+    # 2nd order PLL, 1st order FLL
+    # First branch
+    _memoryUpdate = (phaseInput * w0p**2 + freqInput * w0f) * integrationTime
+    output = (_memoryUpdate + velMemory) / 2
+    velMemory += _memoryUpdate
+    
+    # Second branch
+    output += phaseInput * a2 * w0p
+
+    return output, velMemory
+
+# =====================================================================================================================
+
+def FLLassistedPLL_3rdOrder(phaseInput:float, freqInput:float, w0f:float, w0p:float, a2:float, a3:float, b3:float, 
+                            integrationTime:float, velMemory:float, accMemory:float):
+    """
+    Perform a Digital Loop Filter (DLF) for frequency tracking, using a 3rd order PLL assisted by 2nd order FLL.
+    See [Kaplan, 2006], p180-182.
+
+    Args:
+        phaseInput (float): Phase error input
+        freqInput (float): Frequency error input
+        w0f (float): Loop filter natural radian frequency for FLL
+        w0p (float): Loop filter natural radian frequency for PLL
+        a2 (float): 2nd order DLF constant
+        a3 (float): 3rd order DLF constant
+        b3 (float): 3rd order DLF constant
+        integrationTime (float): Coherent integration time 
+        velMemory (float): Velocity accumulator memory
+        accMemory (float): Acceleration accumulator memory
+
+    Returns:
+        output (float): Result from the loop filter
+        velMemory (float): Updated velocity accumulator memory
+        accMemory (float): Updated acceleration accumulator memory
+
+    Raises:
+        None
+
+    """
+
+    # 3rd order PLL, 2nd order FLL
+    # First branch
+    _memoryUpdate = (phaseInput * w0p**3 + freqInput * w0f**2) * integrationTime
+    output = (_memoryUpdate + accMemory) / 2
+    accMemory += _memoryUpdate
+    
+    # Second branch
+    _memoryUpdate = (output + (phaseInput * a3 * w0p**2 + freqInput * a2 * w0f)) * integrationTime
+    output = (_memoryUpdate + velMemory) / 2
+    velMemory += _memoryUpdate
+
+    # Third branch
+    output += phaseInput * b3 * w0p
+
+    return output, accMemory, velMemory
 
 # =====================================================================================================================

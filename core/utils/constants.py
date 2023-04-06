@@ -1,9 +1,11 @@
 
-
+# =====================================================================================================================
 # Generic constants
 PI                 = 3.1415926535898 # GPS' definition of Pi  
 SPEED_OF_LIGHT     = 299792458.0 
 
+# =====================================================================================================================
+# GNSS TIME AND GEODESY
 # Time 
 SECONDS_PER_DAY = 86400.0
 GPS_WEEK_ROLLOVER = 2
@@ -69,3 +71,11 @@ GPS_L1CA_CARRIER_FREQ = 1575.42e6  # [Hz] Carrier frequency in [MHz]
 GPS_L1CA_CODE_SIZE_BITS = 1023     # Number bit per C/A code    
 GPS_L1CA_CODE_FREQ = 1.023e6       # [Hz] C/A code frequency 
 GPS_L1CA_CODE_MS = 1               # Number of code per millisecond of signal
+
+# =====================================================================================================================
+# DIGITAL LOOP FILTERS
+
+W0_BANDWIDTH_SCALE = 0.7845 # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_A2        = 1.414  # 2nd order DLF scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_A3        = 1.1    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_B3        = 2.4    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.

@@ -12,7 +12,7 @@ import logging
 
 from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
-from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients
+from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from core.dsp.cn0 import NWPR
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE, GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS
@@ -386,16 +386,25 @@ class ChannelL1CA(Channel):
         
         if runLoopDiscrimators or self.codeCounter < self.MIN_CONVERGENCE_TIME:
             # Delay Lock Loop 
-            self.NCO_code, self.NCO_codeError = DLL_NNEML(
-                iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate,
-                NCO_code=self.NCO_code, NCO_codeError=self.NCO_codeError, 
-                tau1=self.track_dll_tau1, tau2=self.track_dll_tau2, pdi=self.track_dll_pdi)
+            codeError = DLL_NNEML(iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate)
+            # Loop Filter
+            self.NCO_code += BorreLoopFilter(codeError, self.NCO_codeError, self.track_dll_tau1, 
+                                             self.track_dll_tau2, self.track_dll_pdi)
+            self.NCO_codeError = codeError
             
         # Phase Lock Loop
-        self.NCO_carrier, self.NCO_carrierError = PLL_costa(
-            iPrompt=iPrompt, qPrompt=qPrompt, 
-            NCO_carrier=self.NCO_carrier, NCO_carrierError=self.NCO_carrierError,
-            tau1=self.track_pll_tau1, tau2=self.track_pll_tau2, pdi=self.track_pll_pdi)
+        phaseError = PLL_costa(iPrompt=iPrompt, qPrompt=qPrompt)
+        # Loop Filter
+        self.NCO_carrier += BorreLoopFilter(phaseError, self.NCO_carrierError, self.track_pll_tau1, 
+                                             self.track_pll_tau2, self.track_pll_pdi)
+        self.NCO_carrierError = phaseError
+
+        if self.codeCounter % 2 == 0 and self.codeCounter > 0:
+            # Frequency Lock Loop
+            frequencyError = FLL_ATAN2(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 2e-3)
+            #print(frequencyError)
+        else:
+            self.frequencyError = []
 
         # Check if bit sync
         iPrompt = correlatorResults[2]
