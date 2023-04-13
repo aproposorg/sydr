@@ -8,7 +8,7 @@ The software is still at the very early development stages, with limited testing
 
 # Requirements
 
-The software has been developed and tested on Python 3.8 on a Windows Linux Subsytem (WSL) version 2. 
+The software has been developed and tested on Python 3.11 on a Windows Linux Subsytem (WSL) version 2. 
 It is recommand to create a python virtual environement after cloning the directory. 
 
 `python3 -m venv env`
