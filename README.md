@@ -19,6 +19,9 @@ To install the different libraries required, use the `pip` command line with the
 
 `pip install -r requirements.txt`
 
+To create a directory hosting the output results
+`mkdir .results`
+
 # OS support
 
 The design had been tested in WSL2 as well as x86 Ubuntu 20.04.5 LTS
