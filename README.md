@@ -19,6 +19,17 @@ To install the different libraries required, use the `pip` command line with the
 
 `pip install -r requirements.txt`
 
+# OS support
+
+The design had been tested in WSL2 as well as x86 Ubuntu 20.04.5 LTS
+### Mac User
+This design may required modification in order to run in MacOS and some Unix system. This is due to `._get_value()` method of the semaphore in Python's multiprocessing module on some unix system has not been implemented. You will come across with error such as:
+```bash
+return self._maxsize - self._sem._semlock._get_value()
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+NotImplementedError
+```
+
 # Documentation 
 
 TBD
