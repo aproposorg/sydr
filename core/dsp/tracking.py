@@ -1,6 +1,8 @@
 
 import numpy as np
 
+from core.utils.constants import PI, TWO_PI, HALF_PI
+
 # =====================================================================================================================
 
 def generateReplica(time:np.array, nbSamples:int, carrierFrequency:float, remCarrier:float, ):
@@ -134,7 +136,8 @@ def PLL_costa(iPrompt:float, qPrompt:float):
     See reference [Borre, 2023], p.59
     """
 
-    phaseError = np.arctan(qPrompt / iPrompt) / 2.0 / np.pi
+    phaseError  = np.arctan(qPrompt / iPrompt) 
+    phaseError /= TWO_PI
 
     return phaseError
 
@@ -143,10 +146,34 @@ def PLL_costa(iPrompt:float, qPrompt:float):
 def FLL_ATAN2(iPrompt:float, qPrompt:float, iPromptPrev:float, qPromptPrev:float, deltaT:float):
     
     frequencyError = np.arctan2(iPromptPrev * qPrompt - qPromptPrev * iPrompt,
-                                iPromptPrev * iPrompt + qPromptPrev * qPrompt) / 2.0 / np.pi
-    frequencyError /= deltaT 
+                                iPromptPrev * iPrompt + qPromptPrev * qPrompt) / deltaT
+    frequencyError /= TWO_PI
 
     return frequencyError
+
+# =====================================================================================================================
+
+def FLL_ATAN(iPrompt:float, qPrompt:float, iPromptPrev:float, qPromptPrev:float, deltaT:float):
+
+    frequencyError = np.arctan(qPrompt / iPrompt) - np.arctan(qPromptPrev / iPromptPrev)
+    if np.isnan(frequencyError):
+        frequencyError = 0.0
+    
+    frequencyError = phase_unwrap(frequencyError) / deltaT
+    frequencyError /= TWO_PI
+
+    return frequencyError
+
+# =====================================================================================================================
+
+def phase_unwrap(phase):
+
+    if(phase >= HALF_PI):
+        return phase - PI
+    if(phase <= -HALF_PI):
+        return phase + PI
+    else:
+        return phase
 
 # =====================================================================================================================
 
@@ -243,7 +270,7 @@ def FLLassistedPLL_2ndOrder(phaseInput:float, freqInput:float, w0f:float, w0p:fl
     # 2nd order PLL, 1st order FLL
     # First branch
     _memoryUpdate = (phaseInput * w0p**2 + freqInput * w0f) * integrationTime
-    output = (_memoryUpdate + velMemory) / 2
+    output = (_memoryUpdate + velMemory)
     velMemory = _memoryUpdate
     
     # Second branch
@@ -284,12 +311,12 @@ def FLLassistedPLL_3rdOrder(phaseInput:float, freqInput:float, w0f:float, w0p:fl
     # 3rd order PLL, 2nd order FLL
     # First branch
     _memoryUpdate = (phaseInput * w0p**3 + freqInput * w0f**2) * integrationTime
-    output = (_memoryUpdate + accMemory) / 2
+    output = (_memoryUpdate + accMemory)
     accMemory = _memoryUpdate
     
     # Second branch
     _memoryUpdate = (output + (phaseInput * a3 * w0p**2 + freqInput * a2 * w0f)) * integrationTime
-    output = (_memoryUpdate + velMemory) / 2
+    output = (_memoryUpdate + velMemory)
     velMemory = _memoryUpdate
 
     # Third branch

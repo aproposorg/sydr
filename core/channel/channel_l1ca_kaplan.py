@@ -11,15 +11,14 @@ import numpy as np
 import logging
 
 from core.channel.channel_l1ca import ChannelL1CA
-from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
+from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2, FLL_ATAN
 from core.dsp.tracking import secondOrferDLF, FLLassistedPLL_2ndOrder, FLLassistedPLL_3rdOrder
-from core.dsp.cn0 import CN0_Beaulieu
-from core.dsp.lockindicator import PLL_Lock_Borre, FLL_Lock_Borre
+from core.dsp.lockindicator import PLL_Lock_Borre, FLL_Lock_Borre, CN0_Beaulieu
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
-from core.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags
+from core.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags, LoopLockState
 from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
-from core.utils.constants import W0_BANDWIDTH_SCALE, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
+from core.utils.constants import W0_BANDWIDTH_1, W0_BANDWIDTH_2, W0_BANDWIDTH_3, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 
 # =====================================================================================================================
@@ -42,8 +41,37 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         self.pll_lock_iprompt_sum = 0.0
         self.pll_lock_qprompt_sum = 0.0
 
+        self.fllLockState = LoopLockState.UNKNOWN
+        self.pllLockState = LoopLockState.UNKNOWN
+        self.dllLockState = LoopLockState.UNKNOWN
+
+        self.fllLockIndicator = 0.0
+        self.fllLockThreshold_wide = 0.5
+        self.fllLockThreshold_narrow = 0.9
+        self.pllLockIndicator = 0.0
+        self.pllLockThreshold_wide = 0.5
+        self.pllLockThreshold_narrow = 0.9
+
+        self.iPromptPrev = 0.0
+        self.qPromptPrev = 0.0
+
+        self.deltaT = 1e-3
+
+        self.correlatorsResultsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
+        self.correlatorsResultsAccum [:] = 0.0
+
         return
     
+    # -----------------------------------------------------------------------------------------------------------------
+    
+    def setTracking(self, configuration: dict):
+        super().setTracking(configuration)
+
+        self.fll_bandwidth_pullin = float(configuration['fll_noise_bandwidth'])
+        self.pll_noise_bandwidth = float(configuration['pll_noise_bandwidth'])
+
+        return
+
     # -----------------------------------------------------------------------------------------------------------------
 
     def runTracking(self):
@@ -135,27 +163,27 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
 
             if self.codeCounter > 1: # and self.codeCounter % 2 == 0:
                 # Frequency Lock Loop
-                fll = FLL_ATAN2(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 1e-3)
+                fll = FLL_ATAN(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 1e-3)
 
                 # self.fll, self.fll_vel_memory = secondOrferDLF(
                 #     input=frequencyError, w0=self.fll_noise_bandwidth/W0_BANDWIDTH_SCALE, a2=W0_SCALE_A2, 
                 #     integrationTime=1e-3, memory=self.fll_vel_memory)
                 
-                # carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
-                #     pll, fll, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
-                #     w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_SCALE,
-                #     a2 = W0_SCALE_A2, integrationTime=1e-3 * self.track_coherentIntegration, 
-                #     velMemory=self.fll_vel_memory)
+                carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
+                    pll, fll, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_1, 
+                    w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_2,
+                    a2 = W0_SCALE_A2, integrationTime=1e-3 * self.track_coherentIntegration, 
+                    velMemory=self.fll_vel_memory)
                 
                 # self.fll, self.fll_vel_memory, self.fll_acc_memory = FLLassistedPLL_3rdOrder(
                 #     phaseError, frequencyError, w0f=self.fll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
                 #     w0p=self.pll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
                 #     a2=W0_SCALE_A2, a3=W0_SCALE_A3, b3=W0_SCALE_B3,
                 #     integrationTime=1e-3, velMemory=self.fll_vel_memory, accMemory=self.fll_acc_memory)
-
-            # Loop Filter
-            carrierFrequencyError = BorreLoopFilter(pll, self.pll_prev, self.track_pll_tau1, 
-                                                    self.track_pll_tau2, self.track_pll_pdi)
+            else:
+                # Loop Filter
+                carrierFrequencyError = BorreLoopFilter(pll, self.pll_prev, self.track_pll_tau1, 
+                                                        self.track_pll_tau2, self.track_pll_pdi)
 
         # Check if bit sync
         iPrompt = correlatorResults[2]
@@ -170,7 +198,7 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         else:
             self.cn0_PdPnRatio += (iPrompt**2 + qPrompt**2) / (abs(iPrompt) - abs(qPrompt)) ** 2
             if self.nbPrompt == LNAV_MS_PER_BIT:
-                self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.nbPrompt, self.nbPrompt * 1e-3, self.cn0)
+                self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.nbPrompt, self.nbPrompt * 1e-3)
                 self.cn0_PdPnRatio = 0.0
 
         # Lock indicators
@@ -218,3 +246,107 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         results["fll_lock"]                = self.fll_lock
 
         return results
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runTracking(self):
+
+        # Compute correlators
+        correlatorResults = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
+                                code = self.code,
+                                samplingFrequency=self.rfSignal.samplingFrequency,
+                                carrierFrequency=self.carrierFrequency,
+                                remainingCarrier=self.NCO_remainingCarrier,
+                                remainingCode=self.NCO_remainingCode,
+                                codeStep=self.codeStep,
+                                correlatorsSpacing=self.track_correlatorsSpacing)
+        
+        # Update accumulators
+        self.correlatorsBuffer[self.nbCorrelators, :] = correlatorResults[:]
+        self.correlatorsResultsAccum += correlatorResults[:]
+
+        # Find parameters for filter loops
+        if self.fllLockState == LoopLockState.UNKNOWN and self.pllLockState == LoopLockState.UNKNOWN:
+            self.fllLockState = LoopLockState.PULL_IN # Starting state
+            self.fll_noise_bandwidth = 
+        
+        # Compute discriminators
+        fllDiscrim = self.runFrequencyDiscriminator(correlatorResults)
+
+        # Compute discriminators
+        if self.fllLockState == LoopLockState.PULL_IN:
+            pllDiscrim = 0.0
+        elif self.track_coherentIntegration > 0 \
+            and self.nbPrompt % self.track_coherentIntegration == 0 \
+            and self.trackFlags & TrackingFlags.BIT_SYNC:
+            # Coherent integration
+            fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResultsAccum)        
+        else:
+            pllDiscrim = self.runPhaseDiscriminator(correlatorResults)
+        
+        # Compute carrier frequency filter
+        carrierFreqError = self.runCarrierFilter(fllDiscrim=fllDiscrim, pllDiscrim=pllDiscrim, integrationTime=1e-3)
+
+        # Update the lock states for next loop
+        if self.fllLockIndicator >= self.fllLockThreshold_narrow \
+            and self.pllLockIndicator >= self.pllLockThreshold_narrow:
+            self.fllLockState = LoopLockState.NARROW_TRACK
+            self.pllLockState = LoopLockState.NARROW_TRACK
+        
+        if self.fllLockIndicator >= self.fllLockThreshold_wide \
+            and self.fllLockIndicator < self.fllLockThreshold_narrow:
+            self.fllLockState = LoopLockState.WIDE_TRACK
+            self.pllLockState = LoopLockState.WIDE_TRACK
+        
+        if self.fllLockIndicator <= self.fllLockThreshold_wide:
+            self.fllLockState = LoopLockState.PULL_IN
+            self.pllLockState = LoopLockState.PULL_IN
+
+        # Run loop filter
+
+        
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runFrequencyDiscriminator(self, correlatorResults):
+        """
+        """
+        discrim = FLL_ATAN(iPrompt=correlatorResults[self.IDX_I_PROMPT], iPromptPrev=self.iPromptPrev, 
+                       qPrompt=correlatorResults[self.IDX_Q_PROMPT], qPromptPrev=self.qPromptPrev, 
+                       deltaT=self.deltaT)
+        return discrim
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runPhaseDiscriminator(self, correlatorResults):
+        """
+        """
+        discrim = PLL_costa(iPrompt=correlatorResults[self.IDX_I_PROMPT], 
+                            qPrompt=correlatorResults[self.IDX_Q_PROMPT])
+        return discrim
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runCodeDiscriminator(self, correlatorResults):
+        """
+        """
+        discrim = DLL_NNEML(iEarly=correlatorResults[self.IDX_I_EARLY], 
+                            qEarly=correlatorResults[self.IDX_Q_EARLY],
+                            iLate=correlatorResults[self.IDX_I_LATE], 
+                            qLate=correlatorResults[self.IDX_Q_LATE])
+        return discrim
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runCarrierFilter(self, fllDiscrim=0.0, pllDiscrim=0.0, integrationTime=1e-3):
+
+        carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
+                    pllDiscrim, fllDiscrim, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_1, 
+                    w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_2,
+                    a2 = W0_SCALE_A2, integrationTime=integrationTime, 
+                    velMemory=self.fll_vel_memory)
+
+        return
+        
+    # -----------------------------------------------------------------------------------------------------------------

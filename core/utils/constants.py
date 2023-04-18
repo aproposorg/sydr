@@ -2,6 +2,8 @@
 # =====================================================================================================================
 # Generic constants
 PI                 = 3.1415926535898 # GPS' definition of Pi  
+HALF_PI            = PI / 2.0
+TWO_PI             = PI * 2.0
 SPEED_OF_LIGHT     = 299792458.0 
 
 # =====================================================================================================================
@@ -75,7 +77,9 @@ GPS_L1CA_CODE_MS = 1               # Number of code per millisecond of signal
 # =====================================================================================================================
 # DIGITAL LOOP FILTERS
 
-W0_BANDWIDTH_SCALE = 0.7845 # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_BANDWIDTH_1     = 0.25   # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_BANDWIDTH_2     = 0.53   # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_BANDWIDTH_3     = 0.7845 # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
 W0_SCALE_A2        = 1.414  # 2nd order DLF scale constant. See [Kaplan, 2006], p180.
 W0_SCALE_A3        = 1.1    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.
 W0_SCALE_B3        = 2.4    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.
