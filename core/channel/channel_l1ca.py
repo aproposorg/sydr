@@ -13,21 +13,23 @@ import logging
 from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
+from core.dsp.tracking import secondOrferDLF, FLLassistedPLL_2ndOrder, FLLassistedPLL_3rdOrder
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from core.dsp.cn0 import NWPR
-from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE, GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS
+from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
+from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
+from core.utils.constants import W0_BANDWIDTH_SCALE, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
 from core.signal.gnsssignal import UpsampleCode
 from core.signal.gnsssignal import GenerateGPSGoldCode
 from core.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags
-from core.utils.constants import GPS_L1CA_CODE_MS
 
 # =====================================================================================================================
 
 class ChannelL1CA(Channel):
 
-    MIN_CONVERGENCE_TIME = 0 # Number of millisecond given to tracking filters convergence, before checking bit sync
+    MIN_CONVERGENCE_TIME = 100 # Number of millisecond given to tracking filters convergence, before checking bit sync
 
     codeOffset       : int
     codeFrequency    : float
@@ -63,6 +65,9 @@ class ChannelL1CA(Channel):
     track_pll_tau1           : float
     track_pll_tau2           : float
     track_pll_pdi            : float
+    track_fll_tau1           : float
+    track_fll_tau2           : float
+    track_fll_pdi            : float
     track_requiredSamples    : int
     track_coherentIntegration: int
 
@@ -99,7 +104,7 @@ class ChannelL1CA(Channel):
 
         # Initialisation
         self.codeOffset       = 0
-        self.codeFrequency    = 0.0
+        self.codeFrequency    = GPS_L1CA_CODE_FREQ
         self.carrierFrequency = 0.0
         self.initialFrequency = 0.0
 
@@ -109,6 +114,10 @@ class ChannelL1CA(Channel):
         self.NCO_carrier          = 0.0
         self.NCO_carrierError     = 0.0
         self.NCO_remainingCarrier = 0.0
+
+        self.fll = 0.0
+        self.fll_vel_memory = 0.0
+        self.fll_acc_memory = 0.0
 
         # Save one bit length of prompt values
         self.nbPrompt     = 0
@@ -208,6 +217,11 @@ class ChannelL1CA(Channel):
 
         self.track_coherentIntegration = int(configuration['coherent_integration'])
 
+        # Coherent integration of 1 ms is the same as no coherent integration.
+        # We put it to 1 to avoid null numbers in future computations.
+        if self.track_coherentIntegration == 0:
+            self.track_coherentIntegration = 1
+
         self.track_correlatorsSpacing = [float(configuration['correlator_early']),
                                          float(configuration['correlator_prompt']),
                                          float(configuration['correlator_late'])]
@@ -227,12 +241,20 @@ class ChannelL1CA(Channel):
             loopNoiseBandwidth=float(configuration['pll_noise_bandwidth']),
             dampingRatio=float(configuration['pll_damping_ratio']),
             loopGain=float(configuration['pll_loop_gain']))
+        self.track_fll_tau1, self.track_fll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['fll_noise_bandwidth']),
+            dampingRatio=float(configuration['fll_damping_ratio']),
+            loopGain=float(configuration['fll_loop_gain']))
         self.track_dll_pdi = float(configuration['dll_pdi'])
         self.track_pll_pdi = float(configuration['pll_pdi'])
+        self.track_fll_pdi = float(configuration['fll_pdi'])
+
+        self.fll_noise_bandwidth = float(configuration['fll_noise_bandwidth'])
+        self.pll_noise_bandwidth = float(configuration['pll_noise_bandwidth'])
         
         self.codeStep = GPS_L1CA_CODE_FREQ / self.rfSignal.samplingFrequency
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
-
+        
         self.trackFlags = TrackingFlags.UNKNOWN
 
         self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
@@ -388,23 +410,46 @@ class ChannelL1CA(Channel):
             # Delay Lock Loop 
             codeError = DLL_NNEML(iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate)
             # Loop Filter
-            self.NCO_code += BorreLoopFilter(codeError, self.NCO_codeError, self.track_dll_tau1, 
-                                             self.track_dll_tau2, self.track_dll_pdi)
+            self.NCO_code = BorreLoopFilter(codeError, self.NCO_codeError, self.track_dll_tau1, 
+                                             self.track_dll_tau2, 
+                                             self.track_dll_pdi * self.track_coherentIntegration)
             self.NCO_codeError = codeError
             
         # Phase Lock Loop
         phaseError = PLL_costa(iPrompt=iPrompt, qPrompt=qPrompt)
         # Loop Filter
-        self.NCO_carrier += BorreLoopFilter(phaseError, self.NCO_carrierError, self.track_pll_tau1, 
-                                             self.track_pll_tau2, self.track_pll_pdi)
+        self.NCO_carrier = BorreLoopFilter(phaseError, self.NCO_carrierError, self.track_pll_tau1, 
+                                            self.track_pll_tau2, 
+                                            self.track_pll_pdi * self.track_coherentIntegration)
         self.NCO_carrierError = phaseError
 
-        if self.codeCounter % 2 == 0 and self.codeCounter > 0:
-            # Frequency Lock Loop
-            frequencyError = FLL_ATAN2(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 2e-3)
-            #print(frequencyError)
-        else:
-            self.frequencyError = []
+        # if self.codeCounter > 0: # and self.codeCounter % 2 == 0:
+        #     # Frequency Lock Loop
+        #     frequencyError = FLL_ATAN2(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 1e-3)
+
+        #     # self.fll, self.fll_vel_memory = secondOrferDLF(
+        #     #     input=frequencyError, w0=self.fll_noise_bandwidth/W0_BANDWIDTH_SCALE, a2=W0_SCALE_A2, 
+        #     #     integrationTime=1e-3, memory=self.fll_vel_memory)
+            
+        #     self.fll, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
+        #         phaseError, frequencyError, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
+        #         w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_SCALE,
+        #         a2 = W0_SCALE_A2, integrationTime=1e-3, velMemory=self.fll_vel_memory)
+            
+        #     # self.fll, self.fll_vel_memory, self.fll_acc_memory = FLLassistedPLL_3rdOrder(
+        #     #     phaseError, frequencyError, w0f=self.fll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
+        #     #     w0p=self.pll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
+        #     #     a2=W0_SCALE_A2, a3=W0_SCALE_A3, b3=W0_SCALE_B3,
+        #     #     integrationTime=1e-3, velMemory=self.fll_vel_memory, accMemory=self.fll_acc_memory)
+
+        #     self.NCO_carrier = self.fll
+        #     self.NCO_carrierError = self.fll
+        
+        # else:
+        #     # Loop Filter
+        #     self.NCO_carrier = BorreLoopFilter(phaseError, self.NCO_carrierError, self.track_pll_tau1, 
+        #                                         self.track_pll_tau2, self.track_pll_pdi)
+        #     self.NCO_carrierError = phaseError
 
         # Check if bit sync
         iPrompt = correlatorResults[2]
@@ -429,8 +474,8 @@ class ChannelL1CA(Channel):
         self.qPrompt = qPrompt
         self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
-        self.codeFrequency = GPS_L1CA_CODE_FREQ - self.NCO_code
-        self.carrierFrequency = self.initialFrequency + self.NCO_carrier
+        self.codeFrequency -= self.NCO_code
+        self.carrierFrequency += self.NCO_carrier
         self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
         self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
 
@@ -448,6 +493,7 @@ class ChannelL1CA(Channel):
         results["q_late"]            = correlatorResults[5]
         results["dll"]               = self.NCO_code
         results["pll"]               = self.NCO_carrier
+        results["fll"]               = self.fll
         results["carrier_frequency"] = self.carrierFrequency
         results["code_frequency"]    = self.codeFrequency       
         results["normalised_power"]  = normalisedPower

@@ -141,9 +141,9 @@ def PLL_costa(iPrompt:float, qPrompt:float):
 # =====================================================================================================================
 
 def FLL_ATAN2(iPrompt:float, qPrompt:float, iPromptPrev:float, qPromptPrev:float, deltaT:float):
-
-    frequencyError = np.arctan2(iPrompt * iPromptPrev + qPrompt * qPromptPrev,
-                                iPromptPrev * qPrompt - iPrompt*qPromptPrev)
+    
+    frequencyError = np.arctan2(iPromptPrev * qPrompt - qPromptPrev * iPrompt,
+                                iPromptPrev * iPrompt + qPromptPrev * qPrompt) / 2.0 / np.pi
     frequencyError /= deltaT 
 
     return frequencyError
@@ -182,12 +182,12 @@ def secondOrferDLF(input, w0, a2, integrationTime, memory):
     # First branch
     _memoryUpdate = input * c1 * integrationTime
     output = (_memoryUpdate + memory) / 2
-    memory += _memoryUpdate # TODO is it really an addition or we replace the previous memory?
+    memory = _memoryUpdate # TODO is it really an addition or we replace the previous memory?
 
     # Second branch
     output += input * c2
 
-    return output
+    return output, memory
 
 # =====================================================================================================================
 
@@ -202,12 +202,12 @@ def thirdOrderDLF(input:float, w0:float, a3:float, b3:float, integrationTime:flo
     # First branch
     _memoryUpdate = input * c1 * integrationTime
     output = (_memoryUpdate + memory1) / 2
-    memory1 += _memoryUpdate
+    memory1 = _memoryUpdate
 
     # Second branch
     _memoryUpdate = (output + input * c2) * integrationTime
     output = (_memoryUpdate + memory2) / 2
-    memory2 += _memoryUpdate
+    memory2 = _memoryUpdate
 
     # Third branch
     output += input * c3
@@ -244,7 +244,7 @@ def FLLassistedPLL_2ndOrder(phaseInput:float, freqInput:float, w0f:float, w0p:fl
     # First branch
     _memoryUpdate = (phaseInput * w0p**2 + freqInput * w0f) * integrationTime
     output = (_memoryUpdate + velMemory) / 2
-    velMemory += _memoryUpdate
+    velMemory = _memoryUpdate
     
     # Second branch
     output += phaseInput * a2 * w0p
@@ -285,16 +285,20 @@ def FLLassistedPLL_3rdOrder(phaseInput:float, freqInput:float, w0f:float, w0p:fl
     # First branch
     _memoryUpdate = (phaseInput * w0p**3 + freqInput * w0f**2) * integrationTime
     output = (_memoryUpdate + accMemory) / 2
-    accMemory += _memoryUpdate
+    accMemory = _memoryUpdate
     
     # Second branch
     _memoryUpdate = (output + (phaseInput * a3 * w0p**2 + freqInput * a2 * w0f)) * integrationTime
     output = (_memoryUpdate + velMemory) / 2
-    velMemory += _memoryUpdate
+    velMemory = _memoryUpdate
 
     # Third branch
     output += phaseInput * b3 * w0p
 
-    return output, accMemory, velMemory
+    return output, velMemory, accMemory
+
+# =====================================================================================================================
+
+
 
 # =====================================================================================================================

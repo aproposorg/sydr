@@ -57,6 +57,13 @@ class Visualisation:
 
         logging.getLogger(__name__).info(f"VisualisationV2 initialized.")
 
+        # Parameters 
+        # TODO Move to config file
+        self.titleFontSize = '16pt'
+        self.tickFontSize = '16pt'
+        self.axisFontSize = '16pt'
+        self.lineWidth = 2
+
         return
 
     # -------------------------------------------------------------------------
@@ -241,13 +248,6 @@ class Visualisation:
         TODO
         """
 
-        # Parameters 
-        # TODO Move to config file
-        titleFontSize = '16pt'
-        tickFontSize = '16pt'
-        axisFontSize = '16pt'
-        lineWidth = 2
-
         # Bokeh definitions
         tools = [HoverTool(tooltips=self.tooltips), 'box_select', 'lasso_select', \
             'pan', 'wheel_zoom', 'box_zoom,reset', 'save']
@@ -263,110 +263,193 @@ class Visualisation:
         time = np.full(size, np.nan)
         iprompt = np.full(size, np.nan)
         qprompt = np.full(size, np.nan)
+        iearly = np.full(size, np.nan)
+        qearly = np.full(size, np.nan)
+        ilate = np.full(size, np.nan)
+        qlate = np.full(size, np.nan)
         dll = np.full(size, np.nan)
         pll = np.full(size, np.nan)
+        fll = np.full(size, np.nan)
+        cn0 = np.full(size, np.nan)
+        pll_lock = np.full(size, np.nan)
+        fll_lock = np.full(size, np.nan)
+        carrierFrequency = np.full(size, np.nan)
+        codeFrequency = np.full(size, np.nan)
+        carrierFrequencyError = np.full(size, np.nan)
+        codeFrequencyError = np.full(size, np.nan)
         i = 0
         for dsp in dataList:
             time[i]    = dsp["time_sample"] / self.rfSignal.samplingFrequency
             iprompt[i] = dsp["i_prompt"]
             qprompt[i] = dsp["q_prompt"]
+            iearly[i] = dsp["i_early"]
+            qearly[i] = dsp["q_early"]
+            ilate[i] = dsp["i_late"]
+            qlate[i] = dsp["q_late"]
             dll[i] = dsp["dll"]
             pll[i] = dsp["pll"]
+            fll[i] = dsp["fll"]
+            cn0[i] = dsp["cn0"]
+            pll_lock[i] = dsp["pll_lock"]
+            fll_lock[i] = dsp["fll_lock"]
+            carrierFrequency[i]      = dsp["carrier_frequency"]       
+            codeFrequency[i]         = dsp["code_frequency"]          
+            carrierFrequencyError[i] = dsp["carrier_frequency_error"] 
+            codeFrequencyError[i]    = dsp["code_frequency_error"]    
             i += 1
 
         # create a column data source for the plots to share
         # This is to share the lasso selection
-        source = ColumnDataSource(data=dict(time=time, iprompt=iprompt, qprompt=qprompt, dll=dll, pll=pll))
+        source = ColumnDataSource(data=dict(time=time, dll=dll, pll=pll, fll=fll, cn0=cn0, 
+                                            pll_lock=pll_lock, fll_lock=fll_lock,
+                                            iprompt=iprompt, qprompt=qprompt, 
+                                            iprompt2=np.square(iprompt), qprompt2=np.square(qprompt),
+                                            iearly=iearly, qearly=qearly, 
+                                            iearly2=np.square(iearly), qearly2=np.square(qearly),
+                                            ilate=ilate, qlate=qlate, 
+                                            ilate2=np.square(ilate), qlate2=np.square(qlate),
+                                            carrierFrequency=carrierFrequency, carrierFrequencyError=carrierFrequencyError,
+                                            codeFrequency=codeFrequency, codeFrequencyError=codeFrequencyError))
         
         # I/Q plots
         height=400
         width=400
+        graph_range = np.max(np.abs([iprompt, qprompt]))
         figConstellation = figure(
             title="Constellation diagram", \
             background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools)
+            height=height, width=width, tools=tools,
+            x_range=Range1d(-graph_range, graph_range),
+            y_range=Range1d(-graph_range, graph_range))
         figConstellation.scatter(x='iprompt', y='qprompt', source=source, size=10, marker='dot')
         figConstellation.yaxis.axis_label = "Quadraphase (Q)"
         figConstellation.xaxis.axis_label = "In-Phase (I)"
 
-        # Parameter table
-        #tableParameters = self.getParameterTable(gnssSignal.config, 'TRACKING')
+        # Discriminator results
+        height=300
+        width=900
+        fig_DLL = self._plotLine(source, 'time', 'dll', "Time [s]", "Error", "DLL discriminator", 
+                                 height, width, tools)
+        fig_PLL = self._plotLine(source, 'time', 'pll', "Time [s]", "Error", "PLL discriminator", 
+                                 height, width, tools, x_range=fig_DLL.x_range)
+        fig_FLL = self._plotLine(source, 'time', 'fll', "Time [s]", "Error", "FLL discriminator", 
+                                 height, width, tools, x_range=fig_DLL.x_range)
+        fig_CN0 = self._plotLine(source, 'time', 'cn0', "Time [s]", "Error", "C/N0 estimation", 
+                                 height, width, tools, x_range=fig_DLL.x_range)
+        fig_FLL_lock = self._plotLine(source, 'time', 'fll_lock', "Time [s]", "Error", "FLL Lock Indicator", 
+                                 height, width, tools, x_range=fig_DLL.x_range)
+        fig_PLL_lock = self._plotLine(source, 'time', 'pll_lock', "Time [s]", "Error", "PLL Lock Indicator", 
+                                 height, width, tools, x_range=fig_DLL.x_range)
         
-        height=300
-        width=500
-        # DLL
-        figDLL = figure(
-            title="DLL", \
-            background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools)
-        figDLL.line(x='time', y='dll', source=source, line_width=lineWidth)
-        figDLL.yaxis.axis_label = "Code frequency jitter [Hz]"
-        figDLL.xaxis.axis_label = "Time [s]"
-        figDLL.title.text_font_size = titleFontSize
-        figDLL.xaxis.major_label_text_font_size = tickFontSize
-        figDLL.xaxis.axis_label_text_font_size = axisFontSize
-        figDLL.yaxis.major_label_text_font_size = tickFontSize
-        figDLL.yaxis.axis_label_text_font_size = axisFontSize
-        #figDLL.yaxis.formatter=PrintfTickFormatter(format="%0e")
-
-        # PLL
-        figPLL = figure(
-            title="PLL", \
-            background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools,
-            x_range=figDLL.x_range)
-        figPLL.line(x='time', y='pll', source=source, line_width=lineWidth)
-        figPLL.yaxis.axis_label = "Doppler frequency jitter [Hz]"
-        figPLL.xaxis.axis_label = "Time [s]"
-        figPLL.title.text_font_size = titleFontSize
-        figPLL.xaxis.major_label_text_font_size = tickFontSize
-        figPLL.xaxis.axis_label_text_font_size = axisFontSize
-        figPLL.yaxis.major_label_text_font_size = tickFontSize
-        figPLL.yaxis.axis_label_text_font_size = axisFontSize
-        #figPLL.yaxis.formatter=PrintfTickFormatter(format="%0e")
-
-        height=300
-        width=1000
-        # In-Phase (I) Prompt
-        figIPrompt = figure(
-            title="In-Phase (I) Prompt", \
-            background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools,
-            x_range=figDLL.x_range,
-            y_range=Range1d(-25e3, 25e3))
-        figIPrompt.line(x='time', y='iprompt', source=source, line_width=lineWidth)
-        figIPrompt.scatter(x='time', y='iprompt', source=source, marker='dot')
-        figIPrompt.yaxis.axis_label = "Correlation amplitude"
-        figIPrompt.xaxis.axis_label = "Time [s]"
-        figIPrompt.title.text_font_size = titleFontSize
-        figIPrompt.xaxis.major_label_text_font_size = tickFontSize
-        figIPrompt.xaxis.axis_label_text_font_size = axisFontSize
-        figIPrompt.yaxis.major_label_text_font_size = tickFontSize
-        figIPrompt.yaxis.axis_label_text_font_size = axisFontSize
-
-        # Quadraphase (Q) Prompt
-        figQPrompt = figure(
-            title="Quadraphase (Q) Prompt",\
-            background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools,
-            x_range=figDLL.x_range,
-            y_range=Range1d(-25e3, 25e3))
-        figQPrompt.line(x='time', y='qprompt', source=source, line_width=lineWidth)
-        figQPrompt.scatter(x='time', y='qprompt', source=source, marker='dot')
-        figQPrompt.yaxis.axis_label = "Correlation amplitude"
-        figQPrompt.xaxis.axis_label = "Time [s]"
-        figQPrompt.title.text_font_size = titleFontSize
-        figQPrompt.xaxis.major_label_text_font_size = tickFontSize
-        figQPrompt.xaxis.axis_label_text_font_size = axisFontSize
-        figQPrompt.yaxis.major_label_text_font_size = tickFontSize
-        figQPrompt.yaxis.axis_label_text_font_size = axisFontSize
+        # Loop filter results
+        fig_codeFrequency = self._plotLine(source, 'time', 'codeFrequency', "Time [s]", "Frequency [Chips/s]",
+                                              "Code Frequency", height, width, tools, x_range=fig_DLL.x_range)
+        fig_carrierFrequency = self._plotLine(source, 'time', 'carrierFrequency', "Time [s]", "Frequency [Hz]", 
+                                              "Carrier Frequency", height, width, tools, x_range=fig_DLL.x_range)
+        fig_codeFrequencyError = self._plotLine(source, 'time', 'codeFrequencyError', "Time [s]", "Frequency [Hz]", 
+                                              "Code Frequency Error", height, width, tools, x_range=fig_DLL.x_range)
+        fig_carrierFrequencyError = self._plotLine(source, 'time', 'carrierFrequencyError', "Time [s]", "Frequency [Hz]", 
+                                              "Carrier Frequency Error", height, width, tools, x_range=fig_DLL.x_range)                                  
+        
+        # Correlator results
+        fig_IPrompt = self._plotLineScatter(source, 'time', 'iprompt', "Time [s]", "Correlation amplitude", 
+                                            "In-Phase (I) Prompt", height, width, tools, x_range=fig_DLL.x_range)
+        fig_QPrompt = self._plotLineScatter(source, 'time', 'qprompt', "Time [s]", "Correlation amplitude", 
+                                            "Quadraphase (Q) Prompt", height, width, tools, x_range=fig_DLL.x_range)
+        fig_IEarly = self._plotLineScatter(source, 'time', 'iearly', "Time [s]", "Correlation amplitude", 
+                                           "In-Phase (I) Early", height, width, tools, x_range=fig_DLL.x_range)
+        fig_QEarly = self._plotLineScatter(source, 'time', 'qearly', "Time [s]", "Correlation amplitude", 
+                                           "Quadraphase (Q) Early", height, width, tools, x_range=fig_DLL.x_range)
+        fig_ILate = self._plotLineScatter(source, 'time', 'ilate', "Time [s]", "Correlation amplitude", 
+                                          "In-Phase (I) Late", height, width, tools, x_range=fig_DLL.x_range)
+        fig_QLate = self._plotLineScatter(source, 'time', 'qlate', "Time [s]", "Correlation amplitude", 
+                                          "Quadraphase (Q) Late", height, width, tools, x_range=fig_DLL.x_range)
+        
+        # # Correlator results squared
+        fig_IPrompt2 = self._plotLineScatter(source, 'time', 'iprompt2', "Time [s]", "Correlation amplitude", 
+                                             "In-Phase (I) Prompt (Squared)", height, width, tools, 
+                                             x_range=fig_DLL.x_range)
+        fig_QPrompt2 = self._plotLineScatter(source, 'time', 'qprompt2', "Time [s]", "Correlation amplitude", 
+                                             "Quadraphase (Q) Prompt (Squared)", height, width, tools, 
+                                             x_range=fig_DLL.x_range)
+        # fig_IEarly2 = self._plotLineScatter(source, 'time', 'iearly2', "Time [s]", "Correlation amplitude",  
+        #                                     "In-Phase (I) Early (Squared)", height, width, tools, 
+        #                                     x_range=fig_DLL.x_range)
+        # fig_QEarly2 = self._plotLineScatter(source, 'time', 'qearly2', "Time [s]", "Correlation amplitude", 
+        #                                     "Quadraphase (Q) Early (Squared)", height, width, tools, 
+        #                                     x_range=fig_DLL.x_range)
+        # fig_ILate2 = self._plotLineScatter(source, 'time', 'ilate2', "Time [s]", "Correlation amplitude",
+        #                                     "In-Phase (I) Late (Squared)", height, width, tools, 
+        #                                     x_range=fig_DLL.x_range)
+        # fig_QLate2 = self._plotLineScatter(source, 'time', 'qlate2', "Time [s]", "Correlation amplitude", 
+        #                                     "Quadraphase (Q) Late (Squared)", height, width, tools,
+        #                                     x_range=fig_DLL.x_range)
 
         trackLayout = layout([[tabTitle],
-                              [figConstellation],\
-                              [figDLL, figPLL], \
-                              [figIPrompt], [figQPrompt]])
+                              [figConstellation],
+                              [Div(text="<h1>Discriminator Results<h1>")], 
+                              [fig_DLL, fig_CN0], 
+                              [fig_PLL, fig_PLL_lock], 
+                              [fig_FLL, fig_FLL_lock],
+                              [Div(text="<h1>NCO results<h1>")], 
+                              [fig_codeFrequency, fig_codeFrequencyError], 
+                              [fig_carrierFrequency, fig_carrierFrequencyError],
+                              [Div(text="<h1>Prompt correlators<h1>")],  
+                              [fig_IPrompt, fig_IPrompt2],
+                              [fig_QPrompt, fig_QPrompt2]])
+                            #   [Div(text="<h1>Other correlators<h1>")],  
+                            #   [fig_IEarly, fig_IEarly2],
+                            #   [fig_QEarly, fig_QEarly2],
+                            #   [fig_ILate, fig_ILate2],
+                            #   [fig_QLate, fig_QLate2]])
         
         return trackLayout
+
+    # -------------------------------------------------------------------------
+
+    def _plotLineScatter(self, source, x, y, x_label, y_label, title, height, width, tools, 
+                              x_range=None, y_range=None):
+
+        fig = figure(
+            title=title,\
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools,
+            x_range=x_range,
+            y_range=y_range)
+        fig.line(x=x, y=y, source=source, line_width=self.lineWidth)
+        fig.scatter(x=x, y=y, source=source, marker='dot')
+        fig.yaxis.axis_label = y_label
+        fig.xaxis.axis_label = x_label
+        fig.title.text_font_size = self.titleFontSize
+        fig.xaxis.major_label_text_font_size = self.tickFontSize
+        fig.xaxis.axis_label_text_font_size = self.axisFontSize
+        fig.yaxis.major_label_text_font_size = self.tickFontSize
+        fig.yaxis.axis_label_text_font_size = self.axisFontSize
+
+        return fig
+    
+    # -------------------------------------------------------------------------
+
+    def _plotLine(self, source, x, y, x_label, y_label, title, height, width, tools, 
+                  x_range=None, y_range=None):
+
+        fig = figure(
+            title=title,\
+            background_fill_color=self.backgroundColor,\
+            height=height, width=width, tools=tools,
+            x_range=x_range,
+            y_range=y_range)
+        fig.line(x=x, y=y, source=source, line_width=self.lineWidth)
+        fig.yaxis.axis_label = y_label
+        fig.xaxis.axis_label = x_label
+        fig.title.text_font_size = self.titleFontSize
+        fig.xaxis.major_label_text_font_size = self.tickFontSize
+        fig.xaxis.axis_label_text_font_size = self.axisFontSize
+        fig.yaxis.major_label_text_font_size = self.tickFontSize
+        fig.yaxis.axis_label_text_font_size = self.axisFontSize
+
+        return fig
+
 
     # -------------------------------------------------------------------------
 

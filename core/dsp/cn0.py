@@ -46,3 +46,33 @@ def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:floa
     return normalisedPower
 
 # =====================================================================================================================
+
+def CN0_Beaulieu(ratio:float, N:int, T:float, cn0_prev=0.0, alpha=0.2):
+    """
+    C/N0 estimation based on Baulieu's method.
+    See reference [Falletti, 2011] for definition.
+
+    Args:
+        ratio (float): Ratio of the instaneous power of the signal-noise to the total power (Pn / Pd).
+        N (integer): Number of samples used for power computations
+        T (float): Integration time [seconds]
+
+    Return:
+        cn0 (float): Carrier-to-Noise (C/N0) ratio.
+
+    Raises:
+        None
+    """
+
+    lambda_c = 1 / (ratio / N)
+    B_eqn = 1 / T
+
+    cn0 = lambda_c * B_eqn
+
+    # Pass through low-pass filter
+    cn0 = (1 - alpha) * cn0_prev + alpha * cn0
+
+    return cn0
+
+
+# =====================================================================================================================
