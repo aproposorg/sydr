@@ -273,6 +273,7 @@ class Visualisation:
         cn0 = np.full(size, np.nan)
         pll_lock = np.full(size, np.nan)
         fll_lock = np.full(size, np.nan)
+        lock_state = np.full(size, np.nan)
         carrierFrequency = np.full(size, np.nan)
         codeFrequency = np.full(size, np.nan)
         carrierFrequencyError = np.full(size, np.nan)
@@ -292,6 +293,7 @@ class Visualisation:
             cn0[i] = dsp["cn0"]
             pll_lock[i] = dsp["pll_lock"]
             fll_lock[i] = dsp["fll_lock"]
+            lock_state[i] = dsp["lock_state"]
             carrierFrequency[i]      = dsp["carrier_frequency"]       
             codeFrequency[i]         = dsp["code_frequency"]          
             carrierFrequencyError[i] = dsp["carrier_frequency_error"] 
@@ -309,7 +311,8 @@ class Visualisation:
                                             ilate=ilate, qlate=qlate, 
                                             ilate2=np.square(ilate), qlate2=np.square(qlate),
                                             carrierFrequency=carrierFrequency, carrierFrequencyError=carrierFrequencyError,
-                                            codeFrequency=codeFrequency, codeFrequencyError=codeFrequencyError))
+                                            codeFrequency=codeFrequency, codeFrequencyError=codeFrequencyError,
+                                            lock_state=lock_state))
         
         # I/Q plots
         height=400
@@ -335,11 +338,14 @@ class Visualisation:
         fig_FLL = self._plotLine(source, 'time', 'fll', "Time [s]", "Error", "FLL discriminator", 
                                  height, width, tools, x_range=fig_DLL.x_range)
         fig_CN0 = self._plotLine(source, 'time', 'cn0', "Time [s]", "Error", "C/N0 estimation", 
-                                 height, width, tools, x_range=fig_DLL.x_range)
+                                 height, width, tools, x_range=fig_DLL.x_range, 
+                                 y_range=Range1d(0, 60))
         fig_FLL_lock = self._plotLine(source, 'time', 'fll_lock', "Time [s]", "Error", "FLL Lock Indicator", 
-                                 height, width, tools, x_range=fig_DLL.x_range)
+                                 height, width, tools, x_range=fig_DLL.x_range,
+                                 y_range=Range1d(0, 1.2))
         fig_PLL_lock = self._plotLine(source, 'time', 'pll_lock', "Time [s]", "Error", "PLL Lock Indicator", 
-                                 height, width, tools, x_range=fig_DLL.x_range)
+                                 height, width, tools, x_range=fig_DLL.x_range,
+                                 y_range=Range1d(0, 1.2))
         
         # Loop filter results
         fig_codeFrequency = self._plotLine(source, 'time', 'codeFrequency', "Time [s]", "Frequency [Chips/s]",
@@ -350,20 +356,29 @@ class Visualisation:
                                               "Code Frequency Error", height, width, tools, x_range=fig_DLL.x_range)
         fig_carrierFrequencyError = self._plotLine(source, 'time', 'carrierFrequencyError', "Time [s]", "Frequency [Hz]", 
                                               "Carrier Frequency Error", height, width, tools, x_range=fig_DLL.x_range)                                  
-        
+        fig_looplockstate = self._plotLineScatter(source, 'time', 'lock_state', "Time [s]", "State", 
+                                              "Loop lock state", height, width, tools, x_range=fig_DLL.x_range)
+
+
         # Correlator results
+        y_range = Range1d(-25e3, 25e3)
         fig_IPrompt = self._plotLineScatter(source, 'time', 'iprompt', "Time [s]", "Correlation amplitude", 
                                             "In-Phase (I) Prompt", height, width, tools, x_range=fig_DLL.x_range)
         fig_QPrompt = self._plotLineScatter(source, 'time', 'qprompt', "Time [s]", "Correlation amplitude", 
-                                            "Quadraphase (Q) Prompt", height, width, tools, x_range=fig_DLL.x_range)
+                                            "Quadraphase (Q) Prompt", height, width, tools, x_range=fig_DLL.x_range,
+                                            y_range=y_range)
         fig_IEarly = self._plotLineScatter(source, 'time', 'iearly', "Time [s]", "Correlation amplitude", 
-                                           "In-Phase (I) Early", height, width, tools, x_range=fig_DLL.x_range)
+                                           "In-Phase (I) Early", height, width, tools, x_range=fig_DLL.x_range,
+                                           y_range=y_range)
         fig_QEarly = self._plotLineScatter(source, 'time', 'qearly', "Time [s]", "Correlation amplitude", 
-                                           "Quadraphase (Q) Early", height, width, tools, x_range=fig_DLL.x_range)
+                                           "Quadraphase (Q) Early", height, width, tools, x_range=fig_DLL.x_range,
+                                           y_range=y_range)
         fig_ILate = self._plotLineScatter(source, 'time', 'ilate', "Time [s]", "Correlation amplitude", 
-                                          "In-Phase (I) Late", height, width, tools, x_range=fig_DLL.x_range)
+                                          "In-Phase (I) Late", height, width, tools, x_range=fig_DLL.x_range,
+                                          y_range=y_range)
         fig_QLate = self._plotLineScatter(source, 'time', 'qlate', "Time [s]", "Correlation amplitude", 
-                                          "Quadraphase (Q) Late", height, width, tools, x_range=fig_DLL.x_range)
+                                          "Quadraphase (Q) Late", height, width, tools, x_range=fig_DLL.x_range,
+                                          y_range=y_range)
         
         # # Correlator results squared
         fig_IPrompt2 = self._plotLineScatter(source, 'time', 'iprompt2', "Time [s]", "Correlation amplitude", 
@@ -392,8 +407,9 @@ class Visualisation:
                               [fig_PLL, fig_PLL_lock], 
                               [fig_FLL, fig_FLL_lock],
                               [Div(text="<h1>NCO results<h1>")], 
-                              [fig_codeFrequency, fig_codeFrequencyError], 
-                              [fig_carrierFrequency, fig_carrierFrequencyError],
+                              [fig_codeFrequency, fig_carrierFrequency], 
+                              [fig_codeFrequencyError, fig_carrierFrequencyError],
+                              [fig_looplockstate],
                               [Div(text="<h1>Prompt correlators<h1>")],  
                               [fig_IPrompt, fig_IPrompt2],
                               [fig_QPrompt, fig_QPrompt2]])

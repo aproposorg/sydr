@@ -15,10 +15,8 @@ from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
 from core.dsp.tracking import secondOrferDLF, FLLassistedPLL_2ndOrder, FLLassistedPLL_3rdOrder
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
-from core.dsp.cn0 import NWPR
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
-from core.utils.constants import W0_BANDWIDTH_SCALE, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
 from core.signal.gnsssignal import UpsampleCode
@@ -529,7 +527,7 @@ class ChannelL1CA(Channel):
             return
         
         # Convert prompt correlator to bits
-        self.navBitsBuffer[self.navBitsCounter] = Prompt2Bit(self.iPrompt_sum / self.nbPrompt) # TODO Check if this function work
+        self.navBitsBuffer[self.navBitsCounter] = Prompt2Bit(self.iPrompt_sum) # TODO Check if this function work
         self.navBitsCounter += 1
 
         # Check if minimum number of bits decoded

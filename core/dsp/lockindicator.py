@@ -20,13 +20,13 @@ def FLL_Lock_Borre(iprompt, iprompt_prev, qprompt, qprompt_prev, fll_lock_prev, 
 # =====================================================================================================================
 # PLL LOCK INDICATOR
 
-def PLL_Lock_Borre(iprompt_sum, qprompt_sum, pll_lock_prev, alpha=0.01):
+def PLL_Lock_Borre(iprompt, qprompt, pll_lock_prev, alpha=0.01):
 
     # Narrow Band Difference
-    nbd = iprompt_sum**2 - qprompt_sum**2
+    nbd = iprompt**2 - qprompt**2
 
     # Narrow Band Power
-    nbp = iprompt_sum**2 + qprompt_sum**2
+    nbp = iprompt**2 + qprompt**2
     
     pll_lock = nbd / nbp
 
@@ -82,7 +82,7 @@ def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:floa
 
 # =====================================================================================================================
 
-def CN0_Beaulieu(ratio:float, N:int, T:float):
+def CN0_Beaulieu(ratio:float, N:int, T:float, old:float):
     """
     C/N0 estimation based on Baulieu's method.
     See reference [Falletti, 2011] for definition.
@@ -103,6 +103,8 @@ def CN0_Beaulieu(ratio:float, N:int, T:float):
     B_eqn = 1 / T
 
     cn0 = lambda_c * B_eqn
+
+    cn0 = lowPassFilter(cn0, old, alpha=0.1)
 
     return cn0
 

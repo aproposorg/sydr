@@ -173,10 +173,14 @@ class ReceiverGPSL1CA(Receiver):
         # Check all channels ready 
         # TODO To be adapted to process with 4 satellites right away
         channel : ChannelStatus
+        selectedChannels = {}
         for channel in self.channelsStatus.values():
-            if not (channel.trackFlags & TrackingFlags.TOW_DECODED) \
-                or not ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.isEphemerisAssited)):
-                return
+            if (channel.trackFlags & TrackingFlags.TOW_DECODED) \
+                and ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.isEphemerisAssited)):
+                selectedChannels[channel.channelID] = channel
+        
+        if len(selectedChannels) < 4:
+            return
         
         # Check current receiver state
         if self.receiverState == ReceiverState.NAVIGATION:
@@ -192,7 +196,7 @@ class ReceiverGPSL1CA(Receiver):
         # Find earliest signal
         maxTOW = -1
         towlist = []
-        for channel in self.channelsStatus.values():
+        for channel in selectedChannels.values():
             # This assumes all the channels were given the same number of samples to process
             if maxTOW < channel.timeSinceTOW:
                 maxTOW = channel.timeSinceTOW
@@ -220,7 +224,7 @@ class ReceiverGPSL1CA(Receiver):
         
         # Compute GNSS measurements
         gnssMeasurementsList = []
-        for channel in self.channelsStatus.values():
+        for channel in selectedChannels.values():
             satellite : Satellite 
             satellite = self.satelliteDict[channel.satelliteID]
             

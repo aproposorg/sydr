@@ -17,6 +17,7 @@ from core.dsp.lockindicator import PLL_Lock_Borre, FLL_Lock_Borre, CN0_Beaulieu
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
 from core.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags, LoopLockState
+from core.utils.constants import TWO_PI
 from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
 from core.utils.constants import W0_BANDWIDTH_1, W0_BANDWIDTH_2, W0_BANDWIDTH_3, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
@@ -29,282 +30,309 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
                  rfSignal:RFSignal, configuration: dict):
         super().__init__(cid, sharedBuffer, resultQueue, rfSignal, configuration)
 
-        self.dll_prev = 0.0
-        self.pll_prev = 0.0
-        self.fll_prev = 0.0
-
         self.cn0_PdPnRatio = 0.0
         self.cn0 = 0.0
 
-        self.pll_lock = 0.0
-        self.fll_lock = 0.0
-        self.pll_lock_iprompt_sum = 0.0
-        self.pll_lock_qprompt_sum = 0.0
-
-        self.fllLockState = LoopLockState.UNKNOWN
-        self.pllLockState = LoopLockState.UNKNOWN
-        self.dllLockState = LoopLockState.UNKNOWN
-
-        self.fllLockIndicator = 0.0
-        self.fllLockThreshold_wide = 0.5
-        self.fllLockThreshold_narrow = 0.9
-        self.pllLockIndicator = 0.0
-        self.pllLockThreshold_wide = 0.5
-        self.pllLockThreshold_narrow = 0.9
+        self.loopLockState = LoopLockState.PULL_IN
 
         self.iPromptPrev = 0.0
         self.qPromptPrev = 0.0
 
-        self.deltaT = 1e-3
-
-        self.correlatorsResultsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
-        self.correlatorsResultsAccum [:] = 0.0
-
         return
     
     # -----------------------------------------------------------------------------------------------------------------
     
-    def setTracking(self, configuration: dict):
-        super().setTracking(configuration)
+    def setTracking(self, configuration:dict):
 
-        self.fll_bandwidth_pullin = float(configuration['fll_noise_bandwidth'])
-        self.pll_noise_bandwidth = float(configuration['pll_noise_bandwidth'])
+        self.track_coherentIntegration = int(configuration['coherent_integration'])
+        # Coherent integration of 1 ms is the same as no coherent integration.
+        # We put it to 1 to avoid null numbers in future computations.
+        if self.track_coherentIntegration == 0:
+            self.track_coherentIntegration = 1
+
+        # Correlators
+        wide = float(configuration['correlator_epl_wide'])
+        narrow = float(configuration['correlator_epl_narrow'])
+        self.dll_epl_wide   = [-wide, 0.0, wide]
+        self.dll_epl_narrow = [-narrow, 0.0, narrow]
+        self.track_correlatorsSpacing = self.dll_epl_wide
+        
+        self.IDX_I_EARLY  = 0
+        self.IDX_Q_EARLY  = 1
+        self.IDX_I_PROMPT = 2
+        self.IDX_Q_PROMPT = 3
+        self.IDX_I_LATE   = 4
+        self.IDX_Q_LATE   = 5
+
+        # DLL
+        self.track_dll_tau1, self.track_dll_tau2 = LoopFiltersCoefficients(
+            loopNoiseBandwidth=float(configuration['dll_noise_bandwidth']),
+            dampingRatio=float(configuration['dll_damping_ratio']),
+            loopGain=float(configuration['dll_loop_gain']))
+        self.track_dll_pdi = float(configuration['dll_pdi'])
+        self.dllLockThreshold = float(configuration['dll_threshold'])
+        # self.dll_bandwidth_wide = float(configuration['dll_bandwidth_wide'])
+        # self.dll_bandwidth_narrow = float(configuration['dll_bandwidth_narrow'])
+
+        # FLL
+        self.fll_bandwidth_pullin = float(configuration['fll_bandwidth_pullin'])
+        self.fll_bandwidth_wide   = float(configuration['fll_bandwidth_wide'])
+        self.fll_bandwidth_narrow = float(configuration['fll_bandwidth_narrow'])
+        self.fll_threshold_wide   = float(configuration['fll_threshold_wide'])
+        self.fll_threshold_narrow = float(configuration['fll_threshold_narrow'])
+
+        # PLL
+        self.pll_bandwidth_wide   = float(configuration['pll_bandwidth_wide'])
+        self.pll_bandwidth_narrow = float(configuration['pll_bandwidth_narrow'])
+        self.pll_threshold_wide   = float(configuration['pll_threshold_wide'])
+        self.pll_threshold_narrow = float(configuration['pll_threshold_narrow'])
+
+        # Initialise
+        self.dllDiscrim = 0.0
+        self.pllDiscrim = 0.0
+        self.fllDiscrim = 0.0
+        self.fllBandwidth = self.fll_bandwidth_pullin
+        self.pllBandwidth = self.pll_bandwidth_wide
+        self.dllLockIndicator = 0.0
+        self.fllLockIndicator = 0.0
+        self.pllLockIndicator = 0.0
+
+        self.correlatorsResults = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
+        self.correlatorsResultsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
+        self.correlatorsResultsAccum [:] = 0.0
+
+        self.codeStep = GPS_L1CA_CODE_FREQ / self.rfSignal.samplingFrequency
+        self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
+        self.trackFlags = TrackingFlags.UNKNOWN
+        
+        # TODO To be removed
+        self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
+        self.correlatorsBuffer = np.empty((self.maxSizeCorrelatorBuffer, len(self.track_correlatorsSpacing)*2))
+        self.correlatorsBuffer[:, :] = 0.0
 
         return
-
+    
     # -----------------------------------------------------------------------------------------------------------------
 
     def runTracking(self):
         """
-        Perform the tracking operations, using the EPL method.
-
-        Args:
-            None
-        
-        Returns: 
-            None
-
-        Raises:
-            None
         """
 
-        # Check if sufficient data in buffer
-        if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.track_requiredSamples:
-            return
+        # Compute correlators
+        self.runCorrelators()
+
+        # Compute discriminators
+        dllDiscrim, fllDiscrim, pllDiscrim = self.runDiscriminators()
+
+        # Compute carrier frequency loop filter
+        carrierFrequencyError = self.runCarrierFrequencyFilter(fllDiscrim=fllDiscrim, pllDiscrim=pllDiscrim, 
+                                                               integrationTime=1e-3)
         
-        normalisedPower = np.nan
+        # Compute code frequency loop filter
+        codeFrequencyError = self.runCodeFrequencyFilter(dllDiscrim=dllDiscrim)
 
-        # Correlators
-        correlatorResults = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
-                                code = self.code,
-                                samplingFrequency=self.rfSignal.samplingFrequency,
-                                carrierFrequency=self.carrierFrequency,
-                                remainingCarrier=self.NCO_remainingCarrier,
-                                remainingCode=self.NCO_remainingCode,
-                                codeStep=self.codeStep,
-                                correlatorsSpacing=self.track_correlatorsSpacing)
+        # Compute the lock loop indicators
+        self.runLoopIndicators()
 
-        # Compute remaining carrier phase
-        self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
-        self.NCO_remainingCarrier %= (2*np.pi)
+        # Update the NCO and other things
+        self.postTrackingUpdate(dllDiscrim, fllDiscrim, pllDiscrim, carrierFrequencyError, codeFrequencyError)
 
-        self.correlatorsBuffer[self.nbPrompt, :] = correlatorResults[:]
-        self.iPrompt_sum += correlatorResults[2]
-        self.qPrompt_sum += correlatorResults[3]
-        self.iPrompt_sum2 += correlatorResults[2]
-        self.qPrompt_sum2 += correlatorResults[3]
-        self.nbPrompt += 1
+        # Update the lock states for next loop
+        self.trackingStateUpdate()
 
-        # Check coherent integration
-        if self.track_coherentIntegration == 0:
-            runLoopDiscrimators = True
-        else:
-            runLoopDiscrimators = False
-        
-        if self.track_coherentIntegration > 0 \
-            and self.nbPrompt % self.track_coherentIntegration == 0 \
-            and self.trackFlags & TrackingFlags.BIT_SYNC:
-            iEarly  = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_I_EARLY])
-            qEarly  = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_Q_EARLY])
-            iPrompt = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_I_PROMPT])
-            qPrompt = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_Q_PROMPT])
-            iLate   = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_I_LATE])
-            qLate   = np.sum(self.correlatorsBuffer[self.nbPrompt-self.track_coherentIntegration : self.nbPrompt, 
-                                            self.IDX_Q_LATE])
-            runLoopDiscrimators = True
-        else:
-            iEarly  = correlatorResults[0]
-            qEarly  = correlatorResults[1]
-            iPrompt = correlatorResults[2]
-            qPrompt = correlatorResults[3]
-            iLate   = correlatorResults[4]
-            qLate   = correlatorResults[5]
-        
-        dll = 0.0
-        pll = 0.0
-        fll = 0.0
-        codeFrequencyError = 0.0
-        carrierFrequencyError = 0.0
-        if runLoopDiscrimators or self.codeCounter < self.MIN_CONVERGENCE_TIME:
-            # Delay Lock Loop 
-            dll = DLL_NNEML(iEarly=iEarly, qEarly=qEarly, iLate=iLate, qLate=qLate)
-            # Loop Filter
-            codeFrequencyError = BorreLoopFilter(dll, self.dll_prev, self.track_dll_tau1, 
-                                             self.track_dll_tau2, 
-                                             self.track_dll_pdi * self.track_coherentIntegration)
-            
-            # Phase Lock Loop
-            pll = PLL_costa(iPrompt=iPrompt, qPrompt=qPrompt)
-
-            if self.codeCounter > 1: # and self.codeCounter % 2 == 0:
-                # Frequency Lock Loop
-                fll = FLL_ATAN(iPrompt, qPrompt, self.iPrompt, self.qPrompt, 1e-3)
-
-                # self.fll, self.fll_vel_memory = secondOrferDLF(
-                #     input=frequencyError, w0=self.fll_noise_bandwidth/W0_BANDWIDTH_SCALE, a2=W0_SCALE_A2, 
-                #     integrationTime=1e-3, memory=self.fll_vel_memory)
-                
-                carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
-                    pll, fll, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_1, 
-                    w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_2,
-                    a2 = W0_SCALE_A2, integrationTime=1e-3 * self.track_coherentIntegration, 
-                    velMemory=self.fll_vel_memory)
-                
-                # self.fll, self.fll_vel_memory, self.fll_acc_memory = FLLassistedPLL_3rdOrder(
-                #     phaseError, frequencyError, w0f=self.fll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
-                #     w0p=self.pll_noise_bandwidth / W0_BANDWIDTH_SCALE, 
-                #     a2=W0_SCALE_A2, a3=W0_SCALE_A3, b3=W0_SCALE_B3,
-                #     integrationTime=1e-3, velMemory=self.fll_vel_memory, accMemory=self.fll_acc_memory)
-            else:
-                # Loop Filter
-                carrierFrequencyError = BorreLoopFilter(pll, self.pll_prev, self.track_pll_tau1, 
-                                                        self.track_pll_tau2, self.track_pll_pdi)
-
-        # Check if bit sync
-        iPrompt = correlatorResults[2]
-        qPrompt = correlatorResults[3]
-        if not (self.trackFlags & TrackingFlags.BIT_SYNC):
-            # if not bit sync yet, check if there is a bit inversion
-            if (self.trackFlags & TrackingFlags.CODE_LOCK) \
-                and (self.codeCounter > self.MIN_CONVERGENCE_TIME)\
-                and np.sign(self.iPrompt) != np.sign(iPrompt):
-                    self.trackFlags |= TrackingFlags.BIT_SYNC
-                    self.resetPrompt()
-        else:
-            self.cn0_PdPnRatio += (iPrompt**2 + qPrompt**2) / (abs(iPrompt) - abs(qPrompt)) ** 2
-            if self.nbPrompt == LNAV_MS_PER_BIT:
-                self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.nbPrompt, self.nbPrompt * 1e-3)
-                self.cn0_PdPnRatio = 0.0
-
-        # Lock indicators
-        if self.codeCounter > 0:
-            self.fll_lock = FLL_Lock_Borre(iPrompt, self.iPrompt, qPrompt, self.qPrompt, self.fll_lock)
-            self.pll_lock = PLL_Lock_Borre(np.sum(self.correlatorsBuffer[:, self.IDX_I_PROMPT]),
-                                           np.sum(self.correlatorsBuffer[:, self.IDX_Q_PROMPT]), self.pll_lock)
-
-        # Update some variables
-        # TODO Check if tracking was succesful an update the flags
-        self.trackFlags |= TrackingFlags.CODE_LOCK
-        self.iPrompt = iPrompt
-        self.qPrompt = qPrompt
-        self.codeCounter += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
-        self.codeSinceTOW += 1
-        self.codeFrequency -= codeFrequencyError
-        self.carrierFrequency += carrierFrequencyError
-        self.NCO_remainingCode += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
-        self.codeStep = self.codeFrequency / self.rfSignal.samplingFrequency
-        self.dll_prev = dll
-        self.pll_prev = pll
-        self.fll_prev = fll
-
-        # Update index
-        self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
-        self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
-
-        # Results sent back to the receiver
+        # Prepare result package
         results = self.prepareResultsTracking()
-        results["i_early"]                 = correlatorResults[0]
-        results["q_early"]                 = correlatorResults[1]
-        results["i_prompt"]                = correlatorResults[2]
-        results["q_prompt"]                = correlatorResults[3]
-        results["i_late"]                  = correlatorResults[4]
-        results["q_late"]                  = correlatorResults[5]
-        results["dll"]                     = dll
-        results["pll"]                     = pll
-        results["fll"]                     = fll
-        results["carrier_frequency"]       = self.carrierFrequency
-        results["code_frequency"]          = self.codeFrequency   
-        results["carrier_frequency_error"] = carrierFrequencyError
-        results["code_frequency_error"]    = codeFrequencyError     
-        results["cn0"]                     = self.cn0
-        results["pll_lock"]                = self.pll_lock
-        results["fll_lock"]                = self.fll_lock
-
+        
         return results
     
     # -----------------------------------------------------------------------------------------------------------------
 
-    def runTracking(self):
+    def runCorrelators(self):
 
-        # Compute correlators
-        correlatorResults = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
-                                code = self.code,
-                                samplingFrequency=self.rfSignal.samplingFrequency,
-                                carrierFrequency=self.carrierFrequency,
-                                remainingCarrier=self.NCO_remainingCarrier,
-                                remainingCode=self.NCO_remainingCode,
-                                codeStep=self.codeStep,
-                                correlatorsSpacing=self.track_correlatorsSpacing)
-        
+        self.correlatorsResults[:] = EPL(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
+                                        code = self.code,
+                                        samplingFrequency=self.rfSignal.samplingFrequency,
+                                        carrierFrequency=self.carrierFrequency,
+                                        remainingCarrier=self.NCO_remainingCarrier,
+                                        remainingCode=self.NCO_remainingCode,
+                                        codeStep=self.codeStep,
+                                        correlatorsSpacing=self.track_correlatorsSpacing)
+            
         # Update accumulators
-        self.correlatorsBuffer[self.nbCorrelators, :] = correlatorResults[:]
-        self.correlatorsResultsAccum += correlatorResults[:]
+        self.correlatorsResultsAccum += self.correlatorsResults[:]
+        self.nbPrompt += 1
+        self.iPrompt_sum = self.correlatorsResultsAccum[self.IDX_I_PROMPT]
+        self.correlatorsResultsAccum[:] = 0.0
 
-        # Find parameters for filter loops
-        if self.fllLockState == LoopLockState.UNKNOWN and self.pllLockState == LoopLockState.UNKNOWN:
-            self.fllLockState = LoopLockState.PULL_IN # Starting state
-            self.fll_noise_bandwidth = 
-        
-        # Compute discriminators
-        fllDiscrim = self.runFrequencyDiscriminator(correlatorResults)
+        return
 
-        # Compute discriminators
-        if self.fllLockState == LoopLockState.PULL_IN:
-            pllDiscrim = 0.0
-        elif self.track_coherentIntegration > 0 \
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runDiscriminators(self):
+
+        # Compute code frequency discriminator
+        dllDiscrim = self.runCodeDiscriminator(self.correlatorsResults)
+
+        # Compute carrier frequency discriminators
+        fllDiscrim = 0.0
+        pllDiscrim = 0.0
+        if self.loopLockState == LoopLockState.PULL_IN:
+            # No PLL during pull-in state
+            if self.nbPrompt > 1:
+                fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResults)
+        elif self.track_coherentIntegration > 1 \
             and self.nbPrompt % self.track_coherentIntegration == 0 \
             and self.trackFlags & TrackingFlags.BIT_SYNC:
             # Coherent integration
-            fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResultsAccum)        
+            # No FLL during pull-in state (complex as it depends on the coherent integration time)
+            pllDiscrim = self.runPhaseDiscriminator(self.correlatorsResultsAccum)
         else:
-            pllDiscrim = self.runPhaseDiscriminator(correlatorResults)
-        
-        # Compute carrier frequency filter
-        carrierFreqError = self.runCarrierFilter(fllDiscrim=fllDiscrim, pllDiscrim=pllDiscrim, integrationTime=1e-3)
+            fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResults)
+            pllDiscrim = self.runPhaseDiscriminator(self.correlatorsResults)
 
+        return dllDiscrim, fllDiscrim, pllDiscrim
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runCarrierFrequencyFilter(self, fllDiscrim=0.0, pllDiscrim=0.0, integrationTime=1e-3):
+
+        carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
+                    pllDiscrim, fllDiscrim, w0f = self.fllBandwidth / W0_BANDWIDTH_1, 
+                    w0p = self.pllBandwidth / W0_BANDWIDTH_2,
+                    a2 = W0_SCALE_A2, integrationTime=integrationTime, 
+                    velMemory=self.fll_vel_memory)
+
+        return carrierFrequencyError
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runCodeFrequencyFilter(self, dllDiscrim:float):
+
+        codeFrequencyError  = BorreLoopFilter(dllDiscrim, self.dllDiscrim, self.track_dll_tau1, 
+                                              self.track_dll_tau2, self.track_dll_pdi * self.track_coherentIntegration)
+
+        return codeFrequencyError
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runLoopIndicators(self):
+
+        # FLL and PLL lock indicators
+        if self.codeCounter == 0:
+            return
+        
+        iprompt = self.correlatorsResults[self.IDX_I_PROMPT]
+        qprompt = self.correlatorsResults[self.IDX_Q_PROMPT]
+        
+        self.fllLockIndicator = FLL_Lock_Borre(iprompt=iprompt, qprompt=qprompt, 
+                                               iprompt_prev=self.iPromptPrev, qprompt_prev=self.qPromptPrev,
+                                                fll_lock_prev=self.fllLockIndicator, alpha=0.01)
+        
+        if self.loopLockState > LoopLockState.PULL_IN:
+            self.pllLockIndicator = PLL_Lock_Borre(iprompt=iprompt, qprompt=qprompt,  
+                                                    pll_lock_prev=self.pllLockIndicator, alpha=0.01)
+        
+        # CN0
+        self.cn0_PdPnRatio += (iprompt**2 + qprompt**2) / (abs(iprompt) - abs(qprompt)) ** 2
+        if self.nbPrompt == LNAV_MS_PER_BIT:
+            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.nbPrompt, self.nbPrompt * 1e-3, self.cn0)
+            self.cn0_PdPnRatio = 0.0
+        
+        self.dllLockIndicator = self.cn0
+
+        return
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def postTrackingUpdate(self, dllDiscrim, fllDiscrim, pllDiscrim, carrierFrequencyError, codeFrequencyError):
+        """
+        """
+        # Update counters
+        self.codeCounter  += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
+        self.codeSinceTOW += 1
+
+        # Update discriminators and loop results
+        self.dllDiscrim = dllDiscrim
+        self.fllDiscrim = fllDiscrim
+        self.pllDiscrim = pllDiscrim
+        self.carrierFrequencyError = carrierFrequencyError
+        self.codeFrequencyError    = codeFrequencyError
+
+        # Update Numerically Controlled Oscilator (NCO)
+        self.NCO_remainingCarrier -= self.carrierFrequency * TWO_PI * self.track_requiredSamples / self.rfSignal.samplingFrequency
+        self.NCO_remainingCarrier %= TWO_PI
+        self.codeFrequency        -= self.codeFrequencyError
+        self.carrierFrequency     += self.carrierFrequencyError
+        self.NCO_remainingCode    += self.track_requiredSamples * self.codeStep - GPS_L1CA_CODE_SIZE_BITS
+        self.codeStep              = self.codeFrequency / self.rfSignal.samplingFrequency
+
+        # Update sample reading index
+        self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
+        self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
+
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def trackingStateUpdate(self):
+        """
+        """
+        
         # Update the lock states for next loop
-        if self.fllLockIndicator >= self.fllLockThreshold_narrow \
-            and self.pllLockIndicator >= self.pllLockThreshold_narrow:
-            self.fllLockState = LoopLockState.NARROW_TRACK
-            self.pllLockState = LoopLockState.NARROW_TRACK
-        
-        if self.fllLockIndicator >= self.fllLockThreshold_wide \
-            and self.fllLockIndicator < self.fllLockThreshold_narrow:
-            self.fllLockState = LoopLockState.WIDE_TRACK
-            self.pllLockState = LoopLockState.WIDE_TRACK
-        
-        if self.fllLockIndicator <= self.fllLockThreshold_wide:
-            self.fllLockState = LoopLockState.PULL_IN
-            self.pllLockState = LoopLockState.PULL_IN
 
-        # Run loop filter
+        # Check if code lock
+        if self.dllLockIndicator > self.dllLockThreshold and not (self.trackFlags & TrackingFlags.CODE_LOCK):
+            self.trackFlags |= TrackingFlags.CODE_LOCK
+            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking reached {TrackingFlags.CODE_LOCK}.")
+        elif self.dllLockIndicator < self.dllLockThreshold and (self.trackFlags & TrackingFlags.CODE_LOCK):
+            self.trackFlags ^= TrackingFlags.CODE_LOCK
 
+        # Check if bit sync
+        if (self.trackFlags & TrackingFlags.CODE_LOCK) and not (self.trackFlags & TrackingFlags.BIT_SYNC):
+            if np.sign(self.iPromptPrev) != np.sign(self.correlatorsResults[self.IDX_I_PROMPT]):
+                self.trackFlags |= TrackingFlags.BIT_SYNC
+                self.nbPrompt = 0
+                self.correlatorsResultsAccum[:] = 0
+                logging.getLogger(__name__).info(f"CID {self.channelID} tracking reached {TrackingFlags.BIT_SYNC}.")
+        # Update prompt memory
+        self.iPromptPrev = self.correlatorsResults[self.IDX_I_PROMPT]
+        self.qPromptPrev = self.correlatorsResults[self.IDX_Q_PROMPT]
+
+        # Switch to narrow tracking
+        if self.loopLockState != LoopLockState.NARROW_TRACK \
+            and self.fllLockIndicator >= self.fll_threshold_narrow \
+            and self.pllLockIndicator >= self.pll_threshold_narrow:
+
+            self.loopLockState = LoopLockState.NARROW_TRACK
+            self.fllBandwidth = self.fll_bandwidth_narrow
+            self.pllBandwidth = self.pll_bandwidth_narrow
+            self.track_correlatorsSpacing = self.dll_epl_narrow
+
+            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
         
+        # Switch to wide tracking
+        elif self.loopLockState != LoopLockState.WIDE_TRACK \
+            and self.fllLockIndicator >= self.fll_threshold_wide \
+            and self.fllLockIndicator < self.fll_threshold_narrow:
+            
+            self.loopLockState = LoopLockState.WIDE_TRACK
+            self.fllBandwidth = self.fll_bandwidth_wide
+            self.pllBandwidth = self.pll_bandwidth_wide
+            self.track_correlatorsSpacing = self.dll_epl_wide
+
+            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
+        
+        # Switch to pull-in
+        elif self.loopLockState != LoopLockState.PULL_IN \
+            and self.fllLockIndicator <= self.fll_threshold_wide:
+            
+            self.loopLockState = LoopLockState.PULL_IN
+            self.fllBandwidth = self.fll_bandwidth_pullin
+            self.pllBandwidth = 0.0
+            self.track_correlatorsSpacing = self.dll_epl_wide 
+
+            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
+
         return
     
     # -----------------------------------------------------------------------------------------------------------------
@@ -313,8 +341,8 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         """
         """
         discrim = FLL_ATAN(iPrompt=correlatorResults[self.IDX_I_PROMPT], iPromptPrev=self.iPromptPrev, 
-                       qPrompt=correlatorResults[self.IDX_Q_PROMPT], qPromptPrev=self.qPromptPrev, 
-                       deltaT=self.deltaT)
+                           qPrompt=correlatorResults[self.IDX_Q_PROMPT], qPromptPrev=self.qPromptPrev, 
+                           deltaT=1e-3)
         return discrim
 
     # -----------------------------------------------------------------------------------------------------------------
@@ -339,14 +367,49 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
 
     # -----------------------------------------------------------------------------------------------------------------
 
-    def runCarrierFilter(self, fllDiscrim=0.0, pllDiscrim=0.0, integrationTime=1e-3):
+    def runCarrierFrequencyFilter(self, fllDiscrim=0.0, pllDiscrim=0.0, integrationTime=1e-3):
 
         carrierFrequencyError, self.fll_vel_memory = FLLassistedPLL_2ndOrder(
-                    pllDiscrim, fllDiscrim, w0f = self.fll_noise_bandwidth / W0_BANDWIDTH_1, 
-                    w0p = self.pll_noise_bandwidth / W0_BANDWIDTH_2,
+                    pllDiscrim, fllDiscrim, w0f = self.fllBandwidth / W0_BANDWIDTH_1, 
+                    w0p = self.pllBandwidth / W0_BANDWIDTH_2,
                     a2 = W0_SCALE_A2, integrationTime=integrationTime, 
                     velMemory=self.fll_vel_memory)
 
-        return
+        return carrierFrequencyError
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def runCodeFrequencyFilter(self, dllDiscrim:float):
+
+        codeFrequencyError  = BorreLoopFilter(dllDiscrim, self.dllDiscrim, self.track_dll_tau1, 
+                                              self.track_dll_tau2, self.track_dll_pdi * self.track_coherentIntegration)
+
+        return codeFrequencyError
         
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def prepareResultsTracking(self):
+        """
+        """
+        results = super().prepareResultsTracking()
+        results["i_early"]                 = self.correlatorsResults[0]
+        results["q_early"]                 = self.correlatorsResults[1]
+        results["i_prompt"]                = self.correlatorsResults[2]
+        results["q_prompt"]                = self.correlatorsResults[3]
+        results["i_late"]                  = self.correlatorsResults[4]
+        results["q_late"]                  = self.correlatorsResults[5]
+        results["carrier_frequency"]       = self.carrierFrequency
+        results["code_frequency"]          = self.codeFrequency   
+        results["carrier_frequency_error"] = self.carrierFrequencyError
+        results["code_frequency_error"]    = self.codeFrequencyError     
+        results["cn0"]                     = self.cn0
+        results["pll_lock"]                = self.pllLockIndicator
+        results["fll_lock"]                = self.fllLockIndicator
+        results["dll"]                     = self.dllDiscrim
+        results["pll"]                     = self.pllDiscrim
+        results["fll"]                     = self.fllDiscrim
+        results["lock_state"]              = self.loopLockState
+
+        return results
+
     # -----------------------------------------------------------------------------------------------------------------
