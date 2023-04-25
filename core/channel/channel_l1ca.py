@@ -14,6 +14,7 @@ from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelS
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
 from core.dsp.tracking import secondOrferDLF, FLLassistedPLL_2ndOrder, FLLassistedPLL_3rdOrder
+from core.dsp.lockindicator import NWPR
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS

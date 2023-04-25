@@ -44,11 +44,13 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
     
     def setTracking(self, configuration:dict):
 
-        self.track_coherentIntegration = int(configuration['coherent_integration'])
-        # Coherent integration of 1 ms is the same as no coherent integration.
-        # We put it to 1 to avoid null numbers in future computations.
-        if self.track_coherentIntegration == 0:
-            self.track_coherentIntegration = 1
+        # self.track_coherentIntegration = int(configuration['coherent_integration'])
+        # # Coherent integration of 1 ms is the same as no coherent integration.
+        # # We put it to 1 to avoid null numbers in future computations.
+        # if self.track_coherentIntegration == 0:
+        #     self.track_coherentIntegration = 1
+        # self.coherentIntegration = 1
+        # self.fineTrackThreshold = int(configuration['fine_track_treshold'])
 
         # Correlators
         wide = float(configuration['correlator_epl_wide'])
@@ -98,12 +100,15 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         self.pllLockIndicator = 0.0
 
         self.correlatorsResults = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
-        self.correlatorsResultsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
-        self.correlatorsResultsAccum [:] = 0.0
+        self.correlatorsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
+        self.correlatorsAccum [:] = 0.0
+        self.correlatorsAccumCounter = 0
 
         self.codeStep = GPS_L1CA_CODE_FREQ / self.rfSignal.samplingFrequency
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
         self.trackFlags = TrackingFlags.UNKNOWN
+
+        self.lastLockStateSwitch = 0
         
         # TODO To be removed
         self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
@@ -159,10 +164,12 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
                                         correlatorsSpacing=self.track_correlatorsSpacing)
             
         # Update accumulators
-        self.correlatorsResultsAccum += self.correlatorsResults[:]
-        self.nbPrompt += 1
-        self.iPrompt_sum = self.correlatorsResultsAccum[self.IDX_I_PROMPT]
-        self.correlatorsResultsAccum[:] = 0.0
+        self.correlatorsAccum += self.correlatorsResults[:]
+        self.correlatorsAccumCounter += 1
+
+        # For decoding part
+        self.nbPrompt = self.correlatorsAccumCounter
+        self.iPrompt_sum = self.correlatorsAccum[self.IDX_I_PROMPT] 
 
         return
 
@@ -170,23 +177,27 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
 
     def runDiscriminators(self):
 
-        # Compute code frequency discriminator
-        dllDiscrim = self.runCodeDiscriminator(self.correlatorsResults)
-
-        # Compute carrier frequency discriminators
+        # Compute discriminators
+        dllDiscrim = 0.0
         fllDiscrim = 0.0
         pllDiscrim = 0.0
         if self.loopLockState == LoopLockState.PULL_IN:
+            dllDiscrim = self.runCodeDiscriminator(self.correlatorsResults)
             # No PLL during pull-in state
-            if self.nbPrompt > 1:
+            if self.correlatorsAccumCounter > 1:
                 fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResults)
-        elif self.track_coherentIntegration > 1 \
-            and self.nbPrompt % self.track_coherentIntegration == 0 \
-            and self.trackFlags & TrackingFlags.BIT_SYNC:
-            # Coherent integration
-            # No FLL during pull-in state (complex as it depends on the coherent integration time)
-            pllDiscrim = self.runPhaseDiscriminator(self.correlatorsResultsAccum)
+        # elif self.loopLockState == LoopLockState.FINE_TRACK \
+        #     and self.track_coherentIntegration > 1 \
+        #     and self.trackFlags & TrackingFlags.BIT_SYNC:
+        #     # Coherent integration
+        #     if self.correlatorsAccumCounter % self.track_coherentIntegration != 0:
+        #         return self.dllDiscrim, self.fllDiscrim, self.pllDiscrim
+            
+        #     # No FLL during pull-in state (complex as it depends on the coherent integration time)
+        #     dllDiscrim = self.runCodeDiscriminator(self.correlatorsAccum)
+        #     pllDiscrim = self.runPhaseDiscriminator(self.correlatorsAccum)
         else:
+            dllDiscrim = self.runCodeDiscriminator(self.correlatorsResults)
             fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResults)
             pllDiscrim = self.runPhaseDiscriminator(self.correlatorsResults)
 
@@ -209,7 +220,7 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
     def runCodeFrequencyFilter(self, dllDiscrim:float):
 
         codeFrequencyError  = BorreLoopFilter(dllDiscrim, self.dllDiscrim, self.track_dll_tau1, 
-                                              self.track_dll_tau2, self.track_dll_pdi * self.track_coherentIntegration)
+                                              self.track_dll_tau2, self.track_dll_pdi)
 
         return codeFrequencyError
     
@@ -234,8 +245,8 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         
         # CN0
         self.cn0_PdPnRatio += (iprompt**2 + qprompt**2) / (abs(iprompt) - abs(qprompt)) ** 2
-        if self.nbPrompt == LNAV_MS_PER_BIT:
-            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.nbPrompt, self.nbPrompt * 1e-3, self.cn0)
+        if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:
+            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.correlatorsAccumCounter, self.correlatorsAccumCounter * 1e-3, self.cn0)
             self.cn0_PdPnRatio = 0.0
         
         self.dllLockIndicator = self.cn0
@@ -270,6 +281,11 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
 
+        # Check buffers
+        if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:
+            self.correlatorsAccum [:] = 0
+            self.correlatorsAccumCounter = 0
+
         return
     
     # -----------------------------------------------------------------------------------------------------------------
@@ -291,12 +307,20 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         if (self.trackFlags & TrackingFlags.CODE_LOCK) and not (self.trackFlags & TrackingFlags.BIT_SYNC):
             if np.sign(self.iPromptPrev) != np.sign(self.correlatorsResults[self.IDX_I_PROMPT]):
                 self.trackFlags |= TrackingFlags.BIT_SYNC
-                self.nbPrompt = 0
-                self.correlatorsResultsAccum[:] = 0
+                self.correlatorsAccum[:] = 0
+                self.correlatorsAccumCounter = 0
                 logging.getLogger(__name__).info(f"CID {self.channelID} tracking reached {TrackingFlags.BIT_SYNC}.")
         # Update prompt memory
         self.iPromptPrev = self.correlatorsResults[self.IDX_I_PROMPT]
         self.qPromptPrev = self.correlatorsResults[self.IDX_Q_PROMPT]
+
+        # # Switch to fine tracking 
+        # if self.loopLockState != LoopLockState.FINE_TRACK \
+        #     and self.loopLockState == LoopLockState.NARROW_TRACK \
+        #     and self.lastLockStateSwitch > self.fineTrackThreshold:
+
+        #     self.loopLockState = LoopLockState.FINE_TRACK
+        #     self.coherentIntegration = self.track_coherentIntegration
 
         # Switch to narrow tracking
         if self.loopLockState != LoopLockState.NARROW_TRACK \
@@ -307,8 +331,6 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
             self.fllBandwidth = self.fll_bandwidth_narrow
             self.pllBandwidth = self.pll_bandwidth_narrow
             self.track_correlatorsSpacing = self.dll_epl_narrow
-
-            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
         
         # Switch to wide tracking
         elif self.loopLockState != LoopLockState.WIDE_TRACK \
@@ -319,8 +341,6 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
             self.fllBandwidth = self.fll_bandwidth_wide
             self.pllBandwidth = self.pll_bandwidth_wide
             self.track_correlatorsSpacing = self.dll_epl_wide
-
-            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
         
         # Switch to pull-in
         elif self.loopLockState != LoopLockState.PULL_IN \
@@ -330,8 +350,13 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
             self.fllBandwidth = self.fll_bandwidth_pullin
             self.pllBandwidth = 0.0
             self.track_correlatorsSpacing = self.dll_epl_wide 
-
-            logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
+        
+        else:
+            # Return here if no change, this is to update variables below if it switch and avoid copy-paste
+            return
+        
+        self.lastLockStateSwitch = self.codeCounter
+        logging.getLogger(__name__).debug(f"CID {self.channelID} tracking switched to {self.loopLockState}.")
 
         return
     
@@ -382,7 +407,7 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
     def runCodeFrequencyFilter(self, dllDiscrim:float):
 
         codeFrequencyError  = BorreLoopFilter(dllDiscrim, self.dllDiscrim, self.track_dll_tau1, 
-                                              self.track_dll_tau2, self.track_dll_pdi * self.track_coherentIntegration)
+                                              self.track_dll_tau2, self.track_dll_pdi)
 
         return codeFrequencyError
         
