@@ -522,6 +522,9 @@ class ChannelL1CA(Channel):
             # No bit sync yet, nothing to do
             return
         
+        self.iPrompt += self.correlatorsResults[self.IDX_I_PROMPT]
+        self.nbPrompt += 1
+
         # Check if new bit to decode
         if not (self.nbPrompt == LNAV_MS_PER_BIT):
             # No new bit, nothing to do
@@ -530,6 +533,8 @@ class ChannelL1CA(Channel):
         # Convert prompt correlator to bits
         self.navBitsBuffer[self.navBitsCounter] = Prompt2Bit(self.iPrompt_sum) # TODO Check if this function work
         self.navBitsCounter += 1
+        self.iPrompt = 0.0
+        self.nbPrompt += 1
 
         # Check if minimum number of bits decoded
         # Need at least the preambule bits plus the previous 2 bit to perform checks plus the 2 words afterwards.
@@ -780,6 +785,7 @@ class ChannelL1CA(Channel):
         _packet['tow'] = self.tow
         _packet['time_since_tow'] = self.getTimeSinceTOW() 
         _packet['unprocessed_samples'] = self.rfBuffer.getNbUnreadSamples(self.currentSample)
+        _packet['code_since_tow'] = self.codeSinceTOW
         
         return _packet
 

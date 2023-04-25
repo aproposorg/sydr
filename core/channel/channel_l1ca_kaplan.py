@@ -100,9 +100,6 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         self.pllLockIndicator = 0.0
 
         self.correlatorsResults = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
-        self.correlatorsAccum = np.squeeze(np.empty((1, len(self.track_correlatorsSpacing)*2)))
-        self.correlatorsAccum [:] = 0.0
-        self.correlatorsAccumCounter = 0
 
         self.codeStep = GPS_L1CA_CODE_FREQ / self.rfSignal.samplingFrequency
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
@@ -114,6 +111,7 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         self.maxSizeCorrelatorBuffer = LNAV_MS_PER_BIT
         self.correlatorsBuffer = np.empty((self.maxSizeCorrelatorBuffer, len(self.track_correlatorsSpacing)*2))
         self.correlatorsBuffer[:, :] = 0.0
+        self.correlatorsBufferIndex = 0
 
         return
     
@@ -139,11 +137,11 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         # Compute the lock loop indicators
         self.runLoopIndicators()
 
-        # Update the NCO and other things
-        self.postTrackingUpdate(dllDiscrim, fllDiscrim, pllDiscrim, carrierFrequencyError, codeFrequencyError)
-
         # Update the lock states for next loop
         self.trackingStateUpdate()
+
+        # Update the NCO and other things
+        self.postTrackingUpdate(dllDiscrim, fllDiscrim, pllDiscrim, carrierFrequencyError, codeFrequencyError)
 
         # Prepare result package
         results = self.prepareResultsTracking()
@@ -162,14 +160,13 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
                                         remainingCode=self.NCO_remainingCode,
                                         codeStep=self.codeStep,
                                         correlatorsSpacing=self.track_correlatorsSpacing)
-            
-        # Update accumulators
-        self.correlatorsAccum += self.correlatorsResults[:]
-        self.correlatorsAccumCounter += 1
-
-        # For decoding part
-        self.nbPrompt = self.correlatorsAccumCounter
-        self.iPrompt_sum = self.correlatorsAccum[self.IDX_I_PROMPT] 
+        
+        # Check buffer index
+        if self.correlatorsBufferIndex == LNAV_MS_PER_BIT:
+            self.correlatorsBufferIndex = 0
+        
+        self.correlatorsBuffer[self.correlatorsBufferIndex, :] = self.correlatorsResults[:]
+        self.correlatorsBufferIndex += 1
 
         return
 
@@ -184,7 +181,7 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         if self.loopLockState == LoopLockState.PULL_IN:
             dllDiscrim = self.runCodeDiscriminator(self.correlatorsResults)
             # No PLL during pull-in state
-            if self.correlatorsAccumCounter > 1:
+            if self.codeCounter > 0:
                 fllDiscrim = self.runFrequencyDiscriminator(self.correlatorsResults)
         # elif self.loopLockState == LoopLockState.FINE_TRACK \
         #     and self.track_coherentIntegration > 1 \
@@ -245,8 +242,8 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         
         # CN0
         self.cn0_PdPnRatio += (iprompt**2 + qprompt**2) / (abs(iprompt) - abs(qprompt)) ** 2
-        if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:
-            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.correlatorsAccumCounter, self.correlatorsAccumCounter * 1e-3, self.cn0)
+        if self.correlatorsBufferIndex == LNAV_MS_PER_BIT:
+            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.correlatorsBufferIndex, self.correlatorsBufferIndex * 1e-3, self.cn0)
             self.cn0_PdPnRatio = 0.0
         
         self.dllLockIndicator = self.cn0
@@ -261,6 +258,8 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         # Update counters
         self.codeCounter  += 1 # TODO What if we have skip some tracking? need to update the codeCounter accordingly
         self.codeSinceTOW += 1
+
+        logging.getLogger(__name__).debug(f"CID {self.channelID} codeSinceTOW {self.codeSinceTOW}.")
 
         # Update discriminators and loop results
         self.dllDiscrim = dllDiscrim
@@ -280,11 +279,6 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         # Update sample reading index
         self.currentSample = (self.currentSample + self.track_requiredSamples) % self.rfBuffer.maxSize
         self.track_requiredSamples = int(np.ceil((GPS_L1CA_CODE_SIZE_BITS - self.NCO_remainingCode) / self.codeStep))
-
-        # Check buffers
-        if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:
-            self.correlatorsAccum [:] = 0
-            self.correlatorsAccumCounter = 0
 
         return
     
@@ -307,8 +301,8 @@ class ChannelL1CA_Kaplan(ChannelL1CA):
         if (self.trackFlags & TrackingFlags.CODE_LOCK) and not (self.trackFlags & TrackingFlags.BIT_SYNC):
             if np.sign(self.iPromptPrev) != np.sign(self.correlatorsResults[self.IDX_I_PROMPT]):
                 self.trackFlags |= TrackingFlags.BIT_SYNC
-                self.correlatorsAccum[:] = 0
-                self.correlatorsAccumCounter = 0
+                self.correlatorsBuffer[:, :] = 0.0
+                self.correlatorsBufferIndex = 0
                 logging.getLogger(__name__).info(f"CID {self.channelID} tracking reached {TrackingFlags.BIT_SYNC}.")
         # Update prompt memory
         self.iPromptPrev = self.correlatorsResults[self.IDX_I_PROMPT]

@@ -14,8 +14,8 @@ import math
 
 from core.receiver.receiver import Receiver
 from core.channel.channel_l1ca import ChannelStatusL1CA
-from core.channel.channel_l1ca import ChannelL1CA
-#from core.channel.channel_l1ca_kaplan import ChannelL1CA_Kaplan as ChannelL1CA
+#from core.channel.channel_l1ca import ChannelL1CA
+from core.channel.channel_l1ca_kaplan import ChannelL1CA_Kaplan as ChannelL1CA
 from core.channel.channel import ChannelMessage, ChannelStatus
 from core.enlightengui import EnlightenGUI
 from core.space.satellite import Satellite, GNSSSystems
@@ -121,6 +121,7 @@ class ReceiverGPSL1CA(Receiver):
                 self.channelsStatus[channel.channelID].tow           = packet['tow']
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
                 self.channelsStatus[channel.channelID].unprocessedSamples = packet['unprocessed_samples']
+                self.channelsStatus[channel.channelID].codeSinceTOW = packet['code_since_tow']
             elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE):
                 continue
             else:
@@ -246,7 +247,7 @@ class ReceiverGPSL1CA(Receiver):
 
             logging.getLogger(__name__).debug(
                 f"SVID {channel.satelliteID:02d}, timeSinceLastTOW {channel.timeSinceTOW:.4f}, relativeTime {relativeTime:.6f}, " +\
-                f"transmitTime {transmitTime:.4f}, unprocessed samples {channel.unprocessedSamples}, " +\
+                f"transmitTime {transmitTime:.4f}, unprocessed samples {channel.unprocessedSamples}, codeSinceTow {channel.codeSinceTOW}, " +\
                 f"pseudoranges {pseudoranges:.3f}, correctedPseudoranges {correctedPseudoranges:.3f}")
             
             # Pseudorange
