@@ -699,10 +699,13 @@ class Visualisation:
         # East/North plot
         height=800
         width=800
+        graph_range = 50 # meters
         figEN = figure(
             title="East / North", \
             background_fill_color=self.backgroundColor,\
-            height=height, width=width, tools=tools)
+            height=height, width=width, tools=tools,
+            x_range=Range1d(-graph_range, graph_range),
+            y_range=Range1d(-graph_range, graph_range))
         figEN.scatter(x='east', y='north', source=source, size=30, marker='dot')
         figEN.scatter(x=np.average(enu[:,0]), y=np.average(enu[:,1]), size=10, fill_color='red')
         figEN.yaxis.axis_label = "North [m]"

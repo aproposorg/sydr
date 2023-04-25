@@ -180,7 +180,7 @@ class ReceiverGPSL1CA(Receiver):
                 and ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.isEphemerisAssited)):
                 selectedChannels[channel.channelID] = channel
         
-        if len(selectedChannels) < 5:
+        if len(selectedChannels) < 4:
             return
         
         # Check current receiver state

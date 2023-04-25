@@ -14,7 +14,6 @@ from core.channel.channel import Channel, ChannelState, ChannelMessage, ChannelS
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN2
 from core.dsp.tracking import secondOrferDLF, FLLassistedPLL_2ndOrder, FLLassistedPLL_3rdOrder
-from core.dsp.lockindicator import NWPR
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from core.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from core.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
@@ -71,11 +70,13 @@ class ChannelL1CA(Channel):
     track_coherentIntegration: int
 
     # Decoding
-    navBitBufferSize : int
-    navBitsCounter   : int
-    subframeFlags    : list
-    tow              : int
-    preambuleFound   : bool
+    navBitBufferSize    : int
+    navBitsCounter      : int
+    subframeFlags       : list
+    tow                 : int
+    preambuleFound      : bool
+    navPromptSum        : float 
+    navPromptSumCounter : int
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -135,6 +136,8 @@ class ChannelL1CA(Channel):
         self.subframeFlags = [False, False, False, False, False]
         self.tow = 0
         self.preambuleFound = False
+        self.navPromptSum        = 0.0
+        self.navPromptSumCounter = 0
 
         # Initialisation from configuration
         self.setAcquisition(configuration['ACQUISITION'])
@@ -520,21 +523,24 @@ class ChannelL1CA(Channel):
         # Check if time to decode the bit
         if not (self.trackFlags & TrackingFlags.BIT_SYNC):
             # No bit sync yet, nothing to do
+            self.navPromptSum = 0.0
+            self.navPromptSumCounter = 0
             return
         
-        self.iPrompt += self.correlatorsResults[self.IDX_I_PROMPT]
-        self.nbPrompt += 1
+        # Sum prompt correlator results
+        self.navPromptSum += self.correlatorsResults[self.IDX_I_PROMPT]
+        self.navPromptSumCounter += 1
 
         # Check if new bit to decode
-        if not (self.nbPrompt == LNAV_MS_PER_BIT):
+        if not (self.navPromptSumCounter == LNAV_MS_PER_BIT):
             # No new bit, nothing to do
             return
         
         # Convert prompt correlator to bits
-        self.navBitsBuffer[self.navBitsCounter] = Prompt2Bit(self.iPrompt_sum) # TODO Check if this function work
+        self.navBitsBuffer[self.navBitsCounter] = Prompt2Bit(self.navPromptSum) # TODO Check if this function work
         self.navBitsCounter += 1
-        self.iPrompt = 0.0
-        self.nbPrompt += 1
+        self.navPromptSum = 0.0
+        self.navPromptSumCounter = 0
 
         # Check if minimum number of bits decoded
         # Need at least the preambule bits plus the previous 2 bit to perform checks plus the 2 words afterwards.
