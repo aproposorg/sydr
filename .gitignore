@@ -10,3 +10,4 @@ scalene_profile.json
 speedscope_profile.txt
 core/c_functions/tracking
 core/c_functions/acquisition
+core/c_functions/channel_l1ca
