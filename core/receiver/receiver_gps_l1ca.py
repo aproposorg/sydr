@@ -37,7 +37,7 @@ class ReceiverGPSL1CA(Receiver):
 
     approxPosition : list
 
-    isEphemerisAssited : bool
+    assitedGNSSEnabled : bool
 
     def __init__(self, configuration:dict, overwrite=True, gui:EnlightenGUI=None):
         """
@@ -64,8 +64,9 @@ class ReceiverGPSL1CA(Receiver):
         self.prnList = list(map(int, self.configuration.get('SATELLITES', 'include_prn').split(',')))
 
         # Assisted GNSS
-        self.isEphemerisAssited = eval(configuration['AGNSS']['broadcast_ephemeris_enabled'])
-        if self.isEphemerisAssited:
+        self.assitedGNSSEnabled = eval(configuration['AGNSS']['agnss_enabled'])
+        if self.assitedGNSSEnabled:
+            self.clock.fromString(configuration['AGNSS']['clock'])  
             self.database.importRinexNav(configuration['AGNSS']['broadcast_ephemeris_path'])
 
         # Add channels in channel manager
@@ -177,7 +178,7 @@ class ReceiverGPSL1CA(Receiver):
         selectedChannels = {}
         for channel in self.channelsStatus.values():
             if (channel.trackFlags & TrackingFlags.TOW_DECODED) \
-                and ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.isEphemerisAssited)):
+                and ((channel.trackFlags & TrackingFlags.EPH_DECODED) or (self.assitedGNSSEnabled)):
                 selectedChannels[channel.channelID] = channel
         
         if len(selectedChannels) < 4:
@@ -190,7 +191,7 @@ class ReceiverGPSL1CA(Receiver):
                 return
             
         # Check if ephemeris are provided from external source
-        if self.isEphemerisAssited:
+        if self.assitedGNSSEnabled:
             for satellite in self.satelliteDict.values():
                 satellite.ephemeris = self.database.fetchBRDC(self.clock, satellite.systemID, satellite.satelliteID)
 

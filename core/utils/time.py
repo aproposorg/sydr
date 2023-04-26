@@ -11,7 +11,7 @@ def fromDatetime(_datetime:datetime):
 
     time = Time()
     time.datetime = _datetime
-    time.gpsTime = GPSTime.from_datetime(_datetime)
+    time.gpstime = GPSTime.from_datetime(_datetime)
 
     return time
 
@@ -65,6 +65,13 @@ class Time(object):
     def __eq__(self, other):
         return self.datetime == other.datetime
     
+    # -------------------------------------------------------------------------
+    
+    def fromString(self, datetime_str):
+        self.datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+        self.gpstime = GPSTime.from_datetime(self.datetime)
+        return
+
     # -------------------------------------------------------------------------
     
     def fromGPSTime(self, gpsWeek:int, gpsSeconds:float):
