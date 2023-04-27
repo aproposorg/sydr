@@ -145,8 +145,8 @@ def PLL_costa(iPrompt:float, qPrompt:float):
 
 def FLL_ATAN2(iPrompt:float, qPrompt:float, iPromptPrev:float, qPromptPrev:float, deltaT:float):
     
-    frequencyError = np.arctan2(iPromptPrev * qPrompt - qPromptPrev * iPrompt,
-                                iPromptPrev * iPrompt + qPromptPrev * qPrompt) / deltaT
+    frequencyError = np.arctan2(iPromptPrev * iPrompt + qPromptPrev * qPrompt,
+                                iPromptPrev * qPrompt - qPromptPrev * iPrompt) / deltaT
     frequencyError /= TWO_PI
 
     return frequencyError
@@ -187,59 +187,59 @@ def BorreLoopFilter(input:float, memory:float, tau1:float, tau2:float, pdi:float
 
 # =====================================================================================================================
 
-def firstOrderDLF(input, w0):
-    """
-    Perform a first order Digital Loop Filter (DLF).
-    See [Kaplan, 2006], p181.
-    """
+# def firstOrderDLF(input, w0):
+#     """
+#     Perform a first order Digital Loop Filter (DLF).
+#     See [Kaplan, 2006], p181.
+#     """
 
-    output = input * w0
+#     output = input * w0
 
-    return output
+#     return output
 
-# =====================================================================================================================
+# # =====================================================================================================================
 
-def secondOrferDLF(input, w0, a2, integrationTime, memory):
-    """
-    """
+# def secondOrferDLF(input, w0, a2, integrationTime, memory):
+#     """
+#     """
 
-    c1 = w0**2
-    c2 = a2 * w0
+#     c1 = w0**2
+#     c2 = a2 * w0
 
-    # First branch
-    _memoryUpdate = input * c1 * integrationTime
-    output = (_memoryUpdate + memory) / 2
-    memory = _memoryUpdate # TODO is it really an addition or we replace the previous memory?
+#     # First branch
+#     _memoryUpdate = input * c1 * integrationTime
+#     output = (_memoryUpdate + memory) 
+#     memory = _memoryUpdate # TODO is it really an addition or we replace the previous memory?
 
-    # Second branch
-    output += input * c2
+#     # Second branch
+#     output += input * c2
 
-    return output, memory
+#     return output, memory
 
-# =====================================================================================================================
+# # =====================================================================================================================
 
-def thirdOrderDLF(input:float, w0:float, a3:float, b3:float, integrationTime:float, memory1:float, memory2:float):
-    """
-    """
+# def thirdOrderDLF(input:float, w0:float, a3:float, b3:float, integrationTime:float, memory1:float, memory2:float):
+#     """
+#     """
 
-    c1 = w0**3
-    c2 = a3 * w0**2
-    c3 = b3 * w0
+#     c1 = w0**3
+#     c2 = a3 * w0**2
+#     c3 = b3 * w0
 
-    # First branch
-    _memoryUpdate = input * c1 * integrationTime
-    output = (_memoryUpdate + memory1) / 2
-    memory1 = _memoryUpdate
+#     # First branch
+#     _memoryUpdate = input * c1 * integrationTime
+#     output = (_memoryUpdate + memory1) 
+#     memory1 = _memoryUpdate
 
-    # Second branch
-    _memoryUpdate = (output + input * c2) * integrationTime
-    output = (_memoryUpdate + memory2) / 2
-    memory2 = _memoryUpdate
+#     # Second branch
+#     _memoryUpdate = (output + input * c2) * integrationTime
+#     output = (_memoryUpdate + memory2) 
+#     memory2 = _memoryUpdate
 
-    # Third branch
-    output += input * c3
+#     # Third branch
+#     output += input * c3
 
-    return output, memory1, memory2
+#     return output, memory1, memory2
 
 # =====================================================================================================================
 

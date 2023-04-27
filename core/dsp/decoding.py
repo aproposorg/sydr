@@ -265,6 +265,7 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
     Returns
         tow (int): Time of Week, non-corrected.
         subframeID (int): Subframe ID.
+        subframeBitsStr (string): Subframe bits concatenated into a string
 
     Raises:
         None
@@ -275,15 +276,15 @@ def LNAV_DecodeTOW(subframeBits:np.array, d30star:int):
     subframeBits = LNAV_WordsCheck(subframeBits, d30star)
 
     # Concatenate the string 
-    subframeBits = ''.join([str(i) for i in subframeBits])
+    subframeBitsStr = ''.join([str(i) for i in subframeBits])
 
     # Decode
-    subframeID = bin2dec(subframeBits[49:52])
+    subframeID = bin2dec(subframeBitsStr[49:52])
     
-    tow  = bin2dec(subframeBits[30:47]) * 6 
+    tow  = bin2dec(subframeBitsStr[30:47]) * 6 
     #tow -= 6 # Remove 6 seconds to correct to current subframe (see LNAV_DecodeSubframe)
 
-    return tow, subframeID, subframeBits
+    return tow, subframeID, subframeBitsStr
 
 # =====================================================================================================================
 

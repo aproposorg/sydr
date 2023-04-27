@@ -200,6 +200,33 @@ class Channel(ABC, multiprocessing.Process):
         }
         return mdict
     
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def prepareChannelUpdate(self):
+        """
+        Prepare the channel update.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+        
+        _packet = self.prepareResults()
+        _packet['type'] = ChannelMessage.CHANNEL_UPDATE
+        _packet['state'] = self.channelState
+        _packet['tracking_flags'] = self.trackFlags
+        _packet['tow'] = self.tow
+        _packet['time_since_tow'] = self.getTimeSinceTOW() 
+        _packet['unprocessed_samples'] = self.rfBuffer.getNbUnreadSamples(self.currentSample)
+        _packet['code_since_tow'] = self.codeSinceTOW
+        
+        return _packet
+    
 # =====================================================================================================================
 
 class ChannelStatus(ABC):

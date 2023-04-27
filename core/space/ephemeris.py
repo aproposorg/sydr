@@ -1,6 +1,7 @@
 from abc import ABC, abstractclassmethod
 import numpy as np
 from enum import Enum, unique
+import logging
 
 from core.utils.constants import EARTH_GM, EARTH_ROTATION_RATE, PI, RELATIVIST_CLOCK_F
 from core.utils.enumerations import GNSSSystems
@@ -155,7 +156,7 @@ class BRDCEphemeris(Ephemeris):
             # TODO
             pass
         else: 
-            print(f"Unrecognised suframe ID {subframeID} found for satellite G{self.svid}")
+            logging.getLogger(__name__).warning(f"Unrecognised suframe ID {subframeID} found for satellite G{self.satelliteID}")
 
         return
 
