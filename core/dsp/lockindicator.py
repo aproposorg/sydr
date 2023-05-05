@@ -38,20 +38,8 @@ def PLL_Lock_Borre(iprompt, qprompt, pll_lock_prev, alpha=0.01):
 # =====================================================================================================================
 # CN0 
 
-def CN0_NWPR(iPrompt:float, qPrompt:float, nbPrompt):
-    """
-    C/N0 estimator based on the Narrow-band Wide-band Power Ratio (NWPR) algorithm. 
-    See reference [Borre, 2023] for definition.
-    """
-
-    # Compute Narrow-Band Power (NBP) and Wide-Band Power (WBP)
-    # TODO
-
-    return
-
-# =====================================================================================================================
-
-def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:float):
+def CN0_NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:float,
+             nbAccum=20, integrationPeriod=1e-3):
     """
     Narrow-band Wide-band Power Ratio (NWPR) estimation. I/Q prompt are assumed free of bit transition.
     See reference [Borre, 2023] for definition.
@@ -63,7 +51,7 @@ def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:floa
         qPromptSum2 (float): Sum of squares of Quadraphase Prompt correlator results.
 
     Return: 
-        normalisedPower (float): Normalised Power Ratio.
+        cn0 (float): Carrier-to-noise ratio
 
     Raises:
         None
@@ -78,7 +66,10 @@ def NWPR(iPromptSum:float, qPromptSum:float, iPromptSum2:float, qPromptSum2:floa
     # Normalised Power (NP)
     normalisedPower = nbp / wbp
 
-    return normalisedPower
+    # CN0
+    cn0 = 10 * np.log10(1/integrationPeriod * (normalisedPower - 1) / (nbAccum - normalisedPower))
+
+    return cn0
 
 # =====================================================================================================================
 
@@ -104,7 +95,7 @@ def CN0_Beaulieu(ratio:float, N:int, T:float, old:float):
 
     cn0 = lambda_c * B_eqn
 
-    cn0 = lowPassFilter(cn0, old, alpha=0.1)
+    cn0 = lowPassFilter(cn0, old, alpha=0.01)
 
     return cn0
 

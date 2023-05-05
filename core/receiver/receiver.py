@@ -206,7 +206,7 @@ class Receiver(ABC):
                     travelTime = meas.value / SPEED_OF_LIGHT
     	            
                     transmitTime = time - travelTime
-                    satellite = self.satelliteDict[meas.channel.svid]
+                    satellite = self.satelliteDict[meas.channel.satelliteID]
                     satpos, satclock = satellite.computePosition(transmitTime)
                     satpos = self.correctEarthRotation(travelTime, np.transpose(satpos))
                     

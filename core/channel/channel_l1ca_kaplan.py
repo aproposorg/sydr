@@ -15,7 +15,7 @@ from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN
 from core.dsp.tracking import FLLassistedPLL_2ndOrder
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
-from core.dsp.lockindicator import PLL_Lock_Borre, FLL_Lock_Borre, CN0_Beaulieu
+from core.dsp.lockindicator import PLL_Lock_Borre, FLL_Lock_Borre, CN0_Beaulieu, CN0_NWPR
 from core.utils.circularbuffer import CircularBuffer
 from core.signal.rfsignal import RFSignal
 from core.signal.gnsssignal import UpsampleCode, GenerateGPSGoldCode
@@ -293,6 +293,10 @@ class ChannelL1CA_Kaplan(Channel):
         self.dllLockThreshold = float(configuration['dll_threshold'])
         self.cn0_PdPnRatio = 0.0
         self.cn0 = 0.0
+        self.iPromptSum  = 0.0
+        self.qPromptSum  = 0.0
+        self.iPromptSum2 = 0.0
+        self.qPromptSum2 = 0.0
 
         # FLL
         self.fll_bandwidth_pullin = float(configuration['fll_bandwidth_pullin'])
@@ -469,19 +473,29 @@ class ChannelL1CA_Kaplan(Channel):
         
         self.fllLockIndicator = FLL_Lock_Borre(iprompt=iprompt, qprompt=qprompt, 
                                                iprompt_prev=self.iPromptPrev, qprompt_prev=self.qPromptPrev,
-                                                fll_lock_prev=self.fllLockIndicator, alpha=0.01)
+                                                fll_lock_prev=self.fllLockIndicator, alpha=0.005)
         
         if self.loopLockState > LoopLockState.PULL_IN:
             self.pllLockIndicator = PLL_Lock_Borre(iprompt=iprompt, qprompt=qprompt,  
-                                                    pll_lock_prev=self.pllLockIndicator, alpha=0.01)
+                                                    pll_lock_prev=self.pllLockIndicator, alpha=0.005)
         
         # CN0
         self.cn0_PdPnRatio += (iprompt**2 + qprompt**2) / (abs(iprompt) - abs(qprompt)) ** 2
+        self.iPromptSum  += abs(iprompt)
+        self.qPromptSum  += abs(qprompt)
+        self.iPromptSum2 += iprompt**2
+        self.qPromptSum2 += qprompt**2
         if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:
             self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, 
                                     self.correlatorsAccumCounter, 
                                     self.correlatorsAccumCounter * 1e-3, self.cn0)
+            # self.cn0 = CN0_NWPR(self.iPromptSum, self.qPromptSum, self.iPromptSum2, self.qPromptSum2,
+            #                     self.correlatorsAccumCounter, 1e-3)
             self.cn0_PdPnRatio = 0.0
+            self.iPromptSum  = 0.0
+            self.qPromptSum  = 0.0
+            self.iPromptSum2 = 0.0
+            self.qPromptSum2 = 0.0
         
         self.dllLockIndicator = self.cn0
 
@@ -543,6 +557,11 @@ class ChannelL1CA_Kaplan(Channel):
                 self.trackFlags |= TrackingFlags.BIT_SYNC
                 self.correlatorsAccum[:] = self.correlatorsResults[:]
                 self.correlatorsAccumCounter = 1
+                self.cn0_PdPnRatio = 0.0
+                self.iPromptSum  = 0.0
+                self.qPromptSum  = 0.0
+                self.iPromptSum2 = 0.0
+                self.qPromptSum2 = 0.0
                 logging.getLogger(__name__).info(f"CID {self.channelID} tracking in {TrackingFlags.BIT_SYNC}.")
         # Update prompt memory
         self.iPromptPrev = self.correlatorsResults[self.IDX_I_PROMPT]
@@ -695,7 +714,9 @@ class ChannelL1CA_Kaplan(Channel):
             return
         
         # Update necessary variables
-        self.postDecodingUpdate()
+        success = self.postDecodingUpdate()
+        if not success:
+            return
 
         # Prepare results
         results = self.prepareResultsDecoding()
@@ -808,6 +829,9 @@ class ChannelL1CA_Kaplan(Channel):
         """
         """
 
+        # Reset code loop counter
+        self.codeSinceTOW = 0
+
         try:
             self.subframeFlags[self.subframeID-1] = True
             # Update tracking flags
@@ -818,18 +842,16 @@ class ChannelL1CA_Kaplan(Channel):
             self.trackFlags ^= TrackingFlags.TOW_DECODED 
             self.trackFlags ^= TrackingFlags.TOW_KNOWN
             logging.getLogger(__name__).warning(f"CID {self.channelID} Error in subframe ID decoding.")
-
-        # Reset code loop counter
-        self.codeSinceTOW = 0
+            return False
 
         if not (self.trackFlags & TrackingFlags.EPH_DECODED) and all(self.subframeFlags[0:3]):
             self.trackFlags |= TrackingFlags.EPH_DECODED 
             self.trackFlags |= TrackingFlags.EPH_KNOWN
 
         logging.getLogger(__name__).debug(f"CID {self.channelID} subframe {self.subframeID} decoded "+\
-                                          f"(TOW: {self.tow}.")
+                                          f"(TOW: {int(self.tow)}).")
 
-        return
+        return True
     
     # -----------------------------------------------------------------------------------------------------------------
 

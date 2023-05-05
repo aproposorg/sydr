@@ -61,11 +61,14 @@ class BRDCEphemeris(Ephemeris):
     
     # -------------------------------------------------------------------------
 
-    def __init__(self):
+    def __init__(self, systemID, satelliteID):
         self.subframe1Flag = False
         self.subframe2Flag = False
         self.subframe3Flag = False
         
+        self.systemID = systemID
+        self.satelliteID = satelliteID
+
         return
 
     # -------------------------------------------------------------------------

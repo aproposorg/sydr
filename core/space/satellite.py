@@ -31,8 +31,8 @@ class Satellite(ABC):
         self.isTOWDecoded = False
         self.isEphemerisDecoded = False
 
-        self.ephemeris = BRDCEphemeris()
-        self.partialEphemeris = BRDCEphemeris()
+        self.ephemeris = BRDCEphemeris(system, svid)
+        self.partialEphemeris = BRDCEphemeris(system, svid)
         
         self.subframeTOW = 0 # Used when navigation message is decoded from signal
 
@@ -51,7 +51,7 @@ class Satellite(ABC):
         self.partialEphemeris.fromSubframeBits(subframeBits)
         if self.partialEphemeris.checkFlags():
             self.addBRDCEphemeris(self.partialEphemeris)
-            self.partialEphemeris = BRDCEphemeris()
+            self.partialEphemeris = BRDCEphemeris(self.systemID, self.satelliteID)
         return
 
     # =========================================================================
