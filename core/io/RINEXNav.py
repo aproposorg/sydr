@@ -14,10 +14,9 @@
 from datetime import date, datetime
 import numpy as np
 import copy
-from core.satellite.ephemeris import BRDCEphemeris, Ephemeris
-from core.satellite.satellite import Satellite
+from core.space.ephemeris import BRDCEphemeris
 from core.utils.enumerations import GNSSSystems
-from core.utils.time import Time
+from core.utils.time import Time, fromDatetime
 
 # =============================================================================
 
@@ -71,17 +70,17 @@ class RINEXNav:
                 if lineIdx != -1:
                     if system == GNSSSystems.GPS:
                         if prn not in self.satelliteDict.keys():
-                            self.satelliteDict[prn] = Satellite(system, int(prn[1:3]))
-                        self.satelliteDict[prn].addBRDCEphemeris(copy.copy(ephemeris))
+                            self.satelliteDict[prn] = []
+                        self.satelliteDict[prn].append(copy.copy(ephemeris))
                 prn = line[:3]
                 lineIdx = 0
-                time = Time.fromDatetime(datetime(int(line[4:8]), int(line[9:11]), int(line[12:14]), \
+                time = fromDatetime(datetime(int(line[4:8]), int(line[9:11]), int(line[12:14]), \
                     int(line[15:17]), int(line[18:20]), int(line[21:23])))
                 system = self._findSystem(line[0])
                 ephemeris = BRDCEphemeris()
                 ephemeris.time = time
-                ephemeris.system = system
-                ephemeris.svid = int(prn[1:3])
+                ephemeris.systemID = system
+                ephemeris.satelliteID = int(prn[1:3])
 
             if system in (GNSSSystems.GPS, GNSSSystems.GALILEO):
                 if lineIdx == 0:
@@ -112,7 +111,7 @@ class RINEXNav:
                 elif lineIdx == 5: 
                     ephemeris.iDot     = float(line[4:23])
                     # TODO add system specific stuff
-                    ephemeris.weekNumber = float(line[42:61])
+                    ephemeris.week     = float(line[42:61])
                 elif lineIdx == 6:
                     N = int(float(line[4:23]))
                     if N <= 6:

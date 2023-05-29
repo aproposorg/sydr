@@ -1,9 +1,13 @@
 
-
+# =====================================================================================================================
 # Generic constants
 PI                 = 3.1415926535898 # GPS' definition of Pi  
+HALF_PI            = PI / 2.0
+TWO_PI             = PI * 2.0
 SPEED_OF_LIGHT     = 299792458.0 
 
+# =====================================================================================================================
+# GNSS TIME AND GEODESY
 # Time 
 SECONDS_PER_DAY = 86400.0
 GPS_WEEK_ROLLOVER = 2
@@ -46,6 +50,36 @@ TROPO_METEO_VAR_E0  = [    0.0,    8.85,    7.24,    5.36,    3.39] # [mbar]
 TROPO_METEO_VAR_B0  = [    0.0, 0.25e-3, 0.32e-3, 0.81e-3, 0.62e-3] # [K/m]
 TROPO_METEO_VAR_L0  = [    0.0,    0.33,    0.46,    0.74,    0.30]
 
-
 # DISPLAY
 UNI_SIGMA = '\u03C3'
+
+# =====================================================================================================================
+# NAVIGATION MESSAGES
+
+# LNAV (GPS)
+LNAV_PREAMBULE_BITS     = [1, 0, 0, 0, 1, 0, 1, 1] # Preambule bit sequence
+LNAV_PREAMBULE_BITS_INV = [0, 1, 1, 1, 0, 1, 0, 0] # Inverse preambule bit sequence
+LNAV_PREAMBULE_SIZE = 8   # Number of bits in preambule
+LNAV_MS_PER_BIT     = 20  # Number of milliseconds per navigation bits
+LNAV_SUBFRAME_SIZE  = 300 # Number of bits per subframe
+LNAV_WORD_SIZE      = 30  # Number of bits per word
+
+
+# =====================================================================================================================
+# GNSS SIGNALS
+
+GPS_L1CA_NAME = "GPS L1 C/A"       # String representation
+GPS_L1CA_CARRIER_FREQ = 1575.42e6  # [Hz] Carrier frequency in [MHz]
+GPS_L1CA_CODE_SIZE_BITS = 1023     # Number bit per C/A code    
+GPS_L1CA_CODE_FREQ = 1.023e6       # [Hz] C/A code frequency 
+GPS_L1CA_CODE_MS = 1               # Number of code per millisecond of signal
+
+# =====================================================================================================================
+# DIGITAL LOOP FILTERS
+
+W0_BANDWIDTH_1     = 0.25   # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_BANDWIDTH_2     = 0.53   # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_BANDWIDTH_3     = 0.7845 # Digital Loop filter (DLF) scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_A2        = 1.414  # 2nd order DLF scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_A3        = 1.1    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.
+W0_SCALE_B3        = 2.4    # 3rd order DLF scale constant. See [Kaplan, 2006], p180.

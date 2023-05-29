@@ -5,7 +5,7 @@ from core.old.gnsssignal import GNSSSignal
 from core.acquisition import Acquisition
 from core.navigation import Navigation
 from core.rffile import RFFile
-from core.satellite.satellite import Satellite
+from core.space.satellite import Satellite
 from core.tracking import Tracking
 from core.decoding import Decoding
 

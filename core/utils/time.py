@@ -5,17 +5,33 @@ from gps_time import GPSTime
 
 import core.utils.constants as constants
 
+# =====================================================================================================================
+
+def fromDatetime(_datetime:datetime):
+
+    time = Time()
+    time.datetime = _datetime
+    time.gpstime = GPSTime.from_datetime(_datetime)
+
+    return time
+
+# =====================================================================================================================
+
 class Time(object):
 
     datetime : datetime
 
     # GPS Time
-    gpsTime: GPSTime
+    gpstime: GPSTime
+
+    # -------------------------------------------------------------------------
 
     def __init__(self):
         self.datetime = datetime(1970,1,1,0,0,0)
-        self.gpsTime = GPSTime.from_datetime(self.datetime)
+        self.gpstime = GPSTime.from_datetime(self.datetime)
         return
+    
+    # -------------------------------------------------------------------------
     
     def __repr__(self):
         return self.datetime.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -48,45 +64,53 @@ class Time(object):
 
     def __eq__(self, other):
         return self.datetime == other.datetime
-
-    @classmethod
-    def fromDatetime(self, _datetime:datetime):
-
-        time = Time()
-        time.datetime = _datetime
-        time.gpsTime = GPSTime.from_datetime(_datetime)
-
-        return time
     
-    @classmethod
+    # -------------------------------------------------------------------------
+    
+    def fromString(self, datetime_str):
+        self.datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+        self.gpstime = GPSTime.from_datetime(self.datetime)
+        return
+
+    # -------------------------------------------------------------------------
+    
     def fromGPSTime(self, gpsWeek:int, gpsSeconds:float):
 
-        time = Time()
-        time.gpsTime = GPSTime(week_number=gpsWeek, time_of_week=gpsSeconds)
-        time.datetime = time.gpsTime.to_datetime()
+        self.gpstime = GPSTime(week_number=gpsWeek, time_of_week=gpsSeconds)
+        self.datetime = self.gpstime.to_datetime()
 
-        return time
+        return
+    
+    # -------------------------------------------------------------------------
 
     def applyCorrection(self, seconds):
         self.datetime += timedelta(seconds=seconds)
-        self.gpsTime  += seconds 
+        self.gpstime  += seconds 
         return
 
     # -------------------------------------------------------------------------
 
     def getDateTime(self):
         return self.datetime
+    
+    # -------------------------------------------------------------------------
 
     def getGPSSeconds(self):
-        return self.gpsTime.time_of_week
+        return self.gpstime.time_of_week
+    
+    # -------------------------------------------------------------------------
 
     def getGPSWeek(self):
-        return self.gpsTime.week_number
+        return self.gpstime.week_number
+    
+    # -------------------------------------------------------------------------
 
     def getTransmitTime(self, pseudorange, satClock):
         dt = pseudorange/constants.SPEED_OF_LIGHT - satClock
         datetime = self.datetime - timedelta(seconds=dt)
         return Time(datetime), dt
+    
+    # -------------------------------------------------------------------------
     
     def getDOY(self):
         return self.datetime.timetuple().tm_yday
@@ -94,13 +118,41 @@ class Time(object):
     # -------------------------------------------------------------------------
 
     def setGPSTime(self, gpsWeek:int, gpsSeconds:float):
-        self.gpsTime = GPSTime(week_number=gpsWeek, time_of_week=gpsSeconds)
-        self.datetime = self.gpsTime.to_datetime()
+        self.gpstime = GPSTime(week_number=gpsWeek, time_of_week=gpsSeconds)
+        self.datetime = self.gpstime.to_datetime()
         return
+    
+    # -------------------------------------------------------------------------
 
     def setDatetime(self, dateTime:datetime):
 
         self.datetime = dateTime
-        self.gpsTime = GPSTime.from_datetime(dateTime)
+        self.gpstime = GPSTime.from_datetime(dateTime)
 
         return
+
+# =====================================================================================================================
+
+class Clock(Time):
+
+    isInitialised : bool
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def __init__(self):
+        super().__init__()
+        self.isInitialised = False
+        return
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def __str__(self):
+        return str(self.datetime)
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def addTime(self, seconds):
+        self.setDatetime(self.datetime + timedelta(seconds=seconds))
+        return
+
+# =====================================================================================================================
