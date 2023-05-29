@@ -71,7 +71,11 @@ class Visualisation:
     def run(self):
         mainTabs = pn.Tabs()
 
-        # # Measurement Tab   
+        # Summary Tab
+        summaryTab = self._getSummaryTab()
+        mainTabs.append(('Summary', summaryTab))
+
+        # Measurement Tab   
         measurementTab = self._getMeasurementsTab()
         mainTabs.append(('Measurements', measurementTab))
 
@@ -88,6 +92,27 @@ class Visualisation:
         # self._processingTime()
 
         return
+    # -------------------------------------------------------------------------
+
+    def _getSummaryTab(self):
+
+        # Acquisition results
+        channelList = self.database.fetchTable('channel')
+
+        acquisition = []
+        satelliteList = []
+        for channel in channelList:
+            dataList = self.database.fetchAcquisition(channel["id"])
+            acquisition.append(dataList[0]['peak_ratio'])
+            satelliteList.append(f'G{channel["satellite_id"]}')
+        
+        figAcq = figure(x_range=satelliteList, height=350, title="Acquisition metric", toolbar_location=None, tools="")
+        figAcq.vbar(x=satelliteList, top=acquisition, width=0.9)
+
+        acqLayout = layout([[Div(text="<h2>Acquisition summary</h2>")], \
+                            [figAcq]])
+
+        return acqLayout
     
     # -------------------------------------------------------------------------
 
@@ -170,7 +195,7 @@ class Visualisation:
 
         dopplerRange = float(self.channelConfig['ACQUISITION']['doppler_range'])
         dopplerSteps = float(self.channelConfig['ACQUISITION']['doppler_steps'])
-        frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerSteps)
+        frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerSteps)
         codeBins =  np.linspace(0, GPS_L1CA_CODE_SIZE_BITS, np.size(acquisition["correlation_map"], axis=1))
 
         height = 300

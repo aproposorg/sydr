@@ -16,6 +16,7 @@ from core.receiver.receiver import Receiver
 from core.channel.channel_l1ca import ChannelStatusL1CA
 #from core.channel.channel_l1ca import ChannelL1CA
 from core.channel.channel_l1ca_kaplan import ChannelL1CA_Kaplan as ChannelL1CA
+#from core.channel.channel_l1ca_kaplan_ss import ChannelL1CA_Kaplan_SS as ChannelL1CA
 from core.channel.channel import ChannelMessage, ChannelStatus
 from core.enlightengui import EnlightenGUI
 from core.space.satellite import Satellite, GNSSSystems
