@@ -10,7 +10,7 @@ import multiprocessing
 import numpy as np
 import logging
 
-from core.channel.channel_l1ca import Channel
+from core.channel.channel import Channel
 from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison, SerialSearch, TwoCorrelationPeakComparison_SS
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN
 from core.dsp.tracking import FLLassistedPLL_2ndOrder
