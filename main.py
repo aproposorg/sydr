@@ -1,11 +1,11 @@
 
 import configparser
 
-from core.enlightengui import EnlightenGUI
-from core.receiver.receiver_gps_l1ca import ReceiverGPSL1CA
-from core.io.visualisation import Visualisation
+from sydr.enlightengui import EnlightenGUI
+from sydr.receiver.receiver_gps_l1ca import ReceiverGPSL1CA
+from sydr.io.visualisation import Visualisation
 
-import core.logger as logger
+import sydr.logger as logger
 
 def main():
     """ 
