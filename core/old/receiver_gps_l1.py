@@ -18,7 +18,7 @@ from termcolor import colored
 import multiprocessing
 
 from core.channel.channel_abstract import ChannelAbstract, ChannelState, ChannelMessage, ChannelStatus
-from core.channel.channel_l1ca import ChannelL1CA, ChannelStatusL1CA
+from core.channel.channel_l1ca_borre import ChannelL1CA, ChannelStatusL1CA
 from core.measurements import GNSSPosition, GNSSmeasurements
 from core.navigation.lse import LeastSquareEstimation
 from core.receiver.receiver_abstract import ReceiverAbstract, ReceiverState

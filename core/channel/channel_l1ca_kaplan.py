@@ -10,8 +10,8 @@ import multiprocessing
 import numpy as np
 import logging
 
-from core.channel.channel_l1ca import Channel
-from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
+from core.channel.channel import Channel
+from core.dsp.acquisition import PCPS, TwoCorrelationPeakComparison, SerialSearch, TwoCorrelationPeakComparison_SS
 from core.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN
 from core.dsp.tracking import FLLassistedPLL_2ndOrder
 from core.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
@@ -246,7 +246,7 @@ class ChannelL1CA_Kaplan(Channel):
         results["frequency_idx"]     = acqIndices[0]
         results["code_idx"]          = acqIndices[1]
         results["correlation_map"]   = correlationMap
-        results["peakRatio"]         = acqPeakRatio
+        results["peak_ratio"]        = acqPeakRatio
 
         return results
 

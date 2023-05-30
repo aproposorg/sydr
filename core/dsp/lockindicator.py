@@ -1,4 +1,3 @@
-
 import numpy as np
 
 # =====================================================================================================================
@@ -95,7 +94,7 @@ def CN0_Beaulieu(ratio:float, N:int, T:float, old:float):
 
     cn0 = lambda_c * B_eqn
 
-    cn0 = lowPassFilter(cn0, old, alpha=0.01)
+    cn0 = lowPassFilter(cn0, old, alpha=0.1)
 
     return cn0
 

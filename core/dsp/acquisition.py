@@ -1,5 +1,8 @@
 
 import numpy as np
+import matplotlib.pyplot as plt 
+
+from core.signal.gnsssignal import UpsampleCode
 
 # =====================================================================================================================
 
@@ -28,7 +31,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
     rfData = np.squeeze(rfData)
 
     phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
-    frequencyBins = np.arange(-dopplerRange, dopplerRange, dopplerStep)
+    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
 
     # Search loop
     correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
@@ -92,9 +95,9 @@ def TwoCorrelationPeakComparison(correlationMap:np.array, samplesPerCode:int, sa
     """
     
     # Find first correlation peak
-    peak_1 = np.amax(correlationMap)
-    idx = np.where(correlationMap == peak_1)
-    idxHighestPeak = (int(idx[0]), int(idx[1]))
+    idxHighestPeak = np.unravel_index(correlationMap.argmax(), correlationMap.shape)
+    idxHighestPeak = [int(idxHighestPeak[0]), int(idxHighestPeak[1])] #Weird type otherwise
+    peak_1 = correlationMap[idxHighestPeak[0], idxHighestPeak[1]]
 
     # Find second correlation peak
     exclude = list((int(idxHighestPeak[1] - samplesPerCodeChip), int(idxHighestPeak[1] + samplesPerCodeChip)))
@@ -112,3 +115,93 @@ def TwoCorrelationPeakComparison(correlationMap:np.array, samplesPerCode:int, sa
     return idxHighestPeak, acquisitionMetric
 
 # =====================================================================================================================
+
+def SerialSearch(rfdata:np.array, code:np.array, dopplerRange:tuple, dopplerStep:int, samplingFrequency:float, samplesPerCode:int):
+    """
+    """
+
+    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+    phasePoints = np.array(range(samplesPerCode)) * 2 * np.pi / samplingFrequency
+    
+    correlationMap = np.zeros((len(frequencyBins), len(code)))
+
+    # Doppler shift loop
+    idxFreq = 0
+    for freq in frequencyBins:
+        carrier = np.exp(-1j * -freq * phasePoints)
+        signal = np.multiply(rfdata, carrier)
+
+        # _phase = -freq * phasePoints;
+        # i_signal = np.multiply(rfdata, np.sin(_phase))
+        # q_signal = np.multiply(rfdata, np.cos(_phase))
+
+        # Code shift loop
+        for idxCode in range(len(code)):
+            _code = shift(code, idxCode)
+            _code = UpsampleCode(_code, samplingFrequency)
+
+            i_signal = np.multiply(np.real(signal), _code)
+            q_signal = np.multiply(np.imag(signal), _code)
+            # i_signal = np.multiply(i_signal, _code)
+            # q_signal = np.multiply(q_signal, _code)
+
+            # Correlation
+            correlationMap[idxFreq, idxCode] += np.sum(i_signal)**2 + np.sum(q_signal)**2
+
+        idxFreq += 1
+    
+    correlationMap = np.squeeze(np.squeeze(correlationMap))
+    
+    return correlationMap
+
+# =====================================================================================================================
+
+def TwoCorrelationPeakComparison_SS(correlationMap:np.array):
+    """ 
+    Perform analysis on correlation map, finding the the highest peak and comparing its correlation value to the one 
+    from the second highest peak.
+
+    Args:
+        correlationMap (numpy.array): 2D-array from correlation method.
+        samplesPerCode (int): Number of samples per code.
+        samplesPerCodeChip (int): Number of code samples per code chip
+    
+    Returns:
+        idxHighestPeak (tuple): Indices of the highest correlation peak. 
+        acquisitionMetric (float): Ratio between the highest and second highest peaks.
+    
+    Raises:
+        None
+
+    """
+    
+    # Find first correlation peak
+    idxHighestPeak = np.unravel_index(correlationMap.argmax(), correlationMap.shape)
+    idxHighestPeak = [int(idxHighestPeak[0]), int(idxHighestPeak[1])] #Weird type otherwise
+    peak_1 = correlationMap[idxHighestPeak[0], idxHighestPeak[1]]
+
+    # Find second correlation peak
+    _map = np.copy(correlationMap[idxHighestPeak[0]-1:idxHighestPeak[0]+2, idxHighestPeak[1]-1:idxHighestPeak[1]+2])
+    correlationMap[idxHighestPeak[0]-1:idxHighestPeak[0]+2, idxHighestPeak[1]-1:idxHighestPeak[1]+2] = 0.0 # Remove value from search
+    peak_2 = np.amax(correlationMap)
+
+    # Put back the previous value
+    correlationMap[idxHighestPeak[0]-1:idxHighestPeak[0]+2, idxHighestPeak[1]-1:idxHighestPeak[1]+2] = _map
+    
+    acquisitionMetric = peak_1 / peak_2
+
+    return idxHighestPeak, acquisitionMetric
+
+
+# preallocate empty array and assign slice by chrisaycock
+def shift(arr, num, fill_value=np.nan):
+    result = np.empty_like(arr)
+    if num > 0:
+        result[:num] = arr[-num:]
+        result[num:] = arr[:-num]
+    elif num < 0:
+        result[num:] = arr[-num:]
+        result[:num] = arr[-num:]
+    else:
+        result[:] = arr
+    return result
