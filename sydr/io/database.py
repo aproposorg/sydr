@@ -209,6 +209,9 @@ class DatabaseHandler:
         # Broadcast ephemeris
         self._addTableGPSBRDC()
 
+        # Profiling
+        self._addTableProfiling()
+
         self.connection.commit()
         return
 
@@ -271,6 +274,23 @@ class DatabaseHandler:
         self.columns["gpsbrdc"] = ["id", "system_id", "satellite_id", "datetime", "ura", "health", "week", "iode", "iodc", "toe", "toc", "tgd", \
             "af2", "af1", "af0", "ecc", "sqrtA", "crs", "deltan", "m0", "cuc", "cus", "cic", "omega0", "cis", \
             "i0", "crc", "omega", "omegaDot", "iDot"]
+        self.cursor.execute(sqlstr)
+        self.connection.commit()
+
+        return
+    
+    # -------------------------------------------------------------------------
+
+    def _addTableProfiling(self):
+
+        sqlstr = """CREATE TABLE IF NOT EXISTS benchmark (
+                        id INTEGER PRIMARY KEY,
+                        channel_id INTEGER, 
+                        function_name TEXT,
+                        time_ns FLOAT
+                        );
+                    """
+        self.columns["benchmark"] = ["id", "channel_id", "function_name", "time_ns"]
         self.cursor.execute(sqlstr)
         self.connection.commit()
 
@@ -413,6 +433,20 @@ class DatabaseHandler:
             str = f"SELECT * FROM acquisition;"
         else:
             str = f"SELECT * FROM acquisition WHERE channel_id={channelID};"
+        
+        fetchedData = self.cursor.execute(str).fetchall()
+        dataList = self._unpackData(fetchedData)
+
+        return dataList
+
+    # -------------------------------------------------------------------------
+
+    def fetchBenchmark(self, channelID=None):
+
+        if channelID is None:
+            str = f"SELECT * FROM benchmark;"
+        else:
+            str = f"SELECT * FROM benchmark WHERE channel_id={channelID};"
         
         fetchedData = self.cursor.execute(str).fetchall()
         dataList = self._unpackData(fetchedData)

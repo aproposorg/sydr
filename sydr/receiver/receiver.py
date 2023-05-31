@@ -297,6 +297,8 @@ class Receiver(ABC):
                 self.addTrackingDatabase(packet)
             elif packet['type'] == ChannelMessage.DECODING_UPDATE:
                 self.addDecodingDatabase(packet)
+            elif packet['type'] == ChannelMessage.BENCHMARK_UPDATE:
+                self.addProfilingDatabase(packet)
 
         return
 
@@ -319,7 +321,7 @@ class Receiver(ABC):
         """
 
         channel : Channel
-        channel = self.channelManager.getChannel(result['cid'])
+        channel = self.channelManager.getChannel(result['channel_id'])
 
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
@@ -352,7 +354,7 @@ class Receiver(ABC):
         """
 
         channel : Channel
-        channel = self.channelManager.getChannel(result['cid'])
+        channel = self.channelManager.getChannel(result['channel_id'])
 
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
@@ -385,7 +387,7 @@ class Receiver(ABC):
         """
 
         channel : Channel
-        channel = self.channelManager.getChannel(result['cid'])
+        channel = self.channelManager.getChannel(result['channel_id'])
 
         # Add the mandatory values
         result["channel_id"]   = channel.channelID
@@ -469,6 +471,14 @@ class Receiver(ABC):
             measdict["residual"]     = meas.residual
 
             self.database.addData("measurement", measdict)
+
+        return
+
+    # -------------------------------------------------------------------------
+    
+    def addProfilingDatabase(self, result):
+
+        self.database.addData("benchmark", result)
 
         return
 

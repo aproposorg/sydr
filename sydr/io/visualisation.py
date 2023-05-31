@@ -9,6 +9,9 @@ from bokeh.plotting import figure
 from bokeh.layouts import layout
 from bokeh.models import Div, ColumnDataSource, HoverTool, PrintfTickFormatter, Range1d
 from bokeh.models.widgets import DataTable, TableColumn
+from bokeh.palettes import Category20c
+from bokeh.plotting import figure, show
+from bokeh.transform import cumsum
 import holoviews as hv
 import pymap3d as pm
 import plotly.graph_objects as go
@@ -83,6 +86,10 @@ class Visualisation:
         navigationTab = self._getNavigationTab()
         mainTabs.append(('Navigation', navigationTab))
 
+        # Profiling Tab 
+        benchmarkTab = self._getBenchmarkTab()
+        mainTabs.append(("Benchmark", benchmarkTab))
+
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)
 
@@ -92,6 +99,43 @@ class Visualisation:
         # self._processingTime()
 
         return
+    # -------------------------------------------------------------------------
+
+    def _getBenchmarkTab(self):
+
+        # Retrieve data
+        channelList = self.database.fetchTable('channel')
+        figureList = [Div(text="<h2>Percentage of total time spent in functions</h2>")]
+        for channel in channelList:
+            dataList = self.database.fetchBenchmark(channel["id"])
+            total_time = 0.0
+            result = dict.fromkeys([d['function_name'] for d in dataList], 0.0)
+            for _data in dataList:
+                result[_data['function_name']] += _data['time_ns']
+                total_time += _data['time_ns']
+            
+            data = pd.Series(result).reset_index(name='value').rename(columns={'index': 'function'})
+            data['percentage'] = data['value']/data['value'].sum() * 100
+            data['angle'] = data['value']/data['value'].sum() * 2*np.pi
+            data['color'] = Category20c[len(result)]
+
+            p = figure(height=350, title=f"G{channel['satellite_id']} (Channel {channel['id']})", 
+                       toolbar_location=None, tools="hover", tooltips="@function: @percentage", x_range=(-0.5, 1.0))
+
+            p.wedge(x=0, y=1, radius=0.4,
+                    start_angle=cumsum('angle', include_zero=True), end_angle=cumsum('angle'),
+                    line_color="white", fill_color='color', legend_field='function', source=data)
+            
+            p.axis.axis_label = None
+            p.axis.visible = False
+            p.grid.grid_line_color = None
+
+            figureList.append(p)
+
+        benchmarkLayout =layout(figureList)
+        
+        return benchmarkLayout
+
     # -------------------------------------------------------------------------
 
     def _getSummaryTab(self):

@@ -24,6 +24,7 @@ from sydr.utils.constants import TWO_PI
 from sydr.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
 from sydr.utils.constants import W0_BANDWIDTH_1, W0_BANDWIDTH_2, W0_BANDWIDTH_3, W0_SCALE_A2, W0_SCALE_A3, W0_SCALE_B3
 from sydr.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
+import sydr.utils.benchmark as benchmark
 
 # =====================================================================================================================
 
@@ -176,6 +177,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
     
+    @benchmark.timeit
     def runSignalSearch(self):
         """
         """
@@ -200,6 +202,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
     
+    @benchmark.timeit
     def runPeakFinder(self, correlationMap):
 
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
@@ -375,6 +378,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runCorrelators(self):
         """
         """
@@ -402,6 +406,7 @@ class ChannelL1CA_Kaplan(Channel):
 
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runDiscriminators(self):
 
         # Compute discriminators
@@ -431,6 +436,7 @@ class ChannelL1CA_Kaplan(Channel):
 
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runCarrierFrequencyFilter(self, fllDiscrim=0.0, pllDiscrim=0.0, coherentIntegration=1):
 
         # if self.coherentTrackEnabled:
@@ -448,6 +454,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runCodeFrequencyFilter(self, dllDiscrim:float, coherentIntegration=1):
 
         # if self.coherentTrackEnabled:
@@ -462,6 +469,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runLoopIndicators(self):
 
         # FLL and PLL lock indicators
@@ -700,6 +708,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
 
+    @benchmark.timeit
     def runDecoding(self):
         
         # Decode new bit if possible

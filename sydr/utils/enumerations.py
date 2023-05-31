@@ -110,6 +110,7 @@ class ChannelMessage(Enum):
     ACQUISITION_UPDATE = 2
     TRACKING_UPDATE    = 3
     DECODING_UPDATE    = 4
+    BENCHMARK_UPDATE   = 5
 
     def __str__(self):
         return str(self.name)

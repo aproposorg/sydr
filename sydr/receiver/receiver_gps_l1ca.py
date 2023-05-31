@@ -110,7 +110,7 @@ class ReceiverGPSL1CA(Receiver):
 
         for packet in results:
             channel : ChannelL1CA
-            channel = self.channelManager.getChannel(packet['cid'])
+            channel = self.channelManager.getChannel(packet['channel_id'])
             if packet['type'] == ChannelMessage.DECODING_UPDATE:
                 satellite : Satellite
                 satellite = self.satelliteDict[channel.satelliteID]
@@ -124,7 +124,8 @@ class ReceiverGPSL1CA(Receiver):
                 self.channelsStatus[channel.channelID].timeSinceTOW  = packet['time_since_tow']
                 self.channelsStatus[channel.channelID].unprocessedSamples = packet['unprocessed_samples']
                 self.channelsStatus[channel.channelID].codeSinceTOW = packet['code_since_tow']
-            elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE):
+            elif packet['type'] in (ChannelMessage.ACQUISITION_UPDATE, ChannelMessage.TRACKING_UPDATE, 
+                                    ChannelMessage.BENCHMARK_UPDATE):
                 continue
             else:
                 raise ValueError(

@@ -44,9 +44,10 @@ class Channel(ABC, multiprocessing.Process):
     signalID     : GNSSSignalType # GNSS signal ID
     
     # Channel - Manager communication
-    resultQueue : multiprocessing.Queue  # Queue to place the results of the channel processing
-    eventRun    : multiprocessing.Event  # Event to start the channel processing when set.
-    eventDone   : multiprocessing.Event  # Event set when channel processing done.
+    channelResults : list                   # list containing the results of the channel processing
+    resultQueue    : multiprocessing.Queue  # Queue to place the results of the channel processing
+    eventRun       : multiprocessing.Event  # Event to start the channel processing when set.
+    eventDone      : multiprocessing.Event  # Event set when channel processing done.
 
     tow  : int
     week : int
@@ -85,6 +86,7 @@ class Channel(ABC, multiprocessing.Process):
         self.satelliteID = 0
         self.rfBuffer = sharedBuffer
         self.resultQueue = resultQueue
+        self.channelResults = []
         self.eventRun = multiprocessing.Event()
         self.eventDone = multiprocessing.Event()
         self.currentSample = 0
@@ -146,13 +148,14 @@ class Channel(ABC, multiprocessing.Process):
             self.rfBuffer.shiftIdxWrite(self.rfSignal.samplesPerMs) # Update our copy of buffer
 
             # Process the data according to the current channel state
-            results = self._processHandler()
+            self.channelResults += self._processHandler()
 
             # Add channel update 
-            results.append(self.prepareChannelUpdate())
+            self.channelResults.append(self.prepareChannelUpdate())
 
             # Send the results
-            self.resultQueue.put(results)
+            self.resultQueue.put(self.channelResults)
+            self.channelResults = []
 
             # Signal channel manager
             self.eventDone.set()
@@ -196,7 +199,7 @@ class Channel(ABC, multiprocessing.Process):
 
         # Create result dictionnary
         mdict = {
-            "cid" : self.channelID
+            "channel_id" : self.channelID
         }
         return mdict
     
@@ -225,6 +228,30 @@ class Channel(ABC, multiprocessing.Process):
         _packet['unprocessed_samples'] = self.rfBuffer.getNbUnreadSamples(self.currentSample)
         _packet['code_since_tow'] = self.codeSinceTOW
         
+        return _packet
+    
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def prepareProfilingResults(self, functionName, time_ns):
+        """
+        Prepare the result packet sent by the channel. This method is suppose to be the basis of the other results 
+        methods.
+
+        Args:
+            None
+        
+        Returns: 
+            None
+
+        Raises:
+            None
+        """
+
+        _packet = self.prepareResults()
+        _packet['type'] = ChannelMessage.BENCHMARK_UPDATE
+        _packet["function_name"] = functionName
+        _packet["time_ns"]  = time_ns
+
         return _packet
     
 # =====================================================================================================================
@@ -262,6 +289,7 @@ class ChannelStatus(ABC):
         self.isTOWDecoded = False
 
         return
+    
 
 # =====================================================================================================================
 # END OF FILE
