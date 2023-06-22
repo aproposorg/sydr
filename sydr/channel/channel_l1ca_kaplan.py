@@ -191,7 +191,7 @@ class ChannelL1CA_Kaplan(Channel):
             rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
             interFrequency = self.rfSignal.interFrequency,
             samplingFrequency = self.rfSignal.samplingFrequency,
-            codeFFT=codeFFT,
+            code=self.code[1:-1],
             dopplerRange=self.acq_dopplerRange,
             dopplerStep=self.acq_dopplerSteps,
             samplesPerCode=samplesPerCode, 
@@ -222,7 +222,7 @@ class ChannelL1CA_Kaplan(Channel):
         """
         
         # Update variables
-        dopplerShift = -((-self.acq_dopplerRange) + self.acq_dopplerSteps * acqIndices[0])
+        dopplerShift = -self.acq_dopplerRange + self.acq_dopplerSteps * acqIndices[0]
         self.codeOffset = int(np.round(acqIndices[1]))
         self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
 

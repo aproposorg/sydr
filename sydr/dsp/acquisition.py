@@ -6,8 +6,9 @@ from sydr.signal.gnsssignal import UpsampleCode
 
 # =====================================================================================================================
 
-def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT:np.array, dopplerRange:tuple, 
-         dopplerStep:int, samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1):
+def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np.array, dopplerRange:tuple, 
+         samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1, 
+         dopplerStep:int=0):
     """
     Implementation of the Parallel Code Phase Search (PCPS) method [Borre, 2007]. This method perform the correlation 
     of the code in the frequency domain using FFTs. It produces a 2D correlation map over the frequency and code 
@@ -16,7 +17,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
     Args:
         rfData (numpy.array): Data sample to be used.
         interFrequency (float) : Intermediate Frequency used in RF signal.
-        codeFFT (numpy.array): Primary code of the GNSS signal, transformed using a FFT. 
+        code (numpy.array): Primary code of the GNSS signal. 
         dopplerRange (int): Frequency bound (-/+) for acquisition search.
         dopplerStep (int) : Frequency step for acquisition search.
         codeBins (np.array): Code bins 
@@ -30,8 +31,15 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
 
     rfData = np.squeeze(rfData)
 
+    if dopplerStep == 0:
+        dopplerStep = int(2/(3 * coherentIntegration * nonCoherentIntegration) * 1e3)
+
     phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
     frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+
+    # Compute code FFT
+    code = UpsampleCode(code, samplingFrequency)
+    codeFFT = np.conj(np.fft.fft(code))
 
     # Search loop
     correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
@@ -39,7 +47,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, codeFFT
     coh_sum        = np.zeros((1, samplesPerCode))
     idx = 0
     for freq in frequencyBins:
-        freq = interFrequency - freq
+        freq -= interFrequency
 
         # Generate carrier replica
         signal_carrier = np.exp(-1j * freq * phasePoints)
@@ -113,6 +121,30 @@ def TwoCorrelationPeakComparison(correlationMap:np.array, samplesPerCode:int, sa
     acquisitionMetric = peak_1 / peak_2
 
     return idxHighestPeak, acquisitionMetric
+
+# =====================================================================================================================
+
+def GLRT(rfdata:np.array, correlationMap:np.array):
+    """
+    """
+
+    k = rfdata.size
+
+    # Find signal power
+    power = np.sum(rfdata**2) / k
+
+    # Normalise map 
+    correlationMap /= k**2
+
+    # Find the correlation peak
+    idxHighestPeak = np.unravel_index(correlationMap.argmax(), correlationMap.shape)
+    idxHighestPeak = [int(idxHighestPeak[0]), int(idxHighestPeak[1])] #Weird type otherwise
+    peak = correlationMap[idxHighestPeak[0], idxHighestPeak[1]]
+
+    # GLRT with normalise variance
+    glrt = 2 * k * peak / power
+
+    return idxHighestPeak, glrt
 
 # =====================================================================================================================
 
@@ -192,6 +224,7 @@ def TwoCorrelationPeakComparison_SS(correlationMap:np.array):
 
     return idxHighestPeak, acquisitionMetric
 
+# =====================================================================================================================
 
 # preallocate empty array and assign slice by chrisaycock
 def shift(arr, num, fill_value=np.nan):
@@ -205,3 +238,86 @@ def shift(arr, num, fill_value=np.nan):
     else:
         result[:] = arr
     return result
+
+# =====================================================================================================================
+
+def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np.array, dopplerRange:tuple, 
+         dopplerStep:int, samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1):
+    """
+    Implementation of the Parallel Code Phase Search (PCPS) method [Borre, 2007]. This method perform the correlation 
+    of the code in the frequency domain using FFTs. It produces a 2D correlation map over the frequency and code 
+    dimensions.
+
+    Args:
+        rfData (numpy.array): Data sample to be used.
+        interFrequency (float) : Intermediate Frequency used in RF signal.
+        codeFFT (numpy.array): Primary code of the GNSS signal, transformed using a FFT. 
+        dopplerRange (int): Frequency bound (-/+) for acquisition search.
+        dopplerStep (int) : Frequency step for acquisition search.
+        codeBins (np.array): Code bins 
+
+    Returns:
+        correlationMap (numpy.array): 2D correlation results.
+
+    Raises:
+        None
+    """
+
+    rfData = np.squeeze(rfData)
+
+    phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
+    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+
+    # Zero padding
+    padding = 16384 - int(samplingFrequency*1e-3)
+    #code = np.pad(code, (0, padding), 'constant')
+    code = UpsampleCode(code, 16384*1e3)
+    codeFFT = np.conj(np.fft.fft(code))
+
+    # Search loop
+    correlationMap = np.zeros((len(frequencyBins), samplesPerCode + padding))
+    noncoh_sum     = np.zeros((1, samplesPerCode + padding))
+    coh_sum        = np.zeros((1, samplesPerCode + padding))
+    idx = 0
+    for freq in frequencyBins:
+        freq = interFrequency - freq
+
+        # Generate carrier replica
+        signal_carrier = np.exp(-1j * freq * phasePoints)
+
+        # Non-Coherent Integration 
+        noncoh_sum = noncoh_sum * 0.0
+        for idx_noncoh in range(0, nonCoherentIntegration):
+            # Select only require part of the dataset
+            iq_signal = rfData[idx_noncoh*coherentIntegration*samplesPerCode:(idx_noncoh+1)*coherentIntegration*samplesPerCode]
+            # Mix with carrier
+            iq_signal = np.multiply(signal_carrier, iq_signal)
+            
+            # Coherent Integration
+            coh_sum = noncoh_sum * 0.0
+            for idx_coh in range(0, coherentIntegration):
+
+                signal = iq_signal[idx_coh*samplesPerCode:(idx_coh+1)*samplesPerCode]
+
+                # Zero padding
+                signal = np.pad(signal, (0, padding), 'constant')
+
+                # Perform FFT
+                iq_fft = np.fft.fft(signal)
+
+                # Correlation with C/A code
+                iq_conv = np.multiply(iq_fft, codeFFT)
+
+                # Inverse FFT (go back to time domain)
+                coh_sum = coh_sum + np.fft.ifft(iq_conv)
+
+            # Absolute values
+            noncoh_sum = noncoh_sum + abs(coh_sum)
+        
+        correlationMap[idx, :] = abs(noncoh_sum)
+        idx += 1
+    correlationMap = np.squeeze(np.squeeze(correlationMap))
+
+    return correlationMap
+
+# =====================================================================================================================

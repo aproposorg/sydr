@@ -11,10 +11,12 @@ import numpy as np
 import logging
 
 from sydr.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
-from sydr.dsp.acquisition import PCPS, TwoCorrelationPeakComparison
-from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter
+#from sydr.dsp.acquisition import PCPS_padded as PCPS
+from sydr.dsp.acquisition import PCPS as PCPS
+from sydr.dsp.acquisition import TwoCorrelationPeakComparison, GLRT
+from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, EPL_nonvector
 from sydr.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
-from sydr.dsp.lockindicator import CN0_NWPR
+from sydr.dsp.lockindicator import CN0_NWPR, CN0_Beaulieu
 from sydr.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
 from sydr.utils.constants import GPS_L1CA_CODE_FREQ, GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_MS
 from sydr.utils.circularbuffer import CircularBuffer
@@ -127,6 +129,9 @@ class ChannelL1CA(Channel):
         self.qPrompt_sum  = 0.0
         self.iPrompt_sum2 = 0.0
         self.qPrompt_sum2 = 0.0
+        self.cn0 = 0.0
+        self.cn0_counter = 0
+        self.cn0_PdPnRatio = 0.0
 
         self.codeCounter = 0
 
@@ -278,8 +283,6 @@ class ChannelL1CA(Channel):
         if self.rfBuffer.getNbUnreadSamples(self.currentSample) < self.acq_requiredSamples:
             return
         
-        code = UpsampleCode(self.code[1:-1], self.rfSignal.samplingFrequency)
-        codeFFT = np.conj(np.fft.fft(code))
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
         samplesPerCodeChip = round(self.rfSignal.samplingFrequency / GPS_L1CA_CODE_FREQ)
 
@@ -287,7 +290,7 @@ class ChannelL1CA(Channel):
         correlationMap = PCPS(rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
                               interFrequency = self.rfSignal.interFrequency,
                               samplingFrequency = self.rfSignal.samplingFrequency,
-                              codeFFT=codeFFT,
+                              code=self.code[1:-1],
                               dopplerRange=self.acq_dopplerRange,
                               dopplerStep=self.acq_dopplerSteps,
                               samplesPerCode=samplesPerCode, 
@@ -297,9 +300,9 @@ class ChannelL1CA(Channel):
         indices, peakRatio = TwoCorrelationPeakComparison(correlationMap=correlationMap,
                                                           samplesPerCode=samplesPerCode,
                                                           samplesPerCodeChip=samplesPerCodeChip)
-
+        
         # Update variables
-        dopplerShift = -((-self.acq_dopplerRange) + self.acq_dopplerSteps * indices[0])
+        dopplerShift = -self.acq_dopplerRange + self.acq_dopplerSteps * indices[0]
         self.codeOffset = int(np.round(indices[1]))
         self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
         self.initialFrequency = self.rfSignal.interFrequency + dopplerShift
@@ -359,6 +362,16 @@ class ChannelL1CA(Channel):
                                 remainingCode=self.NCO_remainingCode,
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.track_correlatorsSpacing)
+        
+        # correlatorResults = EPL_nonvector(
+        #                         rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
+        #                         code = self.code,
+        #                         samplingFrequency=self.rfSignal.samplingFrequency,
+        #                         carrierFrequency=self.carrierFrequency,
+        #                         remainingCarrier=self.NCO_remainingCarrier,
+        #                         remainingCode=self.NCO_remainingCode,
+        #                         codeStep=self.codeStep,
+        #                         correlatorsSpacing=self.track_correlatorsSpacing)
 
         # Compute remaining carrier phase
         self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency
@@ -411,6 +424,14 @@ class ChannelL1CA(Channel):
                 # Compute normalised power
                 # normalisedPower = CN0_NWPR(self.iPrompt_sum, self.qPrompt_sum, self.iPrompt_sum2, self.qPrompt_sum2)
                 normalisedPower = 0.0
+                
+        # CN0
+        self.cn0_PdPnRatio += (iPrompt**2 + qPrompt**2) / (abs(iPrompt) - abs(qPrompt)) ** 2
+        self.cn0_counter += 1
+        if self.cn0_counter == LNAV_MS_PER_BIT:
+            self.cn0 = CN0_Beaulieu(self.cn0_PdPnRatio, self.cn0_counter, self.cn0_counter*1e-3, self.cn0)
+            self.cn0_PdPnRatio = 0.0
+            self.cn0_counter = 0
 
         # Update some variables
         # TODO Check if tracking was succesful an update the flags

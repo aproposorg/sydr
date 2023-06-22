@@ -86,9 +86,9 @@ class Visualisation:
         navigationTab = self._getNavigationTab()
         mainTabs.append(('Navigation', navigationTab))
 
-        # Profiling Tab 
-        benchmarkTab = self._getBenchmarkTab()
-        mainTabs.append(("Benchmark", benchmarkTab))
+        # # Profiling Tab 
+        # benchmarkTab = self._getBenchmarkTab()
+        # mainTabs.append(("Benchmark", benchmarkTab))
 
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)
@@ -120,7 +120,7 @@ class Visualisation:
             data['color'] = Category20c[len(result)]
 
             p = figure(height=350, title=f"G{channel['satellite_id']} (Channel {channel['id']})", 
-                       toolbar_location=None, tools="hover", tooltips="@function: @percentage", x_range=(-0.5, 1.0))
+                       toolbar_location=None, tools="hover", tooltips="@function: @percentage{1.11}%", x_range=(-0.5, 1.0))
 
             p.wedge(x=0, y=1, radius=0.4,
                     start_angle=cumsum('angle', include_zero=True), end_angle=cumsum('angle'),
@@ -239,6 +239,10 @@ class Visualisation:
 
         dopplerRange = float(self.channelConfig['ACQUISITION']['doppler_range'])
         dopplerSteps = float(self.channelConfig['ACQUISITION']['doppler_steps'])
+        coherentIntegration = float(self.channelConfig['ACQUISITION']['coherent_integration'])
+        nonCoherentIntegration = float(self.channelConfig['ACQUISITION']['non_coherent_integration'])
+        if dopplerSteps == 0:
+            dopplerSteps = int(2/(3 * coherentIntegration * nonCoherentIntegration) * 1e3)
         frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerSteps)
         codeBins =  np.linspace(0, GPS_L1CA_CODE_SIZE_BITS, np.size(acquisition["correlation_map"], axis=1))
 
