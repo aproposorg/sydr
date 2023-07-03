@@ -14,7 +14,7 @@ from sydr.channel.channel import Channel, ChannelState, ChannelMessage, ChannelS
 #from sydr.dsp.acquisition import PCPS_padded as PCPS
 from sydr.dsp.acquisition import PCPS as PCPS
 from sydr.dsp.acquisition import TwoCorrelationPeakComparison, GLRT
-from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, EPL_nonvector
+from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, EPL_nonvector, EPL_circular
 from sydr.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
 from sydr.dsp.lockindicator import CN0_NWPR, CN0_Beaulieu
 from sydr.utils.constants import LNAV_MS_PER_BIT, LNAV_SUBFRAME_SIZE, LNAV_WORD_SIZE
@@ -363,6 +363,7 @@ class ChannelL1CA(Channel):
                                 codeStep=self.codeStep,
                                 correlatorsSpacing=self.track_correlatorsSpacing)
         
+        # Non-vector
         # correlatorResults = EPL_nonvector(
         #                         rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
         #                         code = self.code,
@@ -372,6 +373,17 @@ class ChannelL1CA(Channel):
         #                         remainingCode=self.NCO_remainingCode,
         #                         codeStep=self.codeStep,
         #                         correlatorsSpacing=self.track_correlatorsSpacing)
+
+        # Circular correlation
+        # correlatorResults = EPL_circular(rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
+        #                         code = self.code[1:-1],
+        #                         samplingFrequency=self.rfSignal.samplingFrequency,
+        #                         carrierFrequency=self.carrierFrequency,
+        #                         remainingCarrier=self.NCO_remainingCarrier,
+        #                         remainingCode=self.NCO_remainingCode,
+        #                         codeStep=self.codeStep,
+        #                         correlatorsSpacing=self.track_correlatorsSpacing,
+        #                         codeOffset=self.codeOffset)
 
         # Compute remaining carrier phase
         self.NCO_remainingCarrier -= self.carrierFrequency * 2.0 * np.pi * self.track_requiredSamples / self.rfSignal.samplingFrequency

@@ -117,6 +117,22 @@ def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequenc
 
 # =====================================================================================================================
 
+def EPL_circular(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequency:float, remainingCarrier:float, \
+        remainingCode:float, codeStep:float, correlatorsSpacing:tuple, codeOffset:int):
+    
+    rfData = np.squeeze(rfData)
+    nbSamples = len(rfData)
+    nbCode = len(code)
+    shift = int(np.round(nbCode * codeOffset / nbSamples))
+    code = np.roll(code, shift)
+    code = np.r_[code[-1], code, code[0]]
+    correlatorResults = EPL(rfData, code, samplingFrequency, carrierFrequency, 
+                            remainingCarrier, remainingCode, codeStep, correlatorsSpacing)
+
+    return correlatorResults
+
+# =====================================================================================================================
+
 def DLL_NNEML(iEarly:float, qEarly:float, iLate:float, qLate:float):
     """
     Delay Lock Loop implementation, using a Normalize Noncoherent Early Minus Late (NNEML) discriminator.
