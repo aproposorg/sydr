@@ -39,7 +39,11 @@ TBD
 
 # Related publications
 
+If you use SyDR in a research paper or Thesis, we would appreciate if you reference the following article to credit the SyDR project:
+
 A. Grenier, E. S. Lohan, A. Ometov, and J. Nurmi, “An Open-Source Software-Defined Receiver for GNSS Algorithms Benchmarking,” in Proc. of 14th International Congress on Ultra Modern Telecommunications and Control Systems and Workshops (ICUMT). IEEE, 2022, pp. 31–38.
 https://ieeexplore.ieee.org/document/9943489
+
+
 
 
