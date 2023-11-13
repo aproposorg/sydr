@@ -42,6 +42,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np
     codeFFT = np.conj(np.fft.fft(code))
 
     # Search loop
+    #samplesPerCode_padded = int(pow(2, np.ceil(np.log(samplesPerCode)/np.log(2))))
     correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
     noncoh_sum     = np.zeros((1, samplesPerCode))
     coh_sum        = np.zeros((1, samplesPerCode))
@@ -63,8 +64,14 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np
             # Coherent Integration
             coh_sum = noncoh_sum * 0.0
             for idx_coh in range(0, coherentIntegration):
+
+                signal = iq_signal[idx_coh*samplesPerCode:(idx_coh+1)*samplesPerCode]
+                # signal = np.pad(signal, 
+                #                 (0, int(pow(2, np.ceil(np.log(len(signal))/np.log(2)))) - len(signal)), 
+                #                 mode='constant')
+
                 # Perform FFT
-                iq_fft = np.fft.fft(iq_signal[idx_coh*samplesPerCode:(idx_coh+1)*samplesPerCode])
+                iq_fft = np.fft.fft(signal)
 
                 # Correlation with C/A code
                 iq_conv = np.multiply(iq_fft, codeFFT)
@@ -242,7 +249,7 @@ def shift(arr, num, fill_value=np.nan):
 # =====================================================================================================================
 
 def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np.array, dopplerRange:tuple, 
-         dopplerStep:int, samplesPerCode:int, coherentIntegration:int=1, nonCoherentIntegration:int=1):
+         dopplerStep:int, samplesPerCode:int):
     """
     Implementation of the Parallel Code Phase Search (PCPS) method [Borre, 2007]. This method perform the correlation 
     of the code in the frequency domain using FFTs. It produces a 2D correlation map over the frequency and code 
@@ -265,19 +272,18 @@ def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, 
 
     rfData = np.squeeze(rfData)
 
-    phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
+    n_padded =  int(pow(2, np.ceil(np.log(len(code))/np.log(2))) - len(code))
+    samplesPerCode_padded = samplesPerCode + n_padded
+
+    phasePoints = np.array(range(samplesPerCode_padded)) * 2 * np.pi / samplingFrequency
     frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
 
-    # Zero padding
-    padding = 16384 - int(samplingFrequency*1e-3)
-    #code = np.pad(code, (0, padding), 'constant')
-    code = UpsampleCode(code, 16384*1e3)
-    codeFFT = np.conj(np.fft.fft(code))
+    # Code padding
+    code = UpsampleCode(code, samplingFrequency)
+    codeFFT = np.conj(np.fft.fft(np.append(code, code[:n_padded])))
 
     # Search loop
-    correlationMap = np.zeros((len(frequencyBins), samplesPerCode + padding))
-    noncoh_sum     = np.zeros((1, samplesPerCode + padding))
-    coh_sum        = np.zeros((1, samplesPerCode + padding))
+    correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
     idx = 0
     for freq in frequencyBins:
         freq = interFrequency - freq
@@ -285,36 +291,21 @@ def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, 
         # Generate carrier replica
         signal_carrier = np.exp(-1j * freq * phasePoints)
 
-        # Non-Coherent Integration 
-        noncoh_sum = noncoh_sum * 0.0
-        for idx_noncoh in range(0, nonCoherentIntegration):
-            # Select only require part of the dataset
-            iq_signal = rfData[idx_noncoh*coherentIntegration*samplesPerCode:(idx_noncoh+1)*coherentIntegration*samplesPerCode]
-            # Mix with carrier
-            iq_signal = np.multiply(signal_carrier, iq_signal)
-            
-            # Coherent Integration
-            coh_sum = noncoh_sum * 0.0
-            for idx_coh in range(0, coherentIntegration):
+        # Select only require part of the dataset
+        signal = rfData[:samplesPerCode_padded]
 
-                signal = iq_signal[idx_coh*samplesPerCode:(idx_coh+1)*samplesPerCode]
+        # Mix with carrier
+        iq_signal = np.multiply(signal_carrier, signal)
 
-                # Zero padding
-                signal = np.pad(signal, (0, padding), 'constant')
+        # Perform FFT
+        iq_fft = np.fft.fft(iq_signal)
 
-                # Perform FFT
-                iq_fft = np.fft.fft(signal)
+        # Correlation with C/A code
+        iq_conv = np.multiply(iq_fft, codeFFT)
 
-                # Correlation with C/A code
-                iq_conv = np.multiply(iq_fft, codeFFT)
+        # Inverse FFT (go back to time domain)
+        correlationMap[idx, :] = np.abs(np.fft.ifft(iq_conv)[:samplesPerCode])
 
-                # Inverse FFT (go back to time domain)
-                coh_sum = coh_sum + np.fft.ifft(iq_conv)
-
-            # Absolute values
-            noncoh_sum = noncoh_sum + abs(coh_sum)
-        
-        correlationMap[idx, :] = abs(noncoh_sum)
         idx += 1
     correlationMap = np.squeeze(np.squeeze(correlationMap))
 

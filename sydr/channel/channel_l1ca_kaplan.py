@@ -11,7 +11,7 @@ import numpy as np
 import logging
 
 from sydr.channel.channel import Channel
-from sydr.dsp.acquisition import PCPS, TwoCorrelationPeakComparison, SerialSearch, TwoCorrelationPeakComparison_SS
+from sydr.dsp.acquisition import PCPS, PCPS_padded, TwoCorrelationPeakComparison, SerialSearch, TwoCorrelationPeakComparison_SS
 from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, FLL_ATAN
 from sydr.dsp.tracking import FLLassistedPLL_2ndOrder
 from sydr.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
@@ -168,7 +168,7 @@ class ChannelL1CA_Kaplan(Channel):
         acqIndices, acqPeakRatio = self.runPeakFinder(correlationMap)
 
         # Updates necessary variables
-        self.postAcquisitionUpdate(acqIndices)
+        self.postAcquisitionUpdate(acqIndices, acqPeakRatio)
 
         # Prepare results
         results = self.prepareResultsAcquisition(correlationMap, acqIndices, acqPeakRatio)
@@ -184,9 +184,26 @@ class ChannelL1CA_Kaplan(Channel):
 
         # Prepare necessary variables
         code = UpsampleCode(self.code[1:-1], self.rfSignal.samplingFrequency)
-        codeFFT = np.conj(np.fft.fft(code))
+
+        # # Zero padding
+        # code = np.pad(code, (0, int(pow(2, np.ceil(np.log(len(code))/np.log(2)))) - len(code)), mode='constant') 
+        # codeFFT = np.conj(np.fft.fft(code))
+        
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
 
+        # correlationMap = PCPS(
+        #     rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
+        #     interFrequency = self.rfSignal.interFrequency,
+        #     samplingFrequency = self.rfSignal.samplingFrequency,
+        #     code=self.code[1:-1],
+        #     dopplerRange=self.acq_dopplerRange,
+        #     dopplerStep=self.acq_dopplerSteps,
+        #     samplesPerCode=samplesPerCode, 
+        #     coherentIntegration=self.acq_coherentIntegration,
+        #     nonCoherentIntegration=self.acq_nonCoherentIntegration)
+        
+        # Padded acquisition
+        # TODO do another channel layout for this instead
         correlationMap = PCPS(
             rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
             interFrequency = self.rfSignal.interFrequency,
@@ -194,9 +211,7 @@ class ChannelL1CA_Kaplan(Channel):
             code=self.code[1:-1],
             dopplerRange=self.acq_dopplerRange,
             dopplerStep=self.acq_dopplerSteps,
-            samplesPerCode=samplesPerCode, 
-            coherentIntegration=self.acq_coherentIntegration,
-            nonCoherentIntegration=self.acq_nonCoherentIntegration)
+            samplesPerCode=samplesPerCode)
 
         return correlationMap
     
@@ -217,7 +232,7 @@ class ChannelL1CA_Kaplan(Channel):
     
     # -----------------------------------------------------------------------------------------------------------------
     
-    def postAcquisitionUpdate(self, acqIndices):
+    def postAcquisitionUpdate(self, acqIndices, acqPeakRatio):
         """
         """
         
@@ -233,6 +248,7 @@ class ChannelL1CA_Kaplan(Channel):
         
         # Switch channel state to tracking
         # TODO Test if succesful acquisition
+        logging.getLogger(__name__).debug(f"CID {self.channelID} successful acquisition [code: {self.codeOffset:.1f}, doppler: {self.carrierFrequency:.1f}, metric: {acqPeakRatio:.1f}")
         self.channelState = ChannelState.TRACKING
 
         return
