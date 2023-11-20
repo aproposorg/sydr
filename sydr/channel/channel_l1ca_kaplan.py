@@ -191,19 +191,6 @@ class ChannelL1CA_Kaplan(Channel):
         
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
 
-        # correlationMap = PCPS(
-        #     rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
-        #     interFrequency = self.rfSignal.interFrequency,
-        #     samplingFrequency = self.rfSignal.samplingFrequency,
-        #     code=self.code[1:-1],
-        #     dopplerRange=self.acq_dopplerRange,
-        #     dopplerStep=self.acq_dopplerSteps,
-        #     samplesPerCode=samplesPerCode, 
-        #     coherentIntegration=self.acq_coherentIntegration,
-        #     nonCoherentIntegration=self.acq_nonCoherentIntegration)
-        
-        # Padded acquisition
-        # TODO do another channel layout for this instead
         correlationMap = PCPS(
             rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
             interFrequency = self.rfSignal.interFrequency,
@@ -211,7 +198,22 @@ class ChannelL1CA_Kaplan(Channel):
             code=self.code[1:-1],
             dopplerRange=self.acq_dopplerRange,
             dopplerStep=self.acq_dopplerSteps,
-            samplesPerCode=samplesPerCode)
+            samplesPerCode=samplesPerCode, 
+            coherentIntegration=self.acq_coherentIntegration,
+            nonCoherentIntegration=self.acq_nonCoherentIntegration)
+        
+        # Padded acquisition
+        # TODO do another channel layout for this instead
+        
+        # n_padded =  int(pow(2, np.ceil(np.log(samplesPerCode)/np.log(2))) - samplesPerCode)
+        # correlationMap = PCPS_padded(
+        #     rfData = self.rfBuffer.getSlice(self.currentSample, samplesPerCode + n_padded), 
+        #     interFrequency = self.rfSignal.interFrequency,
+        #     samplingFrequency = self.rfSignal.samplingFrequency,
+        #     code=self.code[1:-1],
+        #     dopplerRange=self.acq_dopplerRange,
+        #     dopplerStep=self.acq_dopplerSteps,
+        #     samplesPerCode=samplesPerCode)
 
         return correlationMap
     

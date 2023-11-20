@@ -87,8 +87,8 @@ class Visualisation:
         mainTabs.append(('Navigation', navigationTab))
 
         # # Profiling Tab 
-        # benchmarkTab = self._getBenchmarkTab()
-        # mainTabs.append(("Benchmark", benchmarkTab))
+        benchmarkTab = self._getBenchmarkTab()
+        mainTabs.append(("Benchmark", benchmarkTab))
 
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)

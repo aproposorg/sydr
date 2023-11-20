@@ -12,7 +12,7 @@ import logging
 
 from sydr.channel.channel import Channel, ChannelState, ChannelMessage, ChannelStatus
 #from sydr.dsp.acquisition import PCPS_padded as PCPS
-from sydr.dsp.acquisition import PCPS as PCPS
+from sydr.dsp.acquisition import PCPS, PCPS_padded
 from sydr.dsp.acquisition import TwoCorrelationPeakComparison, GLRT
 from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients, BorreLoopFilter, EPL_nonvector, EPL_circular
 from sydr.dsp.decoding import Prompt2Bit, LNAV_CheckPreambule, LNAV_DecodeTOW
@@ -203,6 +203,8 @@ class ChannelL1CA(Channel):
 
         self.acq_requiredSamples = int(self.rfSignal.samplingFrequency * 1e-3 * \
             self.acq_nonCoherentIntegration * self.acq_coherentIntegration)
+        
+        #self.acq_requiredSamples = int(self.rfSignal.samplingFrequency * 1e-3 * 2)
 
         return
     
@@ -286,7 +288,7 @@ class ChannelL1CA(Channel):
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
         samplesPerCodeChip = round(self.rfSignal.samplingFrequency / GPS_L1CA_CODE_FREQ)
 
-        # Parallel Code Phase Search method (PCPS)
+        # # Parallel Code Phase Search method (PCPS)
         correlationMap = PCPS(rfData = self.rfBuffer.getSlice(self.currentSample, self.acq_requiredSamples), 
                               interFrequency = self.rfSignal.interFrequency,
                               samplingFrequency = self.rfSignal.samplingFrequency,
@@ -297,12 +299,25 @@ class ChannelL1CA(Channel):
                               coherentIntegration=self.acq_coherentIntegration,
                               nonCoherentIntegration=self.acq_nonCoherentIntegration)
         
+        # Padded version 
+        # TODO Temporary, need to be moved to a proper configuration
+        # n_padded =  int(pow(2, np.ceil(np.log(samplesPerCode)/np.log(2))) - samplesPerCode)
+        # correlationMap = PCPS_padded(
+        #     rfData = self.rfBuffer.getSlice(self.currentSample, samplesPerCode + n_padded), 
+        #     interFrequency = self.rfSignal.interFrequency,
+        #     samplingFrequency = self.rfSignal.samplingFrequency,
+        #     code=self.code[1:-1],
+        #     dopplerRange=self.acq_dopplerRange,
+        #     dopplerStep=self.acq_dopplerSteps,
+        #     samplesPerCode=samplesPerCode)
+        
         indices, peakRatio = TwoCorrelationPeakComparison(correlationMap=correlationMap,
                                                           samplesPerCode=samplesPerCode,
                                                           samplesPerCodeChip=samplesPerCodeChip)
         
         # Update variables
         dopplerShift = -self.acq_dopplerRange + self.acq_dopplerSteps * indices[0]
+        #dopplerShift = 3750.0
         self.codeOffset = int(np.round(indices[1]))
         self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
         self.initialFrequency = self.rfSignal.interFrequency + dopplerShift
@@ -328,6 +343,8 @@ class ChannelL1CA(Channel):
         results["peak_ratio"]        = peakRatio
 
         #logging.getLogger(__name__).debug(f"svid={self.svid}, freq={self.estimatedDoppler: .1f}, code={self.estimatedCode:.1f}, threshold={self.acquisitionMetric:.2f}")
+
+        logging.getLogger(__name__).debug(f"CID {self.channelID} successful acquisition [code: {self.codeOffset:.1f}, doppler: {self.carrierFrequency:.1f}, metric: {peakRatio:.1f}")
 
         return results
     

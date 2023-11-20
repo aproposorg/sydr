@@ -66,9 +66,6 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np
             for idx_coh in range(0, coherentIntegration):
 
                 signal = iq_signal[idx_coh*samplesPerCode:(idx_coh+1)*samplesPerCode]
-                # signal = np.pad(signal, 
-                #                 (0, int(pow(2, np.ceil(np.log(len(signal))/np.log(2)))) - len(signal)), 
-                #                 mode='constant')
 
                 # Perform FFT
                 iq_fft = np.fft.fft(signal)
@@ -272,8 +269,11 @@ def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, 
 
     rfData = np.squeeze(rfData)
 
-    n_padded =  int(pow(2, np.ceil(np.log(len(code))/np.log(2))) - len(code))
+    n_padded =  int(pow(2, np.ceil(np.log(samplesPerCode)/np.log(2))) - samplesPerCode)
     samplesPerCode_padded = samplesPerCode + n_padded
+
+    # Select only require part of the dataset
+    signal = rfData[:samplesPerCode_padded]
 
     phasePoints = np.array(range(samplesPerCode_padded)) * 2 * np.pi / samplingFrequency
     frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
@@ -286,13 +286,10 @@ def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, 
     correlationMap = np.zeros((len(frequencyBins), samplesPerCode))
     idx = 0
     for freq in frequencyBins:
-        freq = interFrequency - freq
+        freq -= interFrequency
 
         # Generate carrier replica
         signal_carrier = np.exp(-1j * freq * phasePoints)
-
-        # Select only require part of the dataset
-        signal = rfData[:samplesPerCode_padded]
 
         # Mix with carrier
         iq_signal = np.multiply(signal_carrier, signal)
@@ -307,7 +304,7 @@ def PCPS_padded(rfData:np.array, interFrequency:float, samplingFrequency:float, 
         correlationMap[idx, :] = np.abs(np.fft.ifft(iq_conv)[:samplesPerCode])
 
         idx += 1
-    correlationMap = np.squeeze(np.squeeze(correlationMap))
+    #correlationMap = np.squeeze(np.squeeze(correlationMap))
 
     return correlationMap
 
