@@ -18,7 +18,7 @@ def main():
     receiverConfig.read(receiverConfigFile)
 
     # Create GUI
-    gui = EnlightenGUI()
+    gui = EnlightenGUI() 
     gui.updateMainStatus(stage='Initialize', status='RUNNING')
 
     # Create logger

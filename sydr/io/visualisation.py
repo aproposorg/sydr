@@ -86,9 +86,9 @@ class Visualisation:
         navigationTab = self._getNavigationTab()
         mainTabs.append(('Navigation', navigationTab))
 
-        # # Profiling Tab 
-        # benchmarkTab = self._getBenchmarkTab()
-        # mainTabs.append(("Benchmark", benchmarkTab))
+        # Profiling Tab 
+        benchmarkTab = self._getBenchmarkTab()
+        mainTabs.append(("Benchmark", benchmarkTab))
 
         _filepath = f"./{self.outfolder}/report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         mainTabs.save(_filepath, embed=True)
@@ -108,11 +108,10 @@ class Visualisation:
         figureList = [Div(text="<h2>Percentage of total time spent in functions</h2>")]
         for channel in channelList:
             dataList = self.database.fetchBenchmark(channel["id"])
-            total_time = 0.0
+
             result = dict.fromkeys([d['function_name'] for d in dataList], 0.0)
             for _data in dataList:
                 result[_data['function_name']] += _data['time_ns']
-                total_time += _data['time_ns']
             
             data = pd.Series(result).reset_index(name='value').rename(columns={'index': 'function'})
             data['percentage'] = data['value']/data['value'].sum() * 100
@@ -133,6 +132,63 @@ class Visualisation:
             figureList.append(p)
 
         benchmarkLayout =layout(figureList)
+
+        # Create matplotlib plots
+        for channel in channelList:
+
+            
+            dataList = self.database.fetchBenchmark(channel["id"])
+
+            result = {key: [] for key in [d['function_name'] for d in dataList]}
+            for _data in dataList:
+                result[_data['function_name']].append(_data['time_ns'])
+
+            # for function in result:
+            #     result[function].pop(0)
+
+            data = pd.Series(result).reset_index(name='value').rename(columns={'index': 'function'})
+            
+            # Processing power
+            fig, axs = plt.subplots(ncols=2, sharey=True, figsize=[9, 3])
+            #fig.suptitle("15 seconds", fontsize=16, x=0.6)
+            means = [np.mean(value) for value in result.values()]
+            means /= np.max(means)
+            colors = ["tab:green", "tab:green", "tab:blue", "tab:blue", "tab:blue", 
+                      "tab:blue", "tab:blue", "tab:orange" ]
+            labels = ["Signal Search (PCPS)", "Peak Finder", "Correlators (EPL)", 
+                      "Discriminators", "Carrier Frequency Filter", "Code Frequency Filter", 
+                      "Loop Indicators", "Decoding"]
+            legend_labels = ["Acquisition", "_Acquisition", "Tracking", "_Tracking", 
+                             "_Tracking", "_Tracking", "_Tracking", "Decoding"]
+            axs[0].barh(labels, means, color=colors, label=legend_labels, align='center')
+            #axs.boxplot(result.values(), showmeans=True, meanprops=meanpointprops, showfliers=False, vert=False)
+            axs[0].invert_yaxis()
+            axs[0].set_xlabel("Average processing time per epoch (normalized)")
+            axs[0].set_xscale('log')
+            axs[0].grid()
+            axs[0].set_xlim((pow(10,-5),pow(10,0)))
+            axs[0].set_axisbelow(True)
+            axs[0].legend(title="Processing step", framealpha=1.0)
+            
+            # Energy
+            sums = [np.sum(value) for value in result.values()]
+            sums /= np.sum(sums)
+            colors = ["tab:green", "tab:green", "tab:blue", "tab:blue", "tab:blue", 
+                      "tab:blue", "tab:blue", "tab:orange" ]
+            labels = ["Signal Search (PCPS)", "Peak Finder", "Correlators (EPL)", 
+                      "Discriminators", "Carrier Frequency Filter", "Code Frequency Filter", 
+                      "Loop Indicators", "Decoding"]
+            legend_labels = ["Acquisition", "_Acquisition", "Tracking", "_Tracking", 
+                             "_Tracking", "_Tracking", "_Tracking", "Decoding"]
+            axs[1].barh(labels, sums, color=colors, label=legend_labels, align='center')
+            axs[1].set_xlabel("Total processing time (normalized)")
+            axs[1].set_xscale('log')
+            axs[1].grid()
+            axs[1].set_xlim((pow(10,-5),pow(10,0)))
+            axs[1].set_axisbelow(True)
+
+            fig.tight_layout()
+            plt.savefig(f"./{self.outfolder}/time_total_channel{channel['id']}_both.png", dpi=300)
         
         return benchmarkLayout
 
@@ -307,10 +363,23 @@ class Visualisation:
             TableColumn(field="Parameters", title="Parameters"),
             TableColumn(field="Values", title="Values")]
         tableParameters = DataTable(source=source, columns=columns)
+
+        # Results table
+        titleResults = Div(text="<h3>Detailed configuration<h3>")
+        dfResults = pd.DataFrame({
+            'Name'   : ["Frequency shift", "Code shift (samples)"], 
+            'Value' : [frequencyBins[acquisition["frequency_idx"]], acquisition["code_idx"]]
+        })
+        source = ColumnDataSource(dfResults)
+        columns = [
+            TableColumn(field="Name", title="Name"),
+            TableColumn(field="Value", title="Value")]
+        tableResults = DataTable(source=source, columns=columns)
         
         acqLayout = layout([[tabTitle], \
                            [figAcqDoppler, figAcqCode],
-                           [titleParameters, tableParameters]])
+                           [titleParameters, tableParameters],
+                           [titleResults, tableResults]])
 
         return acqLayout
 
