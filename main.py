@@ -13,7 +13,7 @@ def main():
     """
 
     # Configuration
-    receiverConfigFile = './config/receiver.ini'
+    receiverConfigFile = './config/receiver_borre.ini'
     receiverConfig  = configparser.ConfigParser()
     receiverConfig.read(receiverConfigFile)
 

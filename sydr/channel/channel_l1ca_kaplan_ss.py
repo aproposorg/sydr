@@ -14,6 +14,7 @@ class ChannelL1CA_Kaplan_SS(ChannelL1CA_Kaplan):
         for idx in range(self.acq_nonCoherentIntegration):
             correlationMap += SerialSearch(
                 rfdata = self.rfBuffer.getSlice(self.currentSample + idx * samplesPerCode, samplesPerCode),
+                interFrequency = self.rfSignal.interFrequency,
                 code = self.code[1:-1],
                 dopplerRange=self.acq_dopplerRange,
                 dopplerStep=self.acq_dopplerSteps,

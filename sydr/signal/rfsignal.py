@@ -1,4 +1,4 @@
-import configparser
+from configparser import ConfigParser
 import numpy as np
 
 class RFSignal:
