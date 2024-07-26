@@ -76,8 +76,8 @@ class Receiver(ABC):
 
         self.measurementFrequency = float(configuration['MEASUREMENTS']['frequency'])
         self.measurementsEnabled = {}
-        self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE] = bool(configuration['MEASUREMENTS']['pseudorange'])
-        self.measurementsEnabled[GNSSMeasurementType.DOPPLER]     = bool(configuration['MEASUREMENTS']['doppler'])
+        self.measurementsEnabled[GNSSMeasurementType.PSEUDORANGE] = configuration['MEASUREMENTS'].getboolean('pseudorange')
+        self.measurementsEnabled[GNSSMeasurementType.DOPPLER]     = configuration['MEASUREMENTS'].getboolean('doppler')
 
         # Initialise
         self.receiverState = ReceiverState.IDLE

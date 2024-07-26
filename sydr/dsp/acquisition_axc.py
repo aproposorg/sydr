@@ -1,49 +1,50 @@
 import numpy as np
+import evoapproxlib as eal
+import operator
+
 from sydr.signal.gnsssignal import UpsampleCode
 
 from sydr.utils.misc import shift, quantize, multiply_axc
 
 # =====================================================================================================================
 
-def SerialSearch_AxC(rfdata:np.array, code:np.array, dopplerRange:tuple, dopplerStep:int, samplingFrequency:float, 
-                 samplesPerCode:int, axc_mult, n_bits):
+def SerialSearch_AxC(rfdata:np.array, interFrequency:float, code:np.array, dopplerRange:tuple, dopplerStep:int, 
+                     samplingFrequency:float, samplesPerCode:int, axc_mult, n_bits:int):
     """
     """
 
-    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+    rfdata = np.squeeze(rfdata)
+
+    frequencyBins = interFrequency + np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
     phasePoints = np.array(range(samplesPerCode)) * 2 * np.pi / samplingFrequency
-    
-    correlationMap = np.zeros((len(frequencyBins), len(code)))
 
     # Doppler shift loop
     idxFreq = 0
-    for freq in frequencyBins:
-        # Code shift loop
-        for idxCode in range(len(code)):
-            
-            carrier = np.exp(-1j * freq * phasePoints)
+    correlationMap = np.zeros((len(frequencyBins), len(code)))
+    for idxFreq in range(len(frequencyBins)):
+        
+        i_carrier = np.sin(frequencyBins[idxFreq] * phasePoints)
+        q_carrier = np.cos(frequencyBins[idxFreq] * phasePoints)
 
+        # Quantize carrier
+        i_carrier, _ = quantize(i_carrier, n_bits)
+        q_carrier, _ = quantize(q_carrier, n_bits)
+        
+        # Approximate multiplication
+        i_signal = np.zeros_like(i_carrier)
+        q_signal = np.zeros_like(q_carrier)
+        for i in range(len(i_carrier)):
+            i_signal[i] = axc_mult(i_carrier[i], rfdata[i])
+            q_signal[i] = axc_mult(q_carrier[i], rfdata[i])
+
+        for idxCode in range(len(code)):    
             _code = shift(code, idxCode)
             _code = UpsampleCode(_code, samplingFrequency)
 
-            # NOT AXC MULTPLICATION (Should be changed?)
-            # This multiplication only involve float -1 to 1 (carrier) and integer (-1 / 1)
-            # Technically the multiplication only implies a sign inversion in the phase of the carrier, thus not the
-            # computation cost should be low and does not need to be approximated? 
-            signal = np.multiply(carrier, _code) 
+            # Multiply signal with code
+            i_corr = i_signal * _code
+            q_corr = q_signal * _code
 
-            # Quantize to get integers for axc multiplication
-            # TODO Implemente an NCO with LUT to avoid quantization and speed up this process
-            signal = quantize(signal, n_bits)
-
-            i_signal = multiply_axc(np.real(rfdata), signal)
-            q_signal = multiply_axc(np.imag(rfdata), signal)
-
-            # Correlation
-            correlationMap[idxFreq, idxCode] += np.sum(i_signal)**2 + np.sum(q_signal)**2
-
-        idxFreq += 1
-    
-    correlationMap = np.squeeze(np.squeeze(correlationMap))
+            correlationMap[idxFreq, idxCode] += np.sum(i_corr)**2 + np.sum(q_corr)**2
     
     return correlationMap

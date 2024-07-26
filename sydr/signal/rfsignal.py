@@ -27,18 +27,18 @@ class RFSignal:
         # Read configuration
         self.filepath          = str  (configuration['filepath'])
         self.samplingFrequency = float(configuration['sampling_frequency'])
-        self.isComplex         = bool (configuration['is_complex'])
+        self.isComplex         = configuration.getboolean('is_complex')
         self.interFrequency    = float(configuration['intermediate_frequency'])
         
-        dataSize = int(configuration['data_size'])
+        self.quantization = int(configuration['data_size'])
         
         # Find file data type
-        if dataSize   == 8:
+        if self.quantization   == 8:
             self.fileDataType = np.int8
-        elif dataSize == 16:
+        elif self.quantization == 16:
             self.fileDataType = np.int16
         else:
-            raise ValueError(f"Data type of {dataSize} bit(s) is not valid.")
+            raise ValueError(f"Data type of {self.quantization} bit(s) is not valid.")
         
         # Check if I/Q or real data
         if self.isComplex:

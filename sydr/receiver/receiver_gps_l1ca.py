@@ -16,7 +16,8 @@ from sydr.receiver.receiver import Receiver
 from sydr.channel.channel_l1ca_borre import ChannelStatusL1CA
 #from sydr.channel.channel_l1ca_borre import ChannelL1CA
 #from sydr.channel.channel_l1ca_kaplan import ChannelL1CA_Kaplan as ChannelL1CA
-from sydr.channel.channel_l1ca_kaplan_ss import ChannelL1CA_Kaplan_SS as ChannelL1CA
+# from sydr.channel.channel_l1ca_kaplan_ss import ChannelL1CA_Kaplan_SS as ChannelL1CA
+from sydr.channel.channel_l1ca_kaplan_axc import ChannelL1CA_Kaplan_AxC as ChannelL1CA
 #from sydr.channel.channel_l1ca_kaplan_circular import ChannelL1CA 
 from sydr.channel.channel import ChannelMessage, ChannelStatus
 from sydr.enlightengui import EnlightenGUI

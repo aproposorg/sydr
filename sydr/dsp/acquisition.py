@@ -153,16 +153,13 @@ def SerialSearch(rfdata:np.array, interFrequency:float, code:np.array, dopplerRa
     """
     """
 
-    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+    frequencyBins = interFrequency + np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
     phasePoints = np.array(range(samplesPerCode)) * 2 * np.pi / samplingFrequency
     
     correlationMap = np.zeros((len(frequencyBins), len(code)))
-
     # Doppler shift loop
     idxFreq = 0
     for freq in frequencyBins:
-
-        freq = interFrequency - freq
 
         if np.any(np.iscomplex(rfdata)):
             carrier = np.exp(-1j * freq * phasePoints)
@@ -170,15 +167,11 @@ def SerialSearch(rfdata:np.array, interFrequency:float, code:np.array, dopplerRa
             i_signal = np.real(signal)
             q_signal = np.imag(signal)
         else:
-            i_carrier = np.sin(frequencyBins[idxFreq] * phasePoints)
-            q_carrier = np.cos(frequencyBins[idxFreq] * phasePoints)
+            i_carrier = np.sin(freq * phasePoints)
+            q_carrier = np.cos(freq * phasePoints)
 
             i_signal = i_carrier * rfdata
             q_signal = q_carrier * rfdata
-
-        # _phase = -freq * phasePoints;
-        # i_signal = np.multiply(rfdata, np.sin(_phase))
-        # q_signal = np.multiply(rfdata, np.cos(_phase))
 
         # Code shift loop
         for idxCode in range(len(code)):
@@ -187,8 +180,6 @@ def SerialSearch(rfdata:np.array, interFrequency:float, code:np.array, dopplerRa
 
             i_corr = np.multiply(i_signal, _code)
             q_corr = np.multiply(q_signal, _code)
-            # i_signal = np.multiply(i_signal, _code)
-            # q_signal = np.multiply(q_signal, _code)
 
             # Correlation
             correlationMap[idxFreq, idxCode] += np.sum(i_corr)**2 + np.sum(q_corr)**2
