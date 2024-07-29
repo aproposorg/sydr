@@ -6,6 +6,7 @@ from sydr.utils.enumerations import ChannelState
 from sydr.channel.channel_l1ca_kaplan import ChannelL1CA_Kaplan
 from sydr.dsp.acquisition import TwoCorrelationPeakComparison_SS
 from sydr.dsp.acquisition_axc import SerialSearch_AxC
+from sydr.dsp.tracking import EPL, EPL_nonvector
 from sydr.dsp.tracking_axc import EPL_AxC
 from sydr.utils.constants import GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_FREQ, LNAV_MS_PER_BIT
 
@@ -31,7 +32,7 @@ class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
             
         return correlationMap
     
-    # -----------------------------------------------------------------------------------------------------------------
+    # # -----------------------------------------------------------------------------------------------------------------
     
     def runPeakFinder(self, correlationMap):
 
@@ -62,7 +63,7 @@ class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
 
         return
 
-        # -----------------------------------------------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------------------------------
 
     def runCorrelators(self):
         """
@@ -79,6 +80,16 @@ class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
             correlatorsSpacing=self.track_correlatorsSpacing,
             axc_mult=axc_mult,
             n_bits=self.rfSignal.quantization)
+        
+        # self.correlatorsResults[:] = EPL_nonvector(
+        #     rfData = self.rfBuffer.getSlice(self.currentSample, self.track_requiredSamples),
+        #     code = self.code,
+        #     samplingFrequency=self.rfSignal.samplingFrequency,
+        #     carrierFrequency=self.carrierFrequency,
+        #     remainingCarrier=self.remainingCarrier,
+        #     remainingCode=self.remainingCode,
+        #     codeStep=self.codeStep,
+        #     correlatorsSpacing=self.track_correlatorsSpacing)
         
         # Check buffer index
         if self.correlatorsAccumCounter == LNAV_MS_PER_BIT:

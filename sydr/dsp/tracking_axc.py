@@ -8,33 +8,40 @@ def EPL_AxC(rfdata:np.array, code:np.array, samplingFrequency:float, carrierFreq
         remainingCode:float, codeStep:float, correlatorsSpacing:tuple, axc_mult, n_bits:int):
     
     rfdata = np.squeeze(rfdata)
-    
+        
     nbSamples = len(rfdata)
     correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    for idx in range(nbSamples):
-        # # Generate replica
-        temp = -(carrierFrequency * 2.0 * np.pi * (idx/samplingFrequency)) + remainingCarrier
-        # replica = np.exp(1j * temp)
 
-        # # Mix replica and RF signal
-        # signal = replica * rfdata[idx]
-        # iSignal = np.real(signal)
-        # qSignal = np.imag(signal)
+    # Generate replica
+    
+    #carrierFrequency = 9547426.3420105
 
-        i_carrier = np.sin(temp)
-        q_carrier = np.cos(temp)
+    time = np.arange(0.0, nbSamples) / samplingFrequency
+    phase = -(carrierFrequency * 2.0 * np.pi * time) + remainingCarrier
 
-        # Quantize carrier
-        i_carrier, _ = quantize(i_carrier, n_bits)
-        q_carrier, _ = quantize(q_carrier, n_bits)
-   
-        i_signal = axc_mult(i_carrier, rfdata)
-        q_signal = axc_mult(q_carrier, rfdata)
+    # Carrier generation (for some reason cos and sin are reverse ...)
+    i_carrier = np.cos(phase)
+    q_carrier = np.sin(phase)
 
-        # Perform correlation
-        for i in range(len(correlatorsSpacing)):
-            codeIdx = int(np.ceil(remainingCode + correlatorsSpacing[i] + idx*codeStep))
-            correlatorResults[i*2]   += code[codeIdx] * i_signal
-            correlatorResults[i*2+1] += code[codeIdx] * q_signal
+    # # Quantize carrier
+    i_carrier, _ = quantize(i_carrier, n_bits)
+    q_carrier, _ = quantize(q_carrier, n_bits)
+    
+    # # Approximate multiplication
+    # i_signal = i_carrier * rfdata
+    # q_signal = q_carrier * rfdata
+
+    i_signal = np.zeros_like(i_carrier)
+    q_signal = np.zeros_like(q_carrier)
+    for i in range(len(i_carrier)):
+        i_signal[i] = axc_mult(i_carrier[i], rfdata[i])
+        q_signal[i] = axc_mult(q_carrier[i], rfdata[i])
+
+    # Perform correlation
+    for i in range(len(correlatorsSpacing)):
+        shift = remainingCode + correlatorsSpacing[i]
+        codeIdx = np.ceil(np.linspace(shift, codeStep * nbSamples + shift, nbSamples, endpoint=False)).astype(int)
+        correlatorResults[i*2]   = np.sum(code[codeIdx] * i_signal)
+        correlatorResults[i*2+1] = np.sum(code[codeIdx] * q_signal)
     
     return correlatorResults

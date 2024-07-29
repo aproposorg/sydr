@@ -304,8 +304,13 @@ class ChannelL1CA(Channel):
         # Update variables
         dopplerShift = -self.acq_dopplerRange + self.acq_dopplerSteps * indices[0]
         self.codeOffset = int(np.round(indices[1]))
-        self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
-        self.initialFrequency = self.rfSignal.interFrequency + dopplerShift
+        if self.rfSignal.interFrequency > 0: 
+            # Need to reverse when intermediate frequency
+            self.carrierFrequency = self.rfSignal.interFrequency - dopplerShift
+            self.initialFrequency = self.rfSignal.interFrequency - dopplerShift
+        else:
+            self.carrierFrequency = dopplerShift
+            self.initialFrequency = dopplerShift
         # TODO Can we merge the two variables inside the loop?
 
         # Update index
