@@ -5,7 +5,7 @@ import evoapproxlib as eal
 from sydr.utils.enumerations import ChannelState
 from sydr.channel.channel_l1ca_borre import ChannelL1CA
 from sydr.dsp.acquisition import TwoCorrelationPeakComparison_SS
-from sydr.dsp.acquisition_axc import SerialSearch_AxC
+from sydr.dsp.acquisition_axc import SerialSearch_AxC2
 from sydr.dsp.tracking import EPL, EPL_nonvector
 from sydr.dsp.tracking_axc import EPL_AxC
 from sydr.utils.constants import GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_FREQ, LNAV_MS_PER_BIT
@@ -13,7 +13,7 @@ from sydr.dsp.tracking import EPL, DLL_NNEML, PLL_costa, LoopFiltersCoefficients
 from sydr.dsp.lockindicator import CN0_NWPR, CN0_Beaulieu
 from sydr.utils.enumerations import GNSSSystems, GNSSSignalType, TrackingFlags
 
-axc_mult = eal.mul8s_1KV6.calc
+axc_mult = eal.mul8s_1L12.calc
 
 class ChannelL1CA_Borre_AxC(ChannelL1CA):
 
@@ -22,7 +22,7 @@ class ChannelL1CA_Borre_AxC(ChannelL1CA):
         frequencyBins = np.arange(-self.acq_dopplerRange, self.acq_dopplerRange+1, self.acq_dopplerSteps)
         correlationMap = np.zeros((len(frequencyBins), GPS_L1CA_CODE_SIZE_BITS))
         for idx in range(self.acq_nonCoherentIntegration):
-            correlationMap += SerialSearch_AxC(
+            correlationMap += SerialSearch_AxC2(
                 rfdata = self.rfBuffer.getSlice(self.currentSample + idx * samplesPerCode, samplesPerCode),
                 interFrequency = self.rfSignal.interFrequency,
                 code = self.code[1:-1],

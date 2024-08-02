@@ -13,7 +13,7 @@ def main():
     """
 
     # Configuration
-    receiverConfigFile = './config/receiver.ini'
+    receiverConfigFile = './config/receiver_tau_40MHz_real.ini'
     receiverConfig  = configparser.ConfigParser()
     receiverConfig.read(receiverConfigFile)
 

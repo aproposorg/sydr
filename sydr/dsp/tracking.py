@@ -97,6 +97,8 @@ def EPL(rfData:np.array, code:np.array, samplingFrequency:float, carrierFrequenc
     nbSamples = len(rfData)
     correlatorResults = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
+    # carrierFrequency = carrierFrequency # Quick fix for the TAU 40 MHz dataset, maybe should be removed
+
     # Generate replica
     time = np.arange(0.0, nbSamples) / samplingFrequency
     replica = np.exp(1j * (-(carrierFrequency * 2.0 * np.pi * time) + remainingCarrier))

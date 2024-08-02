@@ -306,8 +306,11 @@ class ChannelL1CA(Channel):
         self.codeOffset = int(np.round(indices[1]))
         if self.rfSignal.interFrequency > 0: 
             # Need to reverse when intermediate frequency
-            self.carrierFrequency = self.rfSignal.interFrequency - dopplerShift
-            self.initialFrequency = self.rfSignal.interFrequency - dopplerShift
+            #self.carrierFrequency = self.rfSignal.interFrequency - dopplerShift
+            #self.initialFrequency = self.rfSignal.interFrequency - dopplerShift
+            # Apparently for the 40 MHz / 10 MHz TAU file is works better that way ... 
+            self.carrierFrequency = self.rfSignal.interFrequency + dopplerShift
+            self.initialFrequency = self.rfSignal.interFrequency + dopplerShift
         else:
             self.carrierFrequency = dopplerShift
             self.initialFrequency = dopplerShift

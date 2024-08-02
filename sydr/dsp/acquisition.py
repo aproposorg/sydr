@@ -35,7 +35,7 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np
         dopplerStep = int(2/(3 * coherentIntegration * nonCoherentIntegration) * 1e3)
 
     phasePoints = np.array(range(coherentIntegration * samplesPerCode)) * 2 * np.pi / samplingFrequency
-    frequencyBins = np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
+    frequencyBins = interFrequency + np.arange(-dopplerRange, dopplerRange+1, dopplerStep)
 
     # Compute code FFT
     code = UpsampleCode(code, samplingFrequency)
@@ -47,7 +47,6 @@ def PCPS(rfData:np.array, interFrequency:float, samplingFrequency:float, code:np
     coh_sum        = np.zeros((1, samplesPerCode))
     idx = 0
     for freq in frequencyBins:
-        freq -= interFrequency
 
         # Generate carrier replica
         signal_carrier = np.exp(-1j * freq * phasePoints)
