@@ -10,9 +10,40 @@ from sydr.dsp.tracking import EPL, EPL_nonvector
 from sydr.dsp.tracking_axc import EPL_AxC
 from sydr.utils.constants import GPS_L1CA_CODE_SIZE_BITS, GPS_L1CA_CODE_FREQ, LNAV_MS_PER_BIT
 
-axc_mult = eal.mul8s_1KV6.calc
+EAL_MULTIPLIERS_8BIT_SIGNED = {
+    '1KV6' : eal.mul8s_1KV6.calc,
+    '1KVM' : eal.mul8s_1KVM.calc,
+    '1KXF' : eal.mul8s_1KXF.calc,
+    '1L12' : eal.mul8s_1L12.calc,
+    '1KV8' : eal.mul8s_1KV8.calc,
+    '1KV9' : eal.mul8s_1KV9.calc,
+    '1KVP' : eal.mul8s_1KVP.calc,
+    '1KVQ' : eal.mul8s_1KVQ.calc,
+    '1KX5' : eal.mul8s_1KX5.calc,
+    '1KVA' : eal.mul8s_1KVA.calc
+}
 
 class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
+
+    def setAcquisition(self, configuration:dict):
+        """
+        """
+
+        super().setAcquisition(configuration)
+
+        self.acq_axc_mult = EAL_MULTIPLIERS_8BIT_SIGNED[configuration['axc_mult']]
+
+        return
+    
+    def setTracking(self, configuration:dict):
+        """
+        """
+
+        super().setTracking(configuration)
+
+        self.track_axc_mult = EAL_MULTIPLIERS_8BIT_SIGNED[configuration['axc_mult']]
+
+        return
 
     def runSignalSearch(self):
         samplesPerCode = round(self.rfSignal.samplingFrequency * GPS_L1CA_CODE_SIZE_BITS / GPS_L1CA_CODE_FREQ)
@@ -27,7 +58,7 @@ class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
                 dopplerStep=self.acq_dopplerSteps,
                 samplesPerCode=samplesPerCode,
                 samplingFrequency=self.rfSignal.samplingFrequency, 
-                axc_mult=axc_mult,
+                axc_mult=self.acq_axc_mult,
                 n_bits=self.rfSignal.quantization)
             
         return correlationMap
@@ -78,7 +109,7 @@ class ChannelL1CA_Kaplan_AxC(ChannelL1CA_Kaplan):
             remainingCode=self.remainingCode,
             codeStep=self.codeStep,
             correlatorsSpacing=self.track_correlatorsSpacing,
-            axc_mult=axc_mult,
+            axc_mult=self.track_axc_mult,
             n_bits=self.rfSignal.quantization)
         
         # self.correlatorsResults[:] = EPL_nonvector(
